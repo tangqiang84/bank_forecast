@@ -1,0 +1,12 @@
+.env
+.env.*
+node_modules/
+dist/
+build/
+target/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
