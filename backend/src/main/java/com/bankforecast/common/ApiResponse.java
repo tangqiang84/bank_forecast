@@ -1,5 +1,7 @@
 package com.bankforecast.common;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class ApiResponse<T> {
 
   private final int code;
@@ -38,6 +40,7 @@ public class ApiResponse<T> {
     return data;
   }
 
+  @JsonProperty("trace_id")
   public String getTraceId() {
     return traceId;
   }

@@ -8,13 +8,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-  @Value("${bank-forecast.cors.allowed-origin:http://localhost:5173}")
-  private String allowedOrigin;
+  @Value("${bank-forecast.cors.allowed-origins:http://127.0.0.1:5173,http://127.0.0.1:5174,http://localhost:5173,http://localhost:5174}")
+  private String allowedOrigins;
 
   @Override
   public void addCorsMappings(CorsRegistry registry) {
+    String[] origins = allowedOrigins.split(",");
     registry.addMapping("/api/**")
-        .allowedOrigins(allowedOrigin)
+        .allowedOrigins(origins)
         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         .allowedHeaders("*")
         .allowCredentials(true);

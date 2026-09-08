@@ -15,7 +15,7 @@ public class HealthController {
   @GetMapping("/health")
   public ApiResponse<Map<String, Object>> health() {
     Map<String, Object> data = new LinkedHashMap<>();
-    data.put("service", "bank-forecast-backend");
+    data.put("service", "bank-fund-connector-backend");
     data.put("status", "UP");
     data.put("timestamp", OffsetDateTime.now().toString());
     return ApiResponse.ok(data);
