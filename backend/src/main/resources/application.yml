@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: bank-forecast-backend
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+bank-forecast:
+  cors:
+    allowed-origin: http://localhost:5173
