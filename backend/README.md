@@ -66,6 +66,14 @@ XC-2026-001,示例客户,PRJ-001,示例项目,1200000.00,2026-05-10,执行中
 
 合同主数据模式不要求 `contract_name`、`node_name`、`node_type`、`due_date`、`plan_amount`；系统使用 `project_name` 作为合同名称，只创建合同和项目，不创建应收节点。应收节点可通过合同应收计划模式另行导入。
 
+独立应收计划模式支持 `docs/sample/测试数据/应收计划样本.csv` 的字段结构：
+
+```csv
+plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,received_amount,status
+```
+
+该模式通过 `contract_no` 关联已存在合同，`contract_amount` 和 `contract_name` 可以不提供；`node_type` 缺失时默认使用 `receivable`。如果合同不存在且文件缺少 `contract_amount`，系统会按行返回明确错误，需要先导入合同主数据或补充合同金额。
+
 合同金额和应收计划金额必须为正数、最多 2 位小数且不超过金额上限；同一合同的应收计划合计不能超过合同金额。重复合同应收节点按跳过处理。
 
 错误明细：`GET /api/v1/imports/{jobId}/errors`；错误 CSV 下载：`GET /api/v1/imports/{jobId}/errors/download`。
