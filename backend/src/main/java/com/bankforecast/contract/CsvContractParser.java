@@ -39,11 +39,12 @@ public class CsvContractParser {
       List<String> headers = parseLine(headerLine, delimiter);
       Map<String, Integer> indexes = new HashMap<>();
       for (int i = 0; i < headers.size(); i++) indexes.put(canonicalHeader(headers.get(i)), i);
-      String[] required = {"contract_no", "contract_name", "customer_name", "contract_amount",
-          "node_name", "node_type", "due_date", "plan_amount"};
+      String[] required = {"contract_no", "customer_name", "contract_amount"};
       for (String key : required) {
         if (!indexes.containsKey(key)) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "缺少必填列 " + key);
       }
+      boolean hasReceivablePlan = indexes.containsKey("node_name") && indexes.containsKey("node_type")
+          && indexes.containsKey("due_date") && indexes.containsKey("plan_amount");
 
       List<CsvContractRow> rows = new ArrayList<>();
       List<CsvRowError> errors = new ArrayList<>();
@@ -59,16 +60,20 @@ public class CsvContractParser {
         List<String> values = parseLine(line, delimiter);
         for (int i = 0; i < headers.size(); i++) raw.put(canonicalHeader(headers.get(i)), value(values, i));
         try {
+          String contractName = optional(raw, "contract_name");
+          if (contractName == null) contractName = optional(raw, "project_name");
+          if (contractName == null) contractName = required(raw, "contract_no", rowNo);
           rows.add(new CsvContractRow(rowNo,
               required(raw, "contract_no", rowNo),
-              required(raw, "contract_name", rowNo),
+              contractName,
               required(raw, "customer_name", rowNo),
               raw.get("project_no"), raw.get("project_name"),
               positive(raw, "contract_amount", rowNo),
-              required(raw, "node_name", rowNo),
-              required(raw, "node_type", rowNo),
-              parseDate(raw, "due_date", rowNo),
-              positive(raw, "plan_amount", rowNo), raw.get("owner_name"),
+              hasReceivablePlan ? required(raw, "node_name", rowNo) : null,
+              hasReceivablePlan ? required(raw, "node_type", rowNo) : null,
+              hasReceivablePlan ? parseDate(raw, "due_date", rowNo) : null,
+              hasReceivablePlan ? positive(raw, "plan_amount", rowNo) : null,
+              raw.get("owner_name"),
               objectMapper.writeValueAsString(raw)));
         } catch (BusinessException ex) {
           errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw)));
@@ -121,6 +126,11 @@ public class CsvContractParser {
     String value = raw.get(key);
     if (value == null || value.trim().isEmpty()) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 " + key + " 不能为空");
     return value.trim();
+  }
+
+  private String optional(Map<String, String> raw, String key) {
+    String value = raw.get(key);
+    return value == null || value.trim().isEmpty() ? null : value.trim();
   }
 
   private String value(List<String> values, int index) { return index < values.size() ? values.get(index).trim() : ""; }

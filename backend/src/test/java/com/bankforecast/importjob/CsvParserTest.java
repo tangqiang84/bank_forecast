@@ -68,4 +68,19 @@ class CsvParserTest {
     assertEquals(1, result.getRows().size());
     assertEquals("跨境合同", result.getRows().get(0).getContractName());
   }
+
+  @Test
+  void parsesContractMasterSampleWithoutContractNameOrReceivableColumns() throws Exception {
+    CsvContractParser parser = new CsvContractParser(objectMapper);
+    String csv = "contract_no,customer_name,project_no,project_name,contract_amount,sign_date,status\n"
+        + "XC-2026-001,瑞丰金融集团,PRJ-001,核心系统上云迁移,1200000.00,2026-05-10,执行中\n";
+
+    CsvParseResult<CsvContractRow> result = parser.parse(
+        new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)), 10);
+
+    assertEquals(1, result.getRows().size());
+    assertEquals("核心系统上云迁移", result.getRows().get(0).getContractName());
+    assertEquals(null, result.getRows().get(0).getNodeName());
+    assertTrue(result.getErrors().isEmpty());
+  }
 }

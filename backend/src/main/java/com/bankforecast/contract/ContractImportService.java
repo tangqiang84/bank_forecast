@@ -67,17 +67,21 @@ public class ContractImportService {
     for (CsvContractRow row : parsed.getRows()) {
       try {
         validateAmount(row.getContractAmount(), row.getRowNo(), "contract_amount");
-        validateAmount(row.getPlanAmount(), row.getRowNo(), "plan_amount");
-        if (row.getPlanAmount().compareTo(row.getContractAmount()) > 0) {
-          throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + row.getRowNo() + " 行应收计划金额不能超过合同金额");
-        }
-        if (planExists(principal.getTenantId(), row)) {
+        if (row.getNodeName() != null && planExists(principal.getTenantId(), row)) {
           skipped++;
           continue;
         }
         Long projectId = upsertProject(principal.getTenantId(), row);
         Long contractId = findContract(principal.getTenantId(), row.getContractNo());
         if (contractId == null) contractId = insertContract(principal.getTenantId(), row, projectId);
+        if (row.getNodeName() == null) {
+          success++;
+          continue;
+        }
+        validateAmount(row.getPlanAmount(), row.getRowNo(), "plan_amount");
+        if (row.getPlanAmount().compareTo(row.getContractAmount()) > 0) {
+          throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + row.getRowNo() + " 行应收计划金额不能超过合同金额");
+        }
         validatePlanAmount(principal.getTenantId(), contractId, row);
         insertPlan(principal.getTenantId(), contractId, projectId, row);
         success++;
