@@ -45,7 +45,10 @@ public class MatchingService {
     List<Map<String, Object>> transactions = jdbcTemplate.queryForList(
         "select id, transaction_no, transaction_date, amount, counterparty_name, summary "
             + "from bank_transaction where tenant_id = ? and direction in ('income', 'refund') "
-            + "and match_status = 'unmatched' and deleted_at is null order by transaction_date, id",
+            + "and match_status = 'unmatched' and deleted_at is null "
+            + "and not exists (select 1 from match_result mr where mr.tenant_id = bank_transaction.tenant_id "
+            + "and mr.bank_transaction_id = bank_transaction.id and mr.deleted_at is null) "
+            + "order by transaction_date, id",
         tenantId);
     List<Map<String, Object>> plans = jdbcTemplate.queryForList(
         "select p.id as plan_id, p.contract_id, p.project_id, p.due_date, p.plan_amount, p.paid_amount, "
@@ -66,22 +69,18 @@ public class MatchingService {
       }
       String transactionStatus = candidate.partial ? "suggested" : "matched";
       insertMatchResult(tenantId, jobId, transactionId, candidate, transactionStatus);
-      jdbcTemplate.update("update bank_transaction set match_status = ?, updated_at = ? where id = ? and tenant_id = ?",
-          transactionStatus, Timestamp.valueOf(LocalDateTime.now()), transactionId, tenantId);
-      BigDecimal newPaid = candidate.paidAmount.add(candidate.transactionAmount);
-      String planStatus = newPaid.compareTo(candidate.planAmount) >= 0 ? "paid" : "partial";
-      jdbcTemplate.update("update contract_receivable_plan set paid_amount = ?, status = ?, updated_at = ? where id = ? and tenant_id = ?",
-          newPaid, planStatus, Timestamp.valueOf(LocalDateTime.now()), candidate.planId, tenantId);
       if (candidate.partial) {
         suggested++;
         createException(tenantId, "partial_receipt", "contract_receivable_plan", candidate.planId,
             "部分收款：" + candidate.contractName,
-            "计划金额 " + candidate.planAmount + "，本次到账 " + candidate.transactionAmount + "，累计到账 " + newPaid,
+            "待人工确认：计划金额 " + candidate.planAmount + "，本次到账 " + candidate.transactionAmount
+                + "，确认前累计到账 " + candidate.paidAmount,
             "high", candidate.dueDate);
       } else {
         matched++;
+        applyFinancialEffect(tenantId, transactionId, candidate, transactionStatus);
+        updatePlanSnapshot(plans, candidate);
       }
-      candidate.paidAmount = newPaid;
     }
 
     int overdue = createOverdueExceptions(tenantId);
@@ -103,16 +102,61 @@ public class MatchingService {
     AuthPrincipal principal = requireAuth();
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
         "select mr.id, mr.bank_transaction_id, mr.contract_id, mr.contract_receivable_plan_id, "
-            + "mr.match_type, mr.confidence_level, mr.match_status, mr.match_reason, "
-            + "bt.transaction_no, bt.amount, c.contract_no, c.contract_name "
+            + "mr.match_type, mr.confidence_level, mr.match_status, mr.match_reason, mr.confirmed_by, mr.confirmed_at, "
+            + "bt.transaction_no, bt.amount, bt.match_status as transaction_match_status, c.contract_no, c.contract_name, p.node_name "
             + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
-            + "left join contract c on c.id = mr.contract_id where mr.tenant_id = ? and mr.deleted_at is null "
+            + "left join contract c on c.id = mr.contract_id left join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id "
+            + "where mr.tenant_id = ? and mr.deleted_at is null "
             + "order by mr.id desc limit 100",
         principal.getTenantId());
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("items", items);
     data.put("total", items.size());
     return data;
+  }
+
+  @Transactional
+  public Map<String, Object> confirmResult(Long resultId) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> result = findActionableResult(tenantId, resultId);
+    MatchCandidate candidate = candidateFromResult(result);
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    int updated = jdbcTemplate.update(
+        "update match_result set match_status = 'confirmed', confirmed_by = ?, confirmed_at = ?, updated_at = ? "
+            + "where id = ? and tenant_id = ? and match_status = 'suggested' and deleted_at is null",
+        principal.getUserId(), now, now, resultId, tenantId);
+    if (updated == 0) {
+      throw new BusinessException(ErrorCode.MATCH_RESULT_NOT_ACTIONABLE, "匹配结果已被处理，不能重复确认或拒绝");
+    }
+    BigDecimal newPaid = applyFinancialEffect(tenantId, number(result.get("bank_transaction_id")), candidate,
+        "manual_confirmed");
+    closePartialException(tenantId, candidate.planId, principal, "CONFIRM", "人工确认匹配，累计到账 " + newPaid);
+    auditService.record("CONFIRM_MATCH_RESULT", "match_result", String.valueOf(resultId),
+        "plan_id=" + candidate.planId + ", transaction_id=" + result.get("bank_transaction_id"));
+    return resultView(tenantId, resultId);
+  }
+
+  @Transactional
+  public Map<String, Object> rejectResult(Long resultId, String reason) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> result = findActionableResult(tenantId, resultId);
+    String rejectReason = reason == null || reason.trim().isEmpty() ? "未填写原因" : reason.trim();
+    String matchReason = text(result.get("match_reason")) + "；人工拒绝：" + rejectReason;
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    int updated = jdbcTemplate.update(
+        "update match_result set match_status = 'rejected', match_reason = ?, confirmed_by = ?, confirmed_at = ?, updated_at = ? "
+            + "where id = ? and tenant_id = ? and match_status = 'suggested' and deleted_at is null",
+        truncate(matchReason, 512), principal.getUserId(), now, now, resultId, tenantId);
+    if (updated == 0) {
+      throw new BusinessException(ErrorCode.MATCH_RESULT_NOT_ACTIONABLE, "匹配结果已被处理，不能重复确认或拒绝");
+    }
+    closePartialException(tenantId, number(result.get("contract_receivable_plan_id")), principal, "REJECT",
+        "人工拒绝匹配：" + rejectReason);
+    auditService.record("REJECT_MATCH_RESULT", "match_result", String.valueOf(resultId),
+        "reason=" + rejectReason + ", transaction_id=" + result.get("bank_transaction_id"));
+    return resultView(tenantId, resultId);
   }
 
   public List<Map<String, Object>> listExceptions() {
@@ -172,6 +216,91 @@ public class MatchingService {
         "insert into match_result (tenant_id, match_job_id, bank_transaction_id, contract_id, contract_receivable_plan_id, project_id, match_type, confidence_level, match_status, match_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tenantId, jobId, transactionId, candidate.contractId, candidate.planId, candidate.projectId,
         candidate.matchType, candidate.confidence, status, candidate.reason);
+  }
+
+  private BigDecimal applyFinancialEffect(Long tenantId, Long transactionId, MatchCandidate candidate, String transactionStatus) {
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update bank_transaction set match_status = ?, updated_at = ? where id = ? and tenant_id = ?",
+        transactionStatus, now, transactionId, tenantId);
+    BigDecimal newPaid = candidate.paidAmount.add(candidate.transactionAmount);
+    String planStatus = newPaid.compareTo(candidate.planAmount) >= 0 ? "paid" : "partial";
+    jdbcTemplate.update("update contract_receivable_plan set paid_amount = ?, status = ?, updated_at = ? where id = ? and tenant_id = ?",
+        newPaid, planStatus, now, candidate.planId, tenantId);
+    candidate.paidAmount = newPaid;
+    return newPaid;
+  }
+
+  private void updatePlanSnapshot(List<Map<String, Object>> plans, MatchCandidate candidate) {
+    for (Map<String, Object> plan : plans) {
+      if (candidate.planId.equals(number(plan.get("plan_id")))) {
+        plan.put("paid_amount", candidate.paidAmount);
+        plan.put("status", candidate.paidAmount.compareTo(candidate.planAmount) >= 0 ? "paid" : "partial");
+        return;
+      }
+    }
+  }
+
+  private Map<String, Object> findActionableResult(Long tenantId, Long resultId) {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select mr.id, mr.bank_transaction_id, mr.contract_id, mr.contract_receivable_plan_id, mr.project_id, "
+            + "mr.match_type, mr.match_reason, mr.match_status, bt.amount as transaction_amount, "
+            + "p.plan_amount, p.paid_amount, p.due_date, c.contract_name "
+            + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+            + "join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id "
+            + "join contract c on c.id = mr.contract_id where mr.id = ? and mr.tenant_id = ? "
+            + "and mr.deleted_at is null and bt.tenant_id = ? and p.tenant_id = ? and c.tenant_id = ?",
+        resultId, tenantId, tenantId, tenantId, tenantId);
+    if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "匹配结果不存在");
+    Map<String, Object> row = rows.get(0);
+    if (!"suggested".equals(text(row.get("match_status")))) {
+      throw new BusinessException(ErrorCode.MATCH_RESULT_NOT_ACTIONABLE, "只有待确认的匹配结果可以人工处理");
+    }
+    return row;
+  }
+
+  private MatchCandidate candidateFromResult(Map<String, Object> result) {
+    MatchCandidate candidate = new MatchCandidate();
+    candidate.planId = number(result.get("contract_receivable_plan_id"));
+    candidate.contractId = number(result.get("contract_id"));
+    candidate.projectId = numberOrNull(result.get("project_id"));
+    candidate.planAmount = decimal(result.get("plan_amount"));
+    candidate.paidAmount = decimal(result.get("paid_amount"));
+    candidate.transactionAmount = decimal(result.get("transaction_amount"));
+    candidate.dueDate = sqlDate(result.get("due_date"));
+    candidate.contractName = text(result.get("contract_name"));
+    return candidate;
+  }
+
+  private Map<String, Object> resultView(Long tenantId, Long resultId) {
+    return jdbcTemplate.queryForMap(
+        "select mr.id, mr.bank_transaction_id, mr.contract_id, mr.contract_receivable_plan_id, mr.match_type, "
+            + "mr.confidence_level, mr.match_status, mr.match_reason, mr.confirmed_by, mr.confirmed_at, "
+            + "bt.transaction_no, bt.amount, bt.match_status as transaction_match_status, c.contract_no, c.contract_name, p.node_name "
+            + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+            + "left join contract c on c.id = mr.contract_id left join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id "
+            + "where mr.id = ? and mr.tenant_id = ? and mr.deleted_at is null",
+        resultId, tenantId);
+  }
+
+  private void closePartialException(Long tenantId, Long planId, AuthPrincipal principal, String actionType, String actionText) {
+    List<Map<String, Object>> exceptions = jdbcTemplate.queryForList(
+        "select id, description from exception_case where tenant_id = ? and exception_type = 'partial_receipt' "
+            + "and source_type = 'contract_receivable_plan' and source_id = ? and deleted_at is null",
+        tenantId, planId);
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    for (Map<String, Object> exception : exceptions) {
+      jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, closed_at = ?, updated_at = ? "
+              + "where id = ? and tenant_id = ?",
+          truncate(text(exception.get("description")) + "；" + actionText, 2000), now, now,
+          number(exception.get("id")), tenantId);
+      jdbcTemplate.update(
+          "insert into exception_action_log (tenant_id, exception_case_id, action_type, action_by, action_text) values (?, ?, ?, ?, ?)",
+          tenantId, number(exception.get("id")), actionType, principal.getUserId(), actionText);
+    }
+  }
+
+  private String truncate(String value, int maxLength) {
+    return value.length() <= maxLength ? value : value.substring(0, maxLength);
   }
 
   private int createOverdueExceptions(Long tenantId) {

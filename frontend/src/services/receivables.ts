@@ -33,6 +33,24 @@ export type ExceptionCase = {
   severity: string
   due_date: string | null
 }
+export type MatchResult = {
+  id: number
+  bank_transaction_id: number
+  transaction_no: string
+  amount: string
+  transaction_match_status: string
+  contract_id: number | null
+  contract_receivable_plan_id: number | null
+  contract_no: string | null
+  contract_name: string | null
+  node_name: string | null
+  match_type: string
+  confidence_level: string
+  match_status: string
+  match_reason: string
+  confirmed_by: number | null
+  confirmed_at: string | null
+}
 
 export function importContracts(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()
@@ -57,4 +75,23 @@ export function runMatching(baseUrl: string, token: string, tenantId: number) {
 
 export function loadExceptions(baseUrl: string, token: string, tenantId: number) {
   return fetchJson<ApiResponse<ExceptionCase[]>>(`${baseUrl}/api/v1/matching/exceptions`, { headers: authHeaders(token, tenantId) })
+}
+
+export function loadMatchResults(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<{ items: MatchResult[]; total: number }>>(`${baseUrl}/api/v1/matching/results`, { headers: authHeaders(token, tenantId) })
+}
+
+export function confirmMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number) {
+  return fetchJson<ApiResponse<MatchResult>>(`${baseUrl}/api/v1/matching/results/${resultId}/confirm`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function rejectMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number, reason: string) {
+  return fetchJson<ApiResponse<MatchResult>>(`${baseUrl}/api/v1/matching/results/${resultId}/reject`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+    body: JSON.stringify({ reason }),
+  })
 }

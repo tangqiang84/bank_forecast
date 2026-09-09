@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getToken, loadCurrentUser, login, logout, type User } from './services/auth'
 import { loadDashboardOverview, type DashboardOverview } from './services/dashboard'
 import { importStatements, loadAccounts, loadTransactions, type BankAccount, type BankTransaction } from './services/bank'
-import { importContracts, loadContracts, loadExceptions, loadReceivables, runMatching, type Contract, type ExceptionCase, type Receivable } from './services/receivables'
+import { confirmMatchResult, importContracts, loadContracts, loadExceptions, loadMatchResults, loadReceivables, rejectMatchResult, runMatching, type Contract, type ExceptionCase, type MatchResult, type Receivable } from './services/receivables'
 import { formatCurrency } from './utils/number'
 
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL ?? 'http://localhost:8080'
@@ -13,7 +13,7 @@ const loginName = ref('finance01')
 const password = ref('')
 const loginLoading = ref(false)
 const loginError = ref('')
-const activeView = ref<'dashboard' | 'transactions' | 'receivables' | 'exceptions'>('dashboard')
+const activeView = ref<'dashboard' | 'transactions' | 'receivables' | 'matching' | 'exceptions'>('dashboard')
 const loading = ref(false)
 const overview = ref<DashboardOverview | null>(null)
 const accounts = ref<BankAccount[]>([])
@@ -27,10 +27,13 @@ const pageError = ref('')
 const contracts = ref<Contract[]>([])
 const receivables = ref<Receivable[]>([])
 const exceptions = ref<ExceptionCase[]>([])
+const matchResults = ref<MatchResult[]>([])
 const contractFile = ref<File | null>(null)
 const contractImportMessage = ref('')
 const matchingLoading = ref(false)
 const matchingMessage = ref('')
+const matchActionLoading = ref<number | null>(null)
+const matchActionMessage = ref('')
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -74,12 +77,13 @@ async function loadWorkspace() {
   loading.value = true
   pageError.value = ''
   try {
-    const [overviewResult, accountResult, transactionResult, contractResult, receivableResult, exceptionResult] = await Promise.all([
+    const [overviewResult, accountResult, transactionResult, contractResult, receivableResult, matchResult, exceptionResult] = await Promise.all([
       loadDashboardOverview(backendBase, token.value, user.value.tenant_id),
       loadAccounts(backendBase, token.value, user.value.tenant_id),
       loadTransactions(backendBase, token.value, user.value.tenant_id),
       loadContracts(backendBase, token.value, user.value.tenant_id),
       loadReceivables(backendBase, token.value, user.value.tenant_id),
+      loadMatchResults(backendBase, token.value, user.value.tenant_id),
       loadExceptions(backendBase, token.value, user.value.tenant_id),
     ])
     overview.value = overviewResult.data
@@ -88,12 +92,45 @@ async function loadWorkspace() {
     totalTransactions.value = transactionResult.data.total
     contracts.value = contractResult.data.items
     receivables.value = receivableResult.data
+    matchResults.value = matchResult.data.items
     exceptions.value = exceptionResult.data
     if (!selectedAccountId.value && accounts.value.length > 0) selectedAccountId.value = accounts.value[0].id
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '工作台加载失败，请刷新重试'
   } finally {
     loading.value = false
+  }
+}
+
+async function confirmResult(resultId: number) {
+  if (!user.value || !token.value) return
+  matchActionLoading.value = resultId
+  matchActionMessage.value = ''
+  try {
+    await confirmMatchResult(backendBase, token.value, user.value.tenant_id, resultId)
+    matchActionMessage.value = '匹配结果已确认，应收和流水状态已更新。'
+    await loadWorkspace()
+  } catch (error) {
+    matchActionMessage.value = error instanceof Error ? error.message : '确认失败，请稍后重试'
+  } finally {
+    matchActionLoading.value = null
+  }
+}
+
+async function rejectResult(resultId: number) {
+  if (!user.value || !token.value) return
+  const reason = window.prompt('请输入拒绝原因（可选）', '')
+  if (reason === null) return
+  matchActionLoading.value = resultId
+  matchActionMessage.value = ''
+  try {
+    await rejectMatchResult(backendBase, token.value, user.value.tenant_id, resultId, reason)
+    matchActionMessage.value = '匹配结果已拒绝，应收金额保持不变。'
+    await loadWorkspace()
+  } catch (error) {
+    matchActionMessage.value = error instanceof Error ? error.message : '拒绝失败，请稍后重试'
+  } finally {
+    matchActionLoading.value = null
   }
 }
 
@@ -194,6 +231,7 @@ onMounted(async () => {
       <button :class="{ active: activeView === 'dashboard' }" type="button" @click="activeView = 'dashboard'">驾驶舱</button>
       <button :class="{ active: activeView === 'transactions' }" type="button" @click="activeView = 'transactions'">银行流水</button>
       <button :class="{ active: activeView === 'receivables' }" type="button" @click="activeView = 'receivables'">合同应收</button>
+      <button :class="{ active: activeView === 'matching' }" type="button" @click="activeView = 'matching'">匹配结果</button>
       <button :class="{ active: activeView === 'exceptions' }" type="button" @click="activeView = 'exceptions'">异常事项</button>
       <button class="refresh-button" :disabled="loading" type="button" @click="loadWorkspace">{{ loading ? '刷新中...' : '刷新数据' }}</button>
     </nav>
@@ -214,6 +252,12 @@ onMounted(async () => {
       <section v-if="activeView === 'receivables'" class="grid receivable-layout">
         <article class="panel import-panel"><h2>导入合同应收</h2><label>合同 CSV 文件<input accept=".csv,text/csv" type="file" @change="onContractFileChange" /></label><p v-if="contractFile" class="meta">已选择：{{ contractFile.name }}</p><p v-if="contractImportMessage" class="feedback-text">{{ contractImportMessage }}</p><button class="primary-button" type="button" @click="submitContractImport">导入合同</button><p class="meta import-hint">必填列：contract_no、contract_name、customer_name、contract_amount、node_name、node_type、due_date、plan_amount。</p></article>
         <article class="panel table-panel"><div class="section-heading"><h2>应收计划</h2><span class="meta">{{ receivables.length }} 个节点</span></div><div v-if="receivables.length" class="table-scroll"><table><thead><tr><th>合同</th><th>客户</th><th>节点</th><th>应收日期</th><th>计划金额</th><th>已收金额</th><th>状态</th></tr></thead><tbody><tr v-for="item in receivables" :key="item.id"><td>{{ item.contract_no }}<br />{{ item.contract_name }}</td><td>{{ item.customer_name }}</td><td>{{ item.node_name }}</td><td>{{ item.due_date }}</td><td>{{ formatCurrency(item.plan_amount) }}</td><td>{{ formatCurrency(item.paid_amount) }}</td><td><span class="pill">{{ item.status }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无应收计划，请先导入合同 CSV。</p></article>
+      </section>
+      <section v-else-if="activeView === 'matching'" class="panel table-panel">
+        <div class="section-heading"><div><h2>匹配结果</h2><span class="meta">共 {{ matchResults.length }} 条</span></div><span class="meta">待确认结果可人工处理</span></div>
+        <p v-if="matchActionMessage" class="feedback-text">{{ matchActionMessage }}</p>
+        <div v-if="matchResults.length" class="table-scroll"><table><thead><tr><th>流水</th><th>金额</th><th>合同/节点</th><th>类型</th><th>置信度</th><th>匹配理由</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in matchResults" :key="item.id"><td>{{ item.transaction_no }}</td><td class="income-amount">{{ formatCurrency(item.amount) }}</td><td>{{ item.contract_no || '-' }}<br />{{ item.contract_name || '-' }} · {{ item.node_name || '-' }}</td><td>{{ item.match_type }}</td><td>{{ item.confidence_level }}</td><td class="reason-cell">{{ item.match_reason }}</td><td><span class="pill">{{ item.match_status }}</span></td><td><div v-if="item.match_status === 'suggested'" class="action-group"><button class="small-primary-button" :disabled="matchActionLoading !== null" type="button" @click="confirmResult(item.id)">{{ matchActionLoading === item.id ? '处理中...' : '确认' }}</button><button class="small-danger-button" :disabled="matchActionLoading !== null" type="button" @click="rejectResult(item.id)">拒绝</button></div><span v-else class="meta">已处理</span></td></tr></tbody></table></div>
+        <p v-else class="empty-state">暂无匹配结果，请先在异常事项页面运行回款匹配。</p>
       </section>
       <section v-else-if="activeView === 'exceptions'" class="panel"><div class="section-heading"><h2>异常事项</h2><button class="primary-button" :disabled="matchingLoading" type="button" @click="submitMatching">{{ matchingLoading ? '匹配中...' : '运行回款匹配' }}</button></div><p v-if="matchingMessage" class="feedback-text">{{ matchingMessage }}</p><div v-if="exceptions.length" class="list-stack"><div v-for="item in exceptions" :key="item.id" class="exception-row"><div><strong>{{ item.title }}</strong><p class="meta">{{ item.description }}</p></div><span class="pill">{{ item.exception_type }} · {{ item.status }}</span></div></div><p v-else class="empty-state">暂无异常事项。点击“运行回款匹配”生成结果。</p></section>
       <section v-else class="grid transaction-layout">
