@@ -1,9 +1,11 @@
 .env
 .env.*
+!backend/.env.example
 node_modules/
 dist/
 build/
 target/
+backend/data/
 __pycache__/
 .pytest_cache/
 *.pyc

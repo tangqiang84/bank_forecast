@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:bank_connector_test;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: false
+
+bank-forecast:
+  bootstrap:
+    default-admin-password: test-password-123
+  security:
+    jwt-secret: unit-test-token-secret
+    access-token-ttl-minutes: 120
+  import:
+    max-rows: 10000
