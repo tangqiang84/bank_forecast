@@ -100,7 +100,12 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 - `GET /api/v1/forecast/cashflow/latest`：查询当前租户最近一次成功预测及预测点。
 - `GET /api/v1/forecast/cashflow/jobs/{id}`：查询预测任务及结果详情。
 - `POST /api/v1/forecast/cashflow/jobs/{id}/retry`：重试失败任务，单个任务最多执行 3 次。
+- `POST /api/v1/forecast/cashflow/jobs/{id}/actuals`：按预测日期汇总真实银行净现金流，回填实际金额和偏差。
+- `GET /api/v1/forecast/models`：查询模型版本及当前启用状态。
+- `POST /api/v1/forecast/models/{version}/activate`：启用指定模型版本。
 
-预测任务和预测点分别落库到 `forecast_job`、`forecast_result`。预测失败会记录失败状态和错误信息，接口返回结构化错误，不会伪装为成功。所有查询按当前登录租户隔离。
+预测任务和预测点分别落库到 `forecast_job`、`forecast_result`，模型版本落库到 `forecast_model_version`。实际回填后，详情接口中的 `evaluation` 返回评估点数、MAE、RMSE 和平均偏差。预测失败会记录失败状态和错误信息，接口返回结构化错误，不会伪装为成功。所有查询按当前登录租户隔离。
 
-当前 analytics 使用 `moving-average-with-trend` MVP 算法。`actual_amount` 和 `deviation_amount` 字段已预留，但实际金额回填和真实偏差统计属于后续增强任务。
+实际值仅回填已发生日期（`forecast_date <= 当前日期`），未来预测点保持空值，不参与评估指标计算。
+
+当前 analytics 使用 `moving-average-with-trend` 算法版本 `v1`。任务创建时绑定当前启用模型版本，模型版本切换不会改变历史任务的版本记录。

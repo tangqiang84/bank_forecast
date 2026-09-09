@@ -23,6 +23,7 @@ def forecast_cashflow(request: ForecastRequest) -> ForecastResponse:
 
     return ForecastResponse(
         method="moving-average-with-trend",
+        model_version=request.model_version,
         baseline=baseline,
         trend_step=trend_step,
         forecast_values=values,

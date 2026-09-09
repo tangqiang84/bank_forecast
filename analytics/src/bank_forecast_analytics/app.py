@@ -50,6 +50,14 @@ def create_app() -> FastAPI:
     def cashflow(request: ForecastRequest):
         return ok(forecast_cashflow(request).model_dump())
 
+    @app.get("/models")
+    def models() -> object:
+        return ok([{
+            "version": "v1",
+            "model_name": "moving-average-with-trend",
+            "status": "active",
+        }])
+
     return app
 
 

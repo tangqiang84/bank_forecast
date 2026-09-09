@@ -26,4 +26,12 @@ def test_forecast() -> None:
     body = response.json()
     assert body["code"] == 0
     assert body["data"]["method"] == "moving-average-with-trend"
+    assert body["data"]["model_version"] == "v1"
     assert len(body["data"]["forecast_values"]) == 2
+
+
+def test_models() -> None:
+    client = TestClient(app)
+    response = client.get("/models")
+    assert response.status_code == 200
+    assert response.json()["data"][0]["version"] == "v1"

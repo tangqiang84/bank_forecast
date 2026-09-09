@@ -167,6 +167,16 @@ label {
   align-items: start;
 }
 
+.forecast-evaluation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
 .import-panel {
   display: grid;
   gap: 14px;

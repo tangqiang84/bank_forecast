@@ -9,6 +9,7 @@ import javax.validation.Valid;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,5 +61,20 @@ public class ForecastController {
   @PostMapping("/cashflow/jobs/{id}/retry")
   public ApiResponse<Map<String, Object>> retry(@org.springframework.web.bind.annotation.PathVariable Long id) {
     return ApiResponse.ok(forecastJobService.retry(id));
+  }
+
+  @PostMapping("/cashflow/jobs/{id}/actuals")
+  public ApiResponse<Map<String, Object>> backfillActuals(@org.springframework.web.bind.annotation.PathVariable Long id) {
+    return ApiResponse.ok(forecastJobService.backfillActuals(id));
+  }
+
+  @GetMapping("/models")
+  public ApiResponse<List<Map<String, Object>>> models() {
+    return ApiResponse.ok(forecastJobService.models());
+  }
+
+  @PostMapping("/models/{version}/activate")
+  public ApiResponse<Map<String, Object>> activateModel(@org.springframework.web.bind.annotation.PathVariable String version) {
+    return ApiResponse.ok(forecastJobService.activateModel(version));
   }
 }
