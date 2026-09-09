@@ -218,6 +218,33 @@ th {
   font-size: 12px;
 }
 
+.text-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #155eef;
+  font-size: 12px;
+}
+
+.detail-panel {
+  margin-top: 16px;
+}
+
+.detail-panel pre {
+  max-height: 460px;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  background: #f7f9fc;
+  border: 1px solid #e4ecf5;
+  border-radius: 6px;
+  color: #33475b;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .small-primary-button {
   background: #155eef;
 }

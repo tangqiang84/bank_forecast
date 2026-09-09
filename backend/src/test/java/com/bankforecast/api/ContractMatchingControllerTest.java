@@ -93,7 +93,63 @@ class ContractMatchingControllerTest {
     org.junit.jupiter.api.Assertions.assertEquals("unpaid", jdbcTemplate.queryForObject("select status from contract_receivable_plan where id = ?", String.class, planId));
     mockMvc.perform(get("/api/v1/matching/exceptions")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].exception_type").exists());
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].exception_type").exists())
+        .andExpect(jsonPath("$.data.page").value(1)).andExpect(jsonPath("$.data.page_size").value(20))
+        .andExpect(jsonPath("$.data.total").isNumber());
+  }
+
+  @Test
+  void exposesFinancialTraceDetailsAndTenantScopedAuditLogs() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    Long transactionId = jdbcTemplate.queryForObject("select bank_transaction_id from match_result where id = ?", Long.class, resultId);
+    Long contractId = jdbcTemplate.queryForObject("select contract_id from match_result where id = ?", Long.class, resultId);
+    Long exceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' "
+            + "and source_type = 'contract_receivable_plan' and source_id = "
+            + "(select contract_receivable_plan_id from match_result where id = ?) order by id desc limit 1", Long.class, tenantId, resultId);
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    mockMvc.perform(get("/api/v1/bank-transactions/" + transactionId)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.transaction.id").value(transactionId))
+        .andExpect(jsonPath("$.data.matches[0].id").value(resultId))
+        .andExpect(jsonPath("$.data.audit_logs").isArray());
+
+    mockMvc.perform(get("/api/v1/contracts/" + contractId)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.contract.id").value(contractId))
+        .andExpect(jsonPath("$.data.receivables").isArray())
+        .andExpect(jsonPath("$.data.transactions[0].id").value(transactionId))
+        .andExpect(jsonPath("$.data.audit_logs").isArray());
+
+    mockMvc.perform(get("/api/v1/matching/results/" + resultId)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.result.id").value(resultId))
+        .andExpect(jsonPath("$.data.transaction.id").value(transactionId))
+        .andExpect(jsonPath("$.data.exceptions").isNotEmpty())
+        .andExpect(jsonPath("$.data.audit_logs").isArray());
+
+    mockMvc.perform(get("/api/v1/matching/exceptions/" + exceptionId)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.exception.id").value(exceptionId))
+        .andExpect(jsonPath("$.data.source[0].source_id").exists())
+        .andExpect(jsonPath("$.data.logs").isArray());
+
+    mockMvc.perform(get("/api/v1/audit-logs?page=1&page_size=10&target_type=match_result&target_id=" + resultId)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items").isArray())
+        .andExpect(jsonPath("$.data.page").value(1))
+        .andExpect(jsonPath("$.data.page_size").value(10))
+        .andExpect(jsonPath("$.data.total").isNumber());
   }
 
   @Test

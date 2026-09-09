@@ -44,7 +44,11 @@ public class DashboardController {
     data.put("idle_accounts", countAccounts(tenantId, "idle"));
     data.put("match_rate", matchRate(tenantId));
     data.put("last_sync_at", latestImportTime(tenantId));
-    data.put("top_receivables", new ArrayList<Map<String, Object>>());
+    data.put("receivable_amount", amount(tenantId, "plan_amount"));
+    data.put("paid_receivable_amount", amount(tenantId, "paid_amount"));
+    data.put("overdue_receivable_amount", overdueAmount(tenantId));
+    data.put("exception_count", totalExceptions(tenantId));
+    data.put("top_receivables", topReceivables(tenantId));
     data.put("recent_import_jobs", recentImportJobs(tenantId));
     data.put("key_risks", keyRisks(tenantId));
     return ApiResponse.ok(data);
@@ -93,9 +97,34 @@ public class DashboardController {
 
   private List<Map<String, Object>> recentImportJobs(Long tenantId) {
     return jdbcTemplate.queryForList(
-        "select job_type as name, status, total_rows, success_rows, failed_rows, error_message as message "
+        "select job_type as name, status, total_rows, success_rows, failed_rows, skipped_rows, error_message as message "
             + "from import_job where tenant_id = ? and deleted_at is null order by id desc limit 5",
         tenantId);
+  }
+
+  private BigDecimal amount(Long tenantId, String column) {
+    return valueOrZero(jdbcTemplate.queryForObject(
+        "select coalesce(sum(" + column + "), 0) from contract_receivable_plan where tenant_id = ? and deleted_at is null",
+        BigDecimal.class, tenantId));
+  }
+
+  private BigDecimal overdueAmount(Long tenantId) {
+    return valueOrZero(jdbcTemplate.queryForObject(
+        "select coalesce(sum(plan_amount - paid_amount), 0) from contract_receivable_plan where tenant_id = ? and deleted_at is null and status <> 'paid' and due_date < ?",
+        BigDecimal.class, tenantId, java.sql.Date.valueOf(LocalDate.now())));
+  }
+
+  private int totalExceptions(Long tenantId) {
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and deleted_at is null", Integer.class, tenantId);
+    return count == null ? 0 : count;
+  }
+
+  private List<Map<String, Object>> topReceivables(Long tenantId) {
+    return jdbcTemplate.queryForList(
+        "select c.contract_name, c.customer_name, p.plan_amount - p.paid_amount as amount, p.due_date, p.status "
+            + "from contract_receivable_plan p join contract c on c.id = p.contract_id where p.tenant_id = ? and p.deleted_at is null and c.deleted_at is null and p.status <> 'paid' "
+            + "order by (p.plan_amount - p.paid_amount) desc, p.due_date asc limit 5", tenantId);
   }
 
   private List<Map<String, Object>> keyRisks(Long tenantId) {

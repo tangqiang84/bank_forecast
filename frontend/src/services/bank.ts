@@ -34,10 +34,16 @@ export function loadAccounts(baseUrl: string, token: string, tenantId: number) {
   })
 }
 
-export function loadTransactions(baseUrl: string, token: string, tenantId: number, page = 1) {
-  return fetchJson<ApiResponse<TransactionPage>>(`${baseUrl}/api/v1/bank-transactions?page=${page}&page_size=20`, {
+export function loadTransactions(baseUrl: string, token: string, tenantId: number, page = 1, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: '20' })
+  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
+  return fetchJson<ApiResponse<TransactionPage>>(`${baseUrl}/api/v1/bank-transactions?${params.toString()}`, {
     headers: authHeaders(token, tenantId),
   })
+}
+
+export function loadTransactionDetail(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/bank-transactions/${id}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function importStatements(

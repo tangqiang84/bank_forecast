@@ -10,9 +10,9 @@ import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Timestamp;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,20 +105,51 @@ public class MatchingService {
     return data;
   }
 
-  public Map<String, Object> listResults() {
+  public Map<String, Object> listResults(int page, int pageSize, String contractNo, String projectNo,
+      LocalDate dateFrom, LocalDate dateTo, String status) {
     AuthPrincipal principal = requireAuth();
+    int safePage = Math.max(page, 1);
+    int safeSize = Math.min(Math.max(pageSize, 1), 100);
+    int offset = (safePage - 1) * safeSize;
+    String filter = " where mr.tenant_id = ? and mr.deleted_at is null "
+        + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
+        + "and (? is null or bt.transaction_date >= ?) and (? is null or bt.transaction_date <= ?) "
+        + "and (? is null or mr.match_status = ?)";
+    Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
+        dateFrom, dateFrom, dateTo, dateTo, status, status};
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
         "select mr.id, mr.bank_transaction_id, mr.contract_id, mr.contract_receivable_plan_id, "
             + "mr.match_type, mr.confidence_level, mr.match_status, mr.match_reason, mr.confirmed_by, mr.confirmed_at, "
             + "bt.transaction_no, bt.amount, bt.match_status as transaction_match_status, c.contract_no, c.contract_name, p.node_name "
             + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
             + "left join contract c on c.id = mr.contract_id left join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id "
-            + "where mr.tenant_id = ? and mr.deleted_at is null "
-            + "order by mr.id desc limit 100",
-        principal.getTenantId());
+            + filter + " order by mr.id desc limit ? offset ?", append(args, safeSize, offset));
+    Integer total = jdbcTemplate.queryForObject(
+        "select count(*) from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+            + "left join contract c on c.id = mr.contract_id left join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id " + filter,
+        args, Integer.class);
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("items", items);
-    data.put("total", items.size());
+    data.put("page", safePage);
+    data.put("page_size", safeSize);
+    data.put("total", total == null ? 0 : total);
+    return data;
+  }
+
+  public Map<String, Object> resultDetail(Long resultId) {
+    AuthPrincipal principal = requireAuth();
+    Map<String, Object> result = findResult(principal.getTenantId(), resultId);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("result", result);
+    data.put("transaction", jdbcTemplate.queryForMap(
+        "select * from bank_transaction where id = ? and tenant_id = ? and deleted_at is null",
+        result.get("bank_transaction_id"), principal.getTenantId()));
+    data.put("audit_logs", jdbcTemplate.queryForList(
+        "select id, user_id, action, target_type, target_id, trace_id, detail, created_at from audit_log where tenant_id = ? and target_type = 'match_result' and target_id = ? order by id desc",
+        principal.getTenantId(), String.valueOf(resultId)));
+    data.put("exceptions", jdbcTemplate.queryForList(
+        "select id, exception_no, exception_type, title, description, status, severity, due_date, closed_at from exception_case where tenant_id = ? and source_type = 'contract_receivable_plan' and source_id = ? and deleted_at is null order by id desc",
+        principal.getTenantId(), result.get("contract_receivable_plan_id")));
     return data;
   }
 
@@ -166,12 +197,43 @@ public class MatchingService {
     return resultView(tenantId, resultId);
   }
 
-  public List<Map<String, Object>> listExceptions() {
+  public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
+      LocalDate dateFrom, LocalDate dateTo, String status) {
     AuthPrincipal principal = requireAuth();
-    return jdbcTemplate.queryForList(
-        "select id, exception_no, exception_type, source_type, source_id, title, description, owner_user_id, status, severity, due_date, closed_at, created_at, updated_at "
-            + "from exception_case where tenant_id = ? and deleted_at is null order by id desc limit 100",
-        principal.getTenantId());
+    int safePage = Math.max(page, 1);
+    int safeSize = Math.min(Math.max(pageSize, 1), 100);
+    int offset = (safePage - 1) * safeSize;
+    String filter = " where e.tenant_id = ? and e.deleted_at is null "
+        + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
+        + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) and (? is null or e.status = ?)";
+    Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
+        dateFrom, dateFrom, dateTo, dateTo, status, status};
+    String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
+        + "left join contract c on c.id = p.contract_id";
+    List<Map<String, Object>> items = jdbcTemplate.queryForList(
+        "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, e.status, e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at"
+            + joins + filter + " order by e.id desc limit ? offset ?", append(args, safeSize, offset));
+    Integer total = jdbcTemplate.queryForObject("select count(*)" + joins + filter, args, Integer.class);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("items", items);
+    data.put("page", safePage);
+    data.put("page_size", safeSize);
+    data.put("total", total == null ? 0 : total);
+    return data;
+  }
+
+  public Map<String, Object> exceptionDetail(Long exceptionId) {
+    AuthPrincipal principal = requireAuth();
+    Map<String, Object> exception = findException(principal.getTenantId(), exceptionId);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("exception", exception);
+    data.put("logs", listExceptionLogs(exceptionId));
+    data.put("source", jdbcTemplate.queryForList(
+        "select e.source_type, e.source_id, bt.transaction_no, bt.amount, bt.transaction_date, c.contract_no, c.contract_name, p.node_name, p.due_date, p.plan_amount, p.paid_amount "
+            + "from exception_case e left join bank_transaction bt on e.source_type = 'bank_transaction' and bt.id = e.source_id "
+            + "left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
+            + "left join contract c on c.id = p.contract_id where e.id = ? and e.tenant_id = ?", exceptionId, principal.getTenantId()));
+    return data;
   }
 
   @Transactional
@@ -378,6 +440,22 @@ public class MatchingService {
       throw new BusinessException(ErrorCode.MATCH_RESULT_NOT_ACTIONABLE, "只有待确认的匹配结果可以人工处理");
     }
     return row;
+  }
+
+  private Map<String, Object> findResult(Long tenantId, Long resultId) {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select mr.id, mr.bank_transaction_id, mr.contract_id, mr.contract_receivable_plan_id, mr.project_id, mr.match_type, mr.confidence_level, mr.match_status, mr.match_reason, mr.confirmed_by, mr.confirmed_at, bt.transaction_no, bt.amount, bt.transaction_date, c.contract_no, c.contract_name, p.node_name, p.due_date, p.plan_amount, p.paid_amount "
+            + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id left join contract c on c.id = mr.contract_id left join contract_receivable_plan p on p.id = mr.contract_receivable_plan_id where mr.id = ? and mr.tenant_id = ? and mr.deleted_at is null",
+        resultId, tenantId);
+    if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "匹配结果不存在");
+    return rows.get(0);
+  }
+
+  private Object[] append(Object[] values, Object... extra) {
+    Object[] result = new Object[values.length + extra.length];
+    System.arraycopy(values, 0, result, 0, values.length);
+    System.arraycopy(extra, 0, result, values.length, extra.length);
+    return result;
   }
 
   private MatchCandidate candidateFromResult(Map<String, Object> result) {

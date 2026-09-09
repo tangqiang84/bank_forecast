@@ -14,6 +14,7 @@ export type Contract = {
 }
 export type Receivable = {
   id: number
+  contract_id: number
   contract_no: string
   contract_name: string
   customer_name: string
@@ -53,6 +54,7 @@ export type MatchResult = {
   confirmed_by: number | null
   confirmed_at: string | null
 }
+export type Paged<T> = { items: T[]; page: number; page_size: number; total: number }
 
 export function importContracts(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()
@@ -60,12 +62,16 @@ export function importContracts(baseUrl: string, token: string, tenantId: number
   return fetchMultipart<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/imports/contracts`, formData, token, tenantId)
 }
 
-export function loadContracts(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<{ items: Contract[]; total: number }>>(`${baseUrl}/api/v1/contracts`, { headers: authHeaders(token, tenantId) })
+export function loadContracts(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams({ page: '1', page_size: '100' })
+  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
+  return fetchJson<ApiResponse<{ items: Contract[]; total: number }>>(`${baseUrl}/api/v1/contracts?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
-export function loadReceivables(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<Receivable[]>>(`${baseUrl}/api/v1/contracts/receivables`, { headers: authHeaders(token, tenantId) })
+export function loadReceivables(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams({ page: '1', page_size: '100' })
+  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
+  return fetchJson<ApiResponse<Paged<Receivable>>>(`${baseUrl}/api/v1/contracts/receivables?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function runMatching(baseUrl: string, token: string, tenantId: number) {
@@ -76,11 +82,19 @@ export function runMatching(baseUrl: string, token: string, tenantId: number) {
 }
 
 export function loadExceptions(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<ExceptionCase[]>>(`${baseUrl}/api/v1/matching/exceptions`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=1&page_size=100`, { headers: authHeaders(token, tenantId) })
 }
 
 export function loadMatchResults(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<{ items: MatchResult[]; total: number }>>(`${baseUrl}/api/v1/matching/results`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<Paged<MatchResult>>>(`${baseUrl}/api/v1/matching/results?page=1&page_size=100`, { headers: authHeaders(token, tenantId) })
+}
+
+export function loadContractDetail(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/contracts/${id}`, { headers: authHeaders(token, tenantId) })
+}
+
+export function loadMatchResultDetail(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/matching/results/${id}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function confirmMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number) {

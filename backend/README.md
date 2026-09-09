@@ -70,5 +70,19 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 - `POST /api/v1/matching/exceptions/{id}/resolve`：标记异常已处理。
 - `POST /api/v1/matching/exceptions/{id}/close`：关闭已处理异常。
 - `GET /api/v1/matching/exceptions/{id}/logs`：查询异常操作日志。
+- `GET /api/v1/bank-transactions`：按账户、合同编号、项目编号、交易日期和匹配状态分页查询银行流水。
+- `GET /api/v1/bank-transactions/{id}`：查看流水、匹配结果和审计日志。
+- `GET /api/v1/contracts/{id}`：查看合同、应收节点、关联流水和审计日志。
+- `GET /api/v1/matching/results/{id}`：查看匹配结果、原始流水、关联异常和审计日志。
+- `GET /api/v1/matching/exceptions/{id}`：查看异常来源和处理日志。
+- `GET /api/v1/audit-logs`：按 `target_type`、`target_id`、`action` 分页查询审计日志。
+
+合同、应收计划、匹配结果和异常列表支持分页及业务筛选，返回结构统一为：
+
+```json
+{"items": [], "page": 1, "page_size": 20, "total": 0}
+```
+
+详情接口用于财务对账追溯，所有查询按当前登录租户隔离；匹配结果保留确认人和确认时间，审计日志保留操作人、TraceID、对象和操作详情。驾驶舱的应收总额、已收金额、逾期未收金额和异常数量均从数据库实时汇总。
 
 当前匹配支持精确匹配、部分收款、未知收款和逾期未收；客户名称比较会统一处理公司后缀、空格和标点，且可通过 `MATCH_CUSTOMER_NAME_MIN_LENGTH` 和 `MATCH_CUSTOMER_NAME_ALLOW_CONTAINS` 配置匹配规则。部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。拆分匹配和合并匹配仍待新增分配明细表后实现。

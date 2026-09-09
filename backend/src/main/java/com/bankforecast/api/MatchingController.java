@@ -7,6 +7,8 @@ import com.bankforecast.matching.MatchingService;
 import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDate;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,10 +27,38 @@ public class MatchingController {
   public ApiResponse<Map<String, Object>> run() { return ApiResponse.ok(matchingService.runReceivableMatching()); }
 
   @GetMapping("/results")
-  public ApiResponse<Map<String, Object>> results() { return ApiResponse.ok(matchingService.listResults()); }
+  public ApiResponse<Map<String, Object>> results(
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
+      @RequestParam(name = "contract_no", required = false) String contractNo,
+      @RequestParam(name = "project_no", required = false) String projectNo,
+      @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
+      @RequestParam(name = "date_to", required = false) LocalDate dateTo,
+      @RequestParam(required = false) String status) {
+    return ApiResponse.ok(matchingService.listResults(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
+  }
+
+  @GetMapping("/results/{id}")
+  public ApiResponse<Map<String, Object>> resultDetail(@PathVariable Long id) {
+    return ApiResponse.ok(matchingService.resultDetail(id));
+  }
 
   @GetMapping("/exceptions")
-  public ApiResponse<List<Map<String, Object>>> exceptions() { return ApiResponse.ok(matchingService.listExceptions()); }
+  public ApiResponse<Map<String, Object>> exceptions(
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
+      @RequestParam(name = "contract_no", required = false) String contractNo,
+      @RequestParam(name = "project_no", required = false) String projectNo,
+      @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
+      @RequestParam(name = "date_to", required = false) LocalDate dateTo,
+      @RequestParam(required = false) String status) {
+    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
+  }
+
+  @GetMapping("/exceptions/{id}")
+  public ApiResponse<Map<String, Object>> exceptionDetail(@PathVariable Long id) {
+    return ApiResponse.ok(matchingService.exceptionDetail(id));
+  }
 
   @PostMapping("/results/{id}/confirm")
   public ApiResponse<Map<String, Object>> confirm(@PathVariable Long id) {

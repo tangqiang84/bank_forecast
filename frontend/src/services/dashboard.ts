@@ -14,6 +14,10 @@ export type DashboardOverview = {
   pending_exceptions: number
   idle_accounts: number
   match_rate: number
+  receivable_amount: string
+  paid_receivable_amount: string
+  overdue_receivable_amount: string
+  exception_count: number
   last_sync_at: string
   top_receivables: Array<{
     contract_name: string
@@ -28,6 +32,7 @@ export type DashboardOverview = {
     total_rows: number
     success_rows: number
     failed_rows: number
+    skipped_rows: number
     message: string
   }>
   key_risks: Array<{
