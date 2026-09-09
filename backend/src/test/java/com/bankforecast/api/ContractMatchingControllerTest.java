@@ -272,6 +272,79 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void splitsOneBankTransactionAcrossMultipleReceivablePlansAndBooksByAllocation() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String customer = "拆分客户" + suffix;
+    String contractNo = "CT-SPLIT-" + suffix;
+    String transactionNo = "TX-SPLIT-" + suffix;
+    String csv = "contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount\n"
+        + contractNo + ",拆分收款合同," + customer + ",1000.00,首付款,milestone,2026-09-01,400.00\n"
+        + contractNo + ",拆分收款合同," + customer + ",1000.00,验收款,acceptance,2026-09-02,600.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/contracts")
+            .file(new MockMultipartFile("file", "contracts.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statement = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + transactionNo + ",2026-09-01,income,1000.00," + customer + "," + contractNo + " 回款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "statement.csv", "text/csv", statement.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+
+    mockMvc.perform(post("/api/v1/matching/receivables/run")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.matched").value(1));
+
+    Long transactionId = jdbcTemplate.queryForObject("select id from bank_transaction where transaction_no = ?", Long.class, transactionNo);
+    String groupId = jdbcTemplate.queryForObject("select min(match_group_id) from match_result where bank_transaction_id = ?", String.class, transactionId);
+    org.junit.jupiter.api.Assertions.assertEquals(2, jdbcTemplate.queryForObject("select count(*) from match_result_allocation where match_group_id = ?", Integer.class, groupId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals("1000.00", jdbcTemplate.queryForObject("select sum(allocated_amount) from match_result_allocation where match_group_id = ?", String.class, groupId));
+    org.junit.jupiter.api.Assertions.assertEquals("400.00", jdbcTemplate.queryForObject("select p.paid_amount from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ? and p.node_name = '首付款'", String.class, contractNo));
+    org.junit.jupiter.api.Assertions.assertEquals("600.00", jdbcTemplate.queryForObject("select p.paid_amount from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ? and p.node_name = '验收款'", String.class, contractNo));
+    org.junit.jupiter.api.Assertions.assertEquals("matched", jdbcTemplate.queryForObject("select match_status from bank_transaction where id = ?", String.class, transactionId));
+  }
+
+  @Test
+  void mergesMultipleBankTransactionsIntoOneReceivablePlanAndBooksByAllocation() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String customer = "合并客户" + suffix;
+    String contractNo = "CT-MERGE-" + suffix;
+    String csv = "contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount\n"
+        + contractNo + ",合并收款合同," + customer + ",1000.00,验收款,acceptance,2026-09-01,1000.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/contracts")
+            .file(new MockMultipartFile("file", "contracts.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statements = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + "TX-MERGE-A-" + suffix + ",2026-09-01,income,400.00," + customer + "," + contractNo + " 回款\n"
+        + "TX-MERGE-B-" + suffix + ",2026-09-02,income,600.00," + customer + "," + contractNo + " 回款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "statements.csv", "text/csv", statements.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+
+    mockMvc.perform(post("/api/v1/matching/receivables/run")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.matched").value(1));
+
+    Long planId = jdbcTemplate.queryForObject("select p.id from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ?", Long.class, contractNo);
+    String groupId = jdbcTemplate.queryForObject("select min(match_group_id) from match_result where contract_receivable_plan_id = ?", String.class, planId);
+    org.junit.jupiter.api.Assertions.assertEquals(2, jdbcTemplate.queryForObject("select count(*) from match_result_allocation where match_group_id = ?", Integer.class, groupId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals("1000.00", jdbcTemplate.queryForObject("select sum(allocated_amount) from match_result_allocation where match_group_id = ?", String.class, groupId));
+    org.junit.jupiter.api.Assertions.assertEquals("1000.00", jdbcTemplate.queryForObject("select paid_amount from contract_receivable_plan where id = ?", String.class, planId));
+    org.junit.jupiter.api.Assertions.assertEquals("paid", jdbcTemplate.queryForObject("select status from contract_receivable_plan where id = ?", String.class, planId));
+    org.junit.jupiter.api.Assertions.assertEquals(2, jdbcTemplate.queryForObject("select count(*) from bank_transaction where transaction_no like ? and match_status = 'matched'", Integer.class, "TX-MERGE-%-" + suffix).intValue());
+  }
+
+  @Test
   void matchesCustomerNameAfterNormalization() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();

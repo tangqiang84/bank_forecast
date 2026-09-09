@@ -38,6 +38,11 @@ export type ExceptionCase = {
 }
 export type MatchResult = {
   id: number
+  match_group_id: string
+  allocation_mode: string
+  allocated_amount: string
+  allocation_count: number
+  allocation_total: string
   bank_transaction_id: number
   transaction_no: string
   amount: string

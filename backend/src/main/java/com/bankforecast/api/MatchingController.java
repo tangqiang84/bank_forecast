@@ -43,6 +43,11 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.resultDetail(id));
   }
 
+  @GetMapping("/results/{id}/allocations")
+  public ApiResponse<List<Map<String, Object>>> resultAllocations(@PathVariable Long id) {
+    return ApiResponse.ok(matchingService.resultAllocations(id));
+  }
+
   @GetMapping("/exceptions")
   public ApiResponse<Map<String, Object>> exceptions(
       @RequestParam(defaultValue = "1") int page,

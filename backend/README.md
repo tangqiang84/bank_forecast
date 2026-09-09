@@ -65,6 +65,7 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 - `GET /api/v1/contracts/receivables`：查询应收计划。
 - `POST /api/v1/matching/receivables/run`：运行回款匹配并生成异常。
 - `GET /api/v1/matching/results`：查询匹配结果。
+- `GET /api/v1/matching/results/{id}/allocations`：查询匹配组分配明细。
 - `POST /api/v1/matching/results/{id}/confirm`：人工确认待确认匹配，并更新流水和应收金额。
 - `POST /api/v1/matching/results/{id}/reject`：人工拒绝待确认匹配，可提交 `reason`。
 - `GET /api/v1/matching/exceptions`：查询异常事项。
@@ -88,9 +89,9 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 
 详情接口用于财务对账追溯，所有查询按当前登录租户隔离；匹配结果保留确认人和确认时间，审计日志保留操作人、TraceID、对象和操作详情。驾驶舱的应收总额、已收金额、逾期未收金额和异常数量均从数据库实时汇总。
 
-当前匹配支持精确匹配、部分收款、未知收款和逾期未收；客户名称比较会统一处理公司后缀、空格和标点，且可通过 `MATCH_CUSTOMER_NAME_MIN_LENGTH` 和 `MATCH_CUSTOMER_NAME_ALLOW_CONTAINS` 配置匹配规则。部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。拆分匹配和合并匹配仍待新增分配明细表后实现。
+当前匹配支持精确匹配、部分收款、拆分匹配、合并匹配、未知收款和逾期未收；客户名称比较会统一处理公司后缀、空格和标点，且可通过 `MATCH_CUSTOMER_NAME_MIN_LENGTH` 和 `MATCH_CUSTOMER_NAME_ALLOW_CONTAINS` 配置匹配规则。部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。
 
-当前 MVP 尚剩两项匹配能力：一笔流水拆分匹配多个应收节点、多笔流水合并匹配一个应收节点。两者需要统一的匹配分配明细和计账模型后才能开发，现有匹配结果不得用于这两类场景的财务计账。
+匹配计账统一通过 `match_result_allocation` 分配明细完成：普通匹配是一条流水到一个应收节点，拆分匹配是一条流水分配到多个应收节点，合并匹配是多条流水分配到一个应收节点。`match_result` 记录 `match_group_id`、`allocation_mode` 和单条 `allocated_amount`；确认或拒绝任一待确认结果时按 `match_group_id` 整组处理。自动匹配成功后立即按分配明细更新流水匹配状态和应收已收金额，金额超过应收剩余金额时拒绝计账。
 
 ## 现金流预测
 
