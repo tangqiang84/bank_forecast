@@ -32,6 +32,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
   public void run(String... args) {
     Integer tenantCount = jdbcTemplate.queryForObject("select count(*) from tenant", Integer.class);
     if (tenantCount != null && tenantCount > 0) {
+      syncDevelopmentAdminPassword();
       return;
     }
 
@@ -64,5 +65,30 @@ public class DefaultDataInitializer implements CommandLineRunner {
             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tenantId, "CMB", "招商银行", "演示企业基本户", "enc(local-demo-account)", "1234", "CNY", "active",
         new BigDecimal("2865300.00"));
+  }
+
+  private void syncDevelopmentAdminPassword() {
+    if (!StringUtils.hasText(defaultAdminPassword)) return;
+    Long tenantId = jdbcTemplate.queryForObject("select id from tenant where tenant_code = ?", Long.class, "demo");
+    if (tenantId == null) return;
+    Integer userCount = jdbcTemplate.queryForObject(
+        "select count(*) from user_account where tenant_id = ? and login_name = ?",
+        Integer.class, tenantId, "finance01");
+    String passwordHash = passwordHashService.hash(defaultAdminPassword);
+    if (userCount != null && userCount > 0) {
+      jdbcTemplate.update(
+          "update user_account set password_hash = ?, status = 'active', updated_at = current_timestamp where tenant_id = ? and login_name = ?",
+          passwordHash, tenantId, "finance01");
+      return;
+    }
+    Long roleId = jdbcTemplate.queryForObject(
+        "select id from role where tenant_id = ? and role_code = ?", Long.class, tenantId, "CFO");
+    jdbcTemplate.update(
+        "insert into user_account (tenant_id, login_name, display_name, password_hash, status) values (?, ?, ?, ?, ?)",
+        tenantId, "finance01", "财务负责人", passwordHash, "active");
+    Long userId = jdbcTemplate.queryForObject(
+        "select id from user_account where tenant_id = ? and login_name = ?", Long.class, tenantId, "finance01");
+    jdbcTemplate.update(
+        "insert into user_role (tenant_id, user_id, role_id) values (?, ?, ?)", tenantId, userId, roleId);
   }
 }

@@ -24,7 +24,7 @@ export JWT_SECRET='<本地随机长字符串>'
 ## 开发账号
 
 - 登录名：`finance01`
-- 密码：启动前通过 `DEV_ADMIN_PASSWORD` 环境变量设置；未设置时不会初始化默认登录用户
+- 密码：开发环境启动前通过 `DEV_ADMIN_PASSWORD` 环境变量设置，例如 `DEV_ADMIN_PASSWORD=123123`；已有本地数据库也会在启动时同步该开发密码
 - 租户：演示企业
 
 ## 银行流水 CSV 导入
