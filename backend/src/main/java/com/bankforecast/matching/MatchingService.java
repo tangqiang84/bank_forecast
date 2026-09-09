@@ -219,14 +219,16 @@ public class MatchingService {
   }
 
   public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
-      LocalDate dateFrom, LocalDate dateTo, String status) {
+      LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly) {
     AuthPrincipal principal = requireAuth();
     int safePage = Math.max(page, 1);
     int safeSize = Math.min(Math.max(pageSize, 1), 100);
     int offset = (safePage - 1) * safeSize;
     String filter = " where e.tenant_id = ? and e.deleted_at is null "
         + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
-        + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) and (? is null or e.status = ?)";
+        + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) "
+        + "and (? is null or e.status = ?)"
+        + (activeOnly ? " and e.status in ('new', 'in_progress')" : "");
     Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
         dateFrom, dateFrom, dateTo, dateTo, status, status};
     String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "

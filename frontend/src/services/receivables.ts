@@ -87,7 +87,7 @@ export function runMatching(baseUrl: string, token: string, tenantId: number) {
 }
 
 export function loadExceptions(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=1&page_size=100`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=1&page_size=100&active_only=true`, { headers: authHeaders(token, tenantId) })
 }
 
 export function loadMatchResults(baseUrl: string, token: string, tenantId: number) {

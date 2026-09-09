@@ -56,8 +56,9 @@ public class MatchingController {
       @RequestParam(name = "project_no", required = false) String projectNo,
       @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
       @RequestParam(name = "date_to", required = false) LocalDate dateTo,
-      @RequestParam(required = false) String status) {
-    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
+      @RequestParam(required = false) String status,
+      @RequestParam(name = "active_only", defaultValue = "false") boolean activeOnly) {
+    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly));
   }
 
   @GetMapping("/exceptions/{id}")

@@ -5,10 +5,11 @@ import com.bankforecast.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,14 +28,14 @@ public class CsvBankStatementParser {
 
   public CsvParseResult<CsvBankStatementRow> parse(InputStream inputStream, int maxRows) {
     try {
-      BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+      BufferedReader reader = new BufferedReader(new StringReader(CsvImportSupport.readText(inputStream)));
       String headerLine = reader.readLine();
-      if (headerLine != null) headerLine = headerLine.replace("\uFEFF", "");
       if (headerLine == null || headerLine.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
 
       List<String> headers = parseLine(headerLine);
+      for (int i = 0; i < headers.size(); i++) headers.set(i, canonicalHeader(headers.get(i)));
       Map<String, Integer> headerIndex = headerIndex(headers);
       requireHeaders(headerIndex);
 
@@ -116,7 +117,18 @@ public class CsvBankStatementParser {
 
   private LocalDate parseDate(Map<String, String> raw, String key, int rowNo) {
     try {
-      return LocalDate.parse(required(raw, key, rowNo));
+      String value = required(raw, key, rowNo);
+      for (DateTimeFormatter formatter : new DateTimeFormatter[] {
+          DateTimeFormatter.ISO_LOCAL_DATE,
+          DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+          DateTimeFormatter.ofPattern("yyyyMMdd")}) {
+        try {
+          return LocalDate.parse(value, formatter);
+        } catch (DateTimeParseException ignored) {
+          // 尝试下一种银行导出日期格式
+        }
+      }
+      throw new DateTimeParseException("invalid date", value, 0);
     } catch (BusinessException ex) {
       throw ex;
     } catch (Exception ex) {
@@ -130,7 +142,7 @@ public class CsvBankStatementParser {
 
   private BigDecimal decimalValue(String value, String key, int rowNo) {
     try {
-      return new BigDecimal(value.trim());
+      return new BigDecimal(CsvImportSupport.normalizeAmount(value));
     } catch (NumberFormatException ex) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 " + key + " 格式错误");
     }
@@ -139,7 +151,7 @@ public class CsvBankStatementParser {
   private Map<String, Integer> headerIndex(List<String> headers) {
     Map<String, Integer> map = new HashMap<>();
     for (int i = 0; i < headers.size(); i++) {
-      map.put(headers.get(i).trim(), i);
+      map.put(canonicalHeader(headers.get(i)), i);
     }
     return map;
   }
@@ -162,11 +174,16 @@ public class CsvBankStatementParser {
   }
 
   private String normalizeDirection(String direction) {
+    direction = direction.trim().toLowerCase();
     if ("income".equals(direction) || "收入".equals(direction)) {
       return "income";
     }
-    if ("expense".equals(direction) || "支出".equals(direction)) {
+    if ("expense".equals(direction) || "支出".equals(direction) || "out".equals(direction)
+        || "debit".equals(direction) || "借方".equals(direction)) {
       return "expense";
+    }
+    if ("in".equals(direction) || "credit".equals(direction) || "贷方".equals(direction)) {
+      return "income";
     }
     if ("transfer".equals(direction) || "内部转账".equals(direction)) {
       return "transfer";
@@ -182,6 +199,28 @@ public class CsvBankStatementParser {
 
   private String value(List<String> values, int index) {
     return index < values.size() ? values.get(index).trim() : "";
+  }
+
+  private String canonicalHeader(String header) {
+    String normalized = CsvImportSupport.normalizeHeader(header);
+    Map<String, String> aliases = new HashMap<>();
+    aliases.put("transactionno", "transaction_no");
+    aliases.put("transactiondate", "transaction_date");
+    aliases.put("counterpartyname", "counterparty_name");
+    aliases.put("balanceafter", "balance_after");
+    aliases.put("交易流水号", "transaction_no");
+    aliases.put("流水号", "transaction_no");
+    aliases.put("交易日期", "transaction_date");
+    aliases.put("日期", "transaction_date");
+    aliases.put("收支方向", "direction");
+    aliases.put("借贷标志", "direction");
+    aliases.put("金额", "amount");
+    aliases.put("交易金额", "amount");
+    aliases.put("余额", "balance_after");
+    aliases.put("对方户名", "counterparty_name");
+    aliases.put("摘要", "summary");
+    aliases.put("备注", "summary");
+    return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }
 
   private List<String> parseLine(String line) {

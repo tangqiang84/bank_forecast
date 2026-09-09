@@ -4,13 +4,15 @@ import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import com.bankforecast.importjob.CsvParseResult;
 import com.bankforecast.importjob.CsvRowError;
+import com.bankforecast.importjob.CsvImportSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -28,15 +30,14 @@ public class CsvContractParser {
 
   public CsvParseResult<CsvContractRow> parse(InputStream inputStream, int maxRows) {
     try {
-      BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+      BufferedReader reader = new BufferedReader(new StringReader(CsvImportSupport.readText(inputStream)));
       String headerLine = reader.readLine();
-      if (headerLine != null) headerLine = headerLine.replace("\uFEFF", "");
       if (headerLine == null || headerLine.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
       List<String> headers = parseLine(headerLine);
       Map<String, Integer> indexes = new HashMap<>();
-      for (int i = 0; i < headers.size(); i++) indexes.put(headers.get(i).trim(), i);
+      for (int i = 0; i < headers.size(); i++) indexes.put(canonicalHeader(headers.get(i)), i);
       String[] required = {"contract_no", "contract_name", "customer_name", "contract_amount",
           "node_name", "node_type", "due_date", "plan_amount"};
       for (String key : required) {
@@ -55,7 +56,7 @@ public class CsvContractParser {
         dataRows++;
         Map<String, String> raw = new LinkedHashMap<>();
         List<String> values = parseLine(line);
-        for (int i = 0; i < headers.size(); i++) raw.put(headers.get(i).trim(), value(values, i));
+        for (int i = 0; i < headers.size(); i++) raw.put(canonicalHeader(headers.get(i)), value(values, i));
         try {
           rows.add(new CsvContractRow(rowNo,
               required(raw, "contract_no", rowNo),
@@ -93,7 +94,7 @@ public class CsvContractParser {
 
   private BigDecimal positive(Map<String, String> raw, String key, int rowNo) {
     try {
-      BigDecimal amount = new BigDecimal(required(raw, key, rowNo));
+      BigDecimal amount = new BigDecimal(CsvImportSupport.normalizeAmount(required(raw, key, rowNo)));
       if (amount.compareTo(BigDecimal.ZERO) <= 0) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行金额必须大于 0");
       return amount;
     } catch (NumberFormatException ex) {
@@ -102,8 +103,17 @@ public class CsvContractParser {
   }
 
   private LocalDate parseDate(Map<String, String> raw, String key, int rowNo) {
-    try { return LocalDate.parse(required(raw, key, rowNo)); }
-    catch (Exception ex) { throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行日期格式错误"); }
+    String value = required(raw, key, rowNo);
+    for (DateTimeFormatter formatter : new DateTimeFormatter[] {
+        DateTimeFormatter.ISO_LOCAL_DATE,
+        DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        DateTimeFormatter.ofPattern("yyyyMMdd")}) {
+      try { return LocalDate.parse(value, formatter); }
+      catch (DateTimeParseException ignored) {
+        // 尝试下一种合同导出日期格式
+      }
+    }
+    throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行日期格式错误");
   }
 
   private String required(Map<String, String> raw, String key, int rowNo) {
@@ -126,5 +136,35 @@ public class CsvContractParser {
     }
     values.add(current.toString());
     return values;
+  }
+
+  private String canonicalHeader(String header) {
+    String normalized = CsvImportSupport.normalizeHeader(header);
+    Map<String, String> aliases = new HashMap<>();
+    aliases.put("contractno", "contract_no");
+    aliases.put("contractname", "contract_name");
+    aliases.put("customername", "customer_name");
+    aliases.put("contractamount", "contract_amount");
+    aliases.put("nodename", "node_name");
+    aliases.put("nodetype", "node_type");
+    aliases.put("duedate", "due_date");
+    aliases.put("planamount", "plan_amount");
+    aliases.put("projectno", "project_no");
+    aliases.put("projectname", "project_name");
+    aliases.put("ownername", "owner_name");
+    aliases.put("合同编号", "contract_no");
+    aliases.put("合同名称", "contract_name");
+    aliases.put("客户名称", "customer_name");
+    aliases.put("合同金额", "contract_amount");
+    aliases.put("节点名称", "node_name");
+    aliases.put("节点类型", "node_type");
+    aliases.put("应收日期", "due_date");
+    aliases.put("到期日期", "due_date");
+    aliases.put("计划金额", "plan_amount");
+    aliases.put("应收金额", "plan_amount");
+    aliases.put("项目编号", "project_no");
+    aliases.put("项目名称", "project_name");
+    aliases.put("负责人", "owner_name");
+    return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }
 }
