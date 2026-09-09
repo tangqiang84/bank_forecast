@@ -16,3 +16,8 @@ bank-forecast:
     access-token-ttl-minutes: 120
   import:
     max-rows: 10000
+    max-file-size-bytes: 10485760
+    max-date-range-days: 3650
+    max-amount: 1000000000000.00
+    customer-name-min-length: 2
+    customer-name-allow-contains: true

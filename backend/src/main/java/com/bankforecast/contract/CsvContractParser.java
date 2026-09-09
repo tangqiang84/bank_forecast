@@ -2,6 +2,8 @@ package com.bankforecast.contract;
 
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
+import com.bankforecast.importjob.CsvParseResult;
+import com.bankforecast.importjob.CsvRowError;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -24,10 +26,11 @@ public class CsvContractParser {
     this.objectMapper = objectMapper;
   }
 
-  public List<CsvContractRow> parse(InputStream inputStream, int maxRows) {
+  public CsvParseResult<CsvContractRow> parse(InputStream inputStream, int maxRows) {
     try {
       BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
       String headerLine = reader.readLine();
+      if (headerLine != null) headerLine = headerLine.replace("\uFEFF", "");
       if (headerLine == null || headerLine.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
@@ -41,33 +44,51 @@ public class CsvContractParser {
       }
 
       List<CsvContractRow> rows = new ArrayList<>();
+      List<CsvRowError> errors = new ArrayList<>();
       String line;
       int rowNo = 1;
+      int dataRows = 0;
       while ((line = reader.readLine()) != null) {
         rowNo++;
         if (line.trim().isEmpty()) continue;
-        if (rows.size() >= maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
+        if (dataRows >= maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
+        dataRows++;
         Map<String, String> raw = new LinkedHashMap<>();
         List<String> values = parseLine(line);
         for (int i = 0; i < headers.size(); i++) raw.put(headers.get(i).trim(), value(values, i));
-        rows.add(new CsvContractRow(rowNo,
-            required(raw, "contract_no", rowNo),
-            required(raw, "contract_name", rowNo),
-            required(raw, "customer_name", rowNo),
-            raw.get("project_no"), raw.get("project_name"),
-            positive(raw, "contract_amount", rowNo),
-            required(raw, "node_name", rowNo),
-            required(raw, "node_type", rowNo),
-            parseDate(raw, "due_date", rowNo),
-            positive(raw, "plan_amount", rowNo), raw.get("owner_name"),
-            objectMapper.writeValueAsString(raw)));
+        try {
+          rows.add(new CsvContractRow(rowNo,
+              required(raw, "contract_no", rowNo),
+              required(raw, "contract_name", rowNo),
+              required(raw, "customer_name", rowNo),
+              raw.get("project_no"), raw.get("project_name"),
+              positive(raw, "contract_amount", rowNo),
+              required(raw, "node_name", rowNo),
+              required(raw, "node_type", rowNo),
+              parseDate(raw, "due_date", rowNo),
+              positive(raw, "plan_amount", rowNo), raw.get("owner_name"),
+              objectMapper.writeValueAsString(raw)));
+        } catch (BusinessException ex) {
+          errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw)));
+        }
       }
-      return rows;
+      return new CsvParseResult<>(rows, errors, rows.size() + errors.size());
     } catch (BusinessException ex) {
       throw ex;
     } catch (Exception ex) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "合同文件解析失败");
     }
+  }
+
+  private String fieldFromMessage(String message) {
+    if (message == null) return "row";
+    for (String field : new String[] {"contract_no", "contract_name", "customer_name", "contract_amount",
+        "node_name", "node_type", "due_date", "plan_amount"}) {
+      if (message.contains(field)) return field;
+    }
+    if (message.contains("日期")) return "due_date";
+    if (message.contains("金额")) return "plan_amount";
+    return "row";
   }
 
   private BigDecimal positive(Map<String, String> raw, String key, int rowNo) {

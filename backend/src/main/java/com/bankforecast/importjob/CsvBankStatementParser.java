@@ -25,10 +25,11 @@ public class CsvBankStatementParser {
     this.objectMapper = objectMapper;
   }
 
-  public List<CsvBankStatementRow> parse(InputStream inputStream, int maxRows) {
+  public CsvParseResult<CsvBankStatementRow> parse(InputStream inputStream, int maxRows) {
     try {
       BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
       String headerLine = reader.readLine();
+      if (headerLine != null) headerLine = headerLine.replace("\uFEFF", "");
       if (headerLine == null || headerLine.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
@@ -38,24 +39,49 @@ public class CsvBankStatementParser {
       requireHeaders(headerIndex);
 
       List<CsvBankStatementRow> rows = new ArrayList<>();
+      List<CsvRowError> errors = new ArrayList<>();
       String line;
       int rowNo = 1;
+      int dataRows = 0;
       while ((line = reader.readLine()) != null) {
         rowNo++;
         if (line.trim().isEmpty()) {
           continue;
         }
-        if (rows.size() >= maxRows) {
+        if (dataRows >= maxRows) {
           throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
         }
-        rows.add(toRow(rowNo, headers, headerIndex, parseLine(line)));
+        dataRows++;
+        List<String> values = parseLine(line);
+        String rawJson = rawJson(headers, values);
+        try {
+          rows.add(toRow(rowNo, headers, headerIndex, values));
+        } catch (BusinessException ex) {
+          errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), rawJson));
+        }
       }
-      return rows;
+      return new CsvParseResult<>(rows, errors, rows.size() + errors.size());
     } catch (BusinessException ex) {
       throw ex;
     } catch (Exception ex) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "文件解析失败");
     }
+  }
+
+  private String rawJson(List<String> headers, List<String> values) throws Exception {
+    Map<String, String> raw = new LinkedHashMap<>();
+    for (int i = 0; i < headers.size(); i++) raw.put(headers.get(i), value(values, i));
+    return objectMapper.writeValueAsString(raw);
+  }
+
+  private String fieldFromMessage(String message) {
+    if (message == null) return "row";
+    for (String field : new String[] {"transaction_no", "transaction_date", "direction", "amount", "balance_after"}) {
+      if (message.contains(field)) return field;
+    }
+    if (message.contains("日期")) return "transaction_date";
+    if (message.contains("金额")) return "amount";
+    return "row";
   }
 
   private CsvBankStatementRow toRow(int rowNo, List<String> headers, Map<String, Integer> headerIndex,
@@ -66,16 +92,16 @@ public class CsvBankStatementParser {
     }
 
     String transactionNo = required(raw, "transaction_no", rowNo);
-    LocalDate transactionDate = LocalDate.parse(required(raw, "transaction_date", rowNo));
+    LocalDate transactionDate = parseDate(raw, "transaction_date", rowNo);
     String direction = normalizeDirection(required(raw, "direction", rowNo));
-    BigDecimal amount = new BigDecimal(required(raw, "amount", rowNo));
+    BigDecimal amount = decimal(raw, "amount", rowNo);
     if (amount.compareTo(BigDecimal.ZERO) <= 0) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行金额必须大于 0");
     }
 
     String balanceText = raw.get("balance_after");
     BigDecimal balanceAfter = balanceText == null || balanceText.trim().isEmpty()
-        ? null : new BigDecimal(balanceText.trim());
+        ? null : decimalValue(balanceText, "balance_after", rowNo);
     return new CsvBankStatementRow(
         rowNo,
         transactionNo,
@@ -86,6 +112,28 @@ public class CsvBankStatementParser {
         raw.get("counterparty_name"),
         raw.get("summary"),
         objectMapper.writeValueAsString(raw));
+  }
+
+  private LocalDate parseDate(Map<String, String> raw, String key, int rowNo) {
+    try {
+      return LocalDate.parse(required(raw, key, rowNo));
+    } catch (BusinessException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行日期格式错误");
+    }
+  }
+
+  private BigDecimal decimal(Map<String, String> raw, String key, int rowNo) {
+    return decimalValue(required(raw, key, rowNo), key, rowNo);
+  }
+
+  private BigDecimal decimalValue(String value, String key, int rowNo) {
+    try {
+      return new BigDecimal(value.trim());
+    } catch (NumberFormatException ex) {
+      throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 " + key + " 格式错误");
+    }
   }
 
   private Map<String, Integer> headerIndex(List<String> headers) {

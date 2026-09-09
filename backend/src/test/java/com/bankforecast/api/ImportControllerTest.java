@@ -67,6 +67,50 @@ class ImportControllerTest {
         .andExpect(jsonPath("$.code").value(41001));
   }
 
+  @Test
+  void importsValidRowsAndReportsInvalidRowsWithRealLineNumbers() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
+    Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
+    String validTransactionNo = "TXN-VALID-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "transaction_no,transaction_date,direction,amount,balance_after,counterparty_name,summary\n"
+        + "TXN-BAD-" + UUID.randomUUID().toString().replace("-", "") + ",2026-09-09,income,not-number,,,\n"
+        + validTransactionNo + ",2026-09-09,income,12.00,,,测试\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "mixed.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("partial_success"))
+        .andExpect(jsonPath("$.data.success_rows").value(1)).andExpect(jsonPath("$.data.failed_rows").value(1))
+        .andExpect(jsonPath("$.data.error_details[0].row_no").value(2)).andReturn();
+    String body = result.getResponse().getContentAsString();
+    String jobId = body.substring(body.indexOf("job_id") + 8, body.indexOf(',', body.indexOf("job_id")));
+    mockMvc.perform(get("/api/v1/imports/" + jobId + "/errors")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].field_name").value("amount"));
+  }
+
+  @Test
+  void repeatedBankStatementImportIsSkipped() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
+    Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
+    String transactionNo = "TXN-DUP-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "transaction_no,transaction_date,direction,amount\n" + transactionNo + ",2026-09-09,income,10.00\n";
+    MockMultipartFile file = new MockMultipartFile("file", "duplicate.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+    String headers = "Authorization";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements").file(file)
+            .param("bank_account_id", String.valueOf(accountId)).header(headers, "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements").file(file)
+            .param("bank_account_id", String.valueOf(accountId)).header(headers, "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.success_rows").value(0)).andExpect(jsonPath("$.data.skipped_rows").value(1));
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from bank_transaction where tenant_id = ? and transaction_no = ?", Integer.class, tenantId, transactionNo).intValue());
+  }
+
   private String loginToken() throws Exception {
     MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
             .contentType(MediaType.APPLICATION_JSON)

@@ -20,6 +20,7 @@ import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +28,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class MatchingService {
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
+  private final int customerNameMinLength;
+  private final boolean customerNameAllowContains;
 
-  public MatchingService(JdbcTemplate jdbcTemplate, AuditService auditService) {
+  public MatchingService(JdbcTemplate jdbcTemplate, AuditService auditService,
+      @Value("${bank-forecast.import.customer-name-min-length}") int customerNameMinLength,
+      @Value("${bank-forecast.import.customer-name-allow-contains}") boolean customerNameAllowContains) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
+    this.customerNameMinLength = customerNameMinLength;
+    this.customerNameAllowContains = customerNameAllowContains;
   }
 
   @Transactional
@@ -278,7 +285,7 @@ public class MatchingService {
 
   private MatchCandidate findCandidate(Map<String, Object> transaction, List<Map<String, Object>> plans) {
     String summary = text(transaction.get("summary")).toLowerCase();
-    String counterparty = text(transaction.get("counterparty_name")).toLowerCase();
+    String counterparty = CustomerNameNormalizer.normalize(text(transaction.get("counterparty_name")));
     BigDecimal amount = decimal(transaction.get("amount"));
     LocalDate date = sqlDate(transaction.get("transaction_date"));
     MatchCandidate partial = null;
@@ -287,19 +294,25 @@ public class MatchingService {
       long days = Math.abs(ChronoUnit.DAYS.between(date, dueDate));
       if (days > 30) continue;
       String contractNo = text(plan.get("contract_no")).toLowerCase();
-      String customer = text(plan.get("customer_name")).toLowerCase();
-      boolean customerMatch = !counterparty.isEmpty() && (counterparty.contains(customer) || customer.contains(counterparty));
+      String customer = CustomerNameNormalizer.normalize(text(plan.get("customer_name")));
+      boolean customerMatch = customerNameMatches(counterparty, customer);
       boolean contractMatch = !contractNo.isEmpty() && summary.contains(contractNo);
       BigDecimal planAmount = decimal(plan.get("plan_amount"));
       BigDecimal paidAmount = decimal(plan.get("paid_amount"));
       if ((contractMatch || customerMatch) && amount.compareTo(planAmount) == 0 && days <= 7) {
-        return candidate(plan, amount, "exact", "high", contractMatch ? "摘要包含合同编号且金额、日期一致" : "客户名称、金额和日期窗口一致", false);
+        return candidate(plan, amount, "exact", "high", contractMatch ? "摘要包含合同编号且金额、日期一致" : "客户名称归一化、金额和日期窗口一致", false);
       }
       if (partial == null && customerMatch && amount.compareTo(planAmount) < 0 && days <= 14) {
-        partial = candidate(plan, amount, "partial", "medium", "客户名称一致，到账金额小于计划金额", true);
+        partial = candidate(plan, amount, "partial", "medium", "客户名称归一化匹配，到账金额小于计划金额", true);
       }
     }
     return partial;
+  }
+
+  private boolean customerNameMatches(String counterparty, String customer) {
+    if (counterparty.length() < customerNameMinLength || customer.length() < customerNameMinLength) return false;
+    return counterparty.equals(customer) || (customerNameAllowContains
+        && (counterparty.contains(customer) || customer.contains(counterparty)));
   }
 
   private MatchCandidate candidate(Map<String, Object> plan, BigDecimal amount, String type, String confidence,

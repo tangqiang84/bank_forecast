@@ -216,6 +216,31 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void matchesCustomerNameAfterNormalization() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String contractNo = "CT-NORMAL-" + suffix;
+    String csv = "contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount\n"
+        + contractNo + ",归一化合同,归一化客户有限公司,1000.00,回款,milestone,2026-09-09,1000.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/contracts")
+            .file(new MockMultipartFile("file", "contracts.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statement = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + "TX-NORMAL-" + suffix + ",2026-09-09,income,1000.00,归一化客户,回款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "statement.csv", "text/csv", statement.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/receivables/run")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.matched").value(1));
+  }
+
+  @Test
   void keepsPartialExceptionOpenUntilAllSuggestedResultsAreProcessed() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();
