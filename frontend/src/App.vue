@@ -49,10 +49,10 @@ const overviewCards = computed(() => {
   return [
     { label: '全账户余额', value: formatCurrency(overview.value.total_balance), hint: '来自银行账户当前余额' },
     { label: '昨日净流入', value: formatCurrency(overview.value.yesterday_net_inflow), hint: '收入与支出流水净额' },
-    { label: '应收总额', value: formatCurrency(overview.value.receivable_amount), hint: '合同应收计划合计' },
-    { label: '已收金额', value: formatCurrency(overview.value.paid_receivable_amount), hint: '合同应收累计到账' },
-    { label: '逾期未收', value: formatCurrency(overview.value.overdue_receivable_amount), hint: '已到期未收余额' },
-    { label: '异常事项', value: String(overview.value.exception_count), hint: '全部未删除异常记录' },
+    { label: '应收总额', value: formatCurrency(overview.value.receivable_amount ?? '0'), hint: '合同应收计划合计' },
+    { label: '已收金额', value: formatCurrency(overview.value.paid_receivable_amount ?? '0'), hint: '合同应收累计到账' },
+    { label: '逾期未收', value: formatCurrency(overview.value.overdue_receivable_amount ?? '0'), hint: '已到期未收余额' },
+    { label: '异常事项', value: String(overview.value.exception_count ?? 0), hint: '全部未删除异常记录' },
   ]
 })
 const directionLabel: Record<string, string> = { income: '收入', expense: '支出', transfer: '内部转账', refund: '退款', reversal: '冲正' }
