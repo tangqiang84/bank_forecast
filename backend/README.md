@@ -46,7 +46,9 @@ TXN-001,2026-09-09,income,128400.00,2865300.00,ACME客户,项目回款
 
 接口：`POST /api/v1/imports/contracts`，使用 multipart 字段 `file`。
 
-必填字段：
+支持两种 CSV 模式。
+
+合同应收计划模式必填字段：
 
 ```csv
 contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount
@@ -54,6 +56,15 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 ```
 
 可选字段：`project_no`、`project_name`、`owner_name`。
+
+合同主数据模式支持项目中的合同样本格式，必填字段为：
+
+```csv
+contract_no,customer_name,project_no,project_name,contract_amount,sign_date,status
+XC-2026-001,示例客户,PRJ-001,示例项目,1200000.00,2026-05-10,执行中
+```
+
+合同主数据模式不要求 `contract_name`、`node_name`、`node_type`、`due_date`、`plan_amount`；系统使用 `project_name` 作为合同名称，只创建合同和项目，不创建应收节点。应收节点可通过合同应收计划模式另行导入。
 
 合同金额和应收计划金额必须为正数、最多 2 位小数且不超过金额上限；同一合同的应收计划合计不能超过合同金额。重复合同应收节点按跳过处理。
 
