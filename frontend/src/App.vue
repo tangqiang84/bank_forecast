@@ -6,6 +6,7 @@ import { importStatements, loadAccounts, loadTransactionDetail, loadTransactions
 import { assignException, closeException, commentException, confirmMatchResult, importContracts, loadContractDetail, loadContracts, loadExceptions, loadMatchResultDetail, loadMatchResults, loadReceivables, rejectMatchResult, resolveException, runMatching, type Contract, type ExceptionCase, type MatchResult, type Receivable } from './services/receivables'
 import { fetchJson } from './services/http'
 import { authHeaders } from './services/auth'
+import { loadLatestForecast, retryForecast, runForecast, type ForecastDetail } from './services/forecast'
 import { formatCurrency } from './utils/number'
 
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL ?? 'http://localhost:8080'
@@ -15,7 +16,7 @@ const loginName = ref('finance01')
 const password = ref('')
 const loginLoading = ref(false)
 const loginError = ref('')
-const activeView = ref<'dashboard' | 'transactions' | 'receivables' | 'matching' | 'exceptions'>('dashboard')
+const activeView = ref<'dashboard' | 'transactions' | 'receivables' | 'matching' | 'exceptions' | 'forecast'>('dashboard')
 const loading = ref(false)
 const overview = ref<DashboardOverview | null>(null)
 const accounts = ref<BankAccount[]>([])
@@ -41,6 +42,11 @@ const exceptionActionMessage = ref('')
 const detailLoading = ref(false)
 const detailTitle = ref('')
 const detailData = ref<Record<string, unknown> | null>(null)
+const forecast = ref<ForecastDetail>({ job: null, results: [] })
+const forecastHorizon = ref(7)
+const forecastWindow = ref(3)
+const forecastLoading = ref(false)
+const forecastMessage = ref('')
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -65,6 +71,7 @@ async function submitLogin() {
     token.value = getToken()
     password.value = ''
     await loadWorkspace()
+    await loadForecast()
   } catch (error) {
     loginError.value = error instanceof Error ? error.message : '登录失败，请稍后重试'
   } finally {
@@ -108,6 +115,44 @@ async function loadWorkspace() {
     pageError.value = error instanceof Error ? error.message : '工作台加载失败，请刷新重试'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadForecast() {
+  if (!user.value || !token.value) return
+  try {
+    forecast.value = (await loadLatestForecast(backendBase, token.value, user.value.tenant_id)).data
+  } catch (error) {
+    forecastMessage.value = error instanceof Error ? error.message : '预测结果加载失败'
+  }
+}
+
+async function submitForecast() {
+  if (!user.value || !token.value) return
+  forecastLoading.value = true
+  forecastMessage.value = ''
+  try {
+    forecast.value = (await runForecast(backendBase, token.value, user.value.tenant_id, forecastHorizon.value, forecastWindow.value)).data
+    forecastMessage.value = '预测任务已完成。'
+  } catch (error) {
+    forecastMessage.value = error instanceof Error ? error.message : '预测任务失败，请稍后重试'
+    await loadForecast()
+  } finally {
+    forecastLoading.value = false
+  }
+}
+
+async function retryForecastJob() {
+  if (!user.value || !token.value || !forecast.value.job) return
+  forecastLoading.value = true
+  forecastMessage.value = ''
+  try {
+    forecast.value = (await retryForecast(backendBase, token.value, user.value.tenant_id, forecast.value.job.id)).data
+    forecastMessage.value = '预测任务重试完成。'
+  } catch (error) {
+    forecastMessage.value = error instanceof Error ? error.message : '预测重试失败，请稍后重试'
+  } finally {
+    forecastLoading.value = false
   }
 }
 
@@ -258,6 +303,7 @@ onMounted(async () => {
   try {
     user.value = await loadCurrentUser(backendBase, token.value)
     await loadWorkspace()
+    await loadForecast()
   } catch {
     signOut()
   }
@@ -290,6 +336,7 @@ onMounted(async () => {
       <button :class="{ active: activeView === 'receivables' }" type="button" @click="activeView = 'receivables'">合同应收</button>
       <button :class="{ active: activeView === 'matching' }" type="button" @click="activeView = 'matching'">匹配结果</button>
       <button :class="{ active: activeView === 'exceptions' }" type="button" @click="activeView = 'exceptions'">异常事项</button>
+      <button :class="{ active: activeView === 'forecast' }" type="button" @click="activeView = 'forecast'; loadForecast()">现金预测</button>
       <button class="refresh-button" :disabled="loading" type="button" @click="loadWorkspace">{{ loading ? '刷新中...' : '刷新数据' }}</button>
     </nav>
     <p v-if="pageError" class="error-banner">{{ pageError }}</p>
@@ -317,6 +364,10 @@ onMounted(async () => {
         <p v-else class="empty-state">暂无匹配结果，请先在异常事项页面运行回款匹配。</p>
       </section>
       <section v-else-if="activeView === 'exceptions'" class="panel"><div class="section-heading"><h2>异常事项</h2><button class="primary-button" :disabled="matchingLoading" type="button" @click="submitMatching">{{ matchingLoading ? '匹配中...' : '运行回款匹配' }}</button></div><p v-if="matchingMessage" class="feedback-text">{{ matchingMessage }}</p><p v-if="exceptionActionMessage" class="feedback-text">{{ exceptionActionMessage }}</p><div v-if="exceptions.length" class="list-stack"><div v-for="item in exceptions" :key="item.id" class="exception-row"><div><strong>{{ item.title }}</strong><p class="meta">{{ item.description }}</p><p class="meta">处理人：{{ item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派' }}</p></div><div class="exception-actions"><span class="pill">{{ item.exception_type }} · {{ item.status }}</span><div class="action-group"><button class="text-button" type="button" @click="showDetail(`异常 ${item.exception_no}`, () => fetchExceptionDetail(item.id))">详情</button><button v-if="item.status !== 'closed' && !item.owner_user_id" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'assign')">分派给我</button><button v-if="item.status !== 'closed'" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'comment')">备注</button><button v-if="item.status === 'new' || item.status === 'in_progress'" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'resolve')">处理完成</button><button v-if="item.status === 'resolved'" class="small-danger-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'close')">关闭</button></div></div></div></div><p v-else class="empty-state">暂无异常事项。点击“运行回款匹配”生成结果。</p></section>
+      <section v-else-if="activeView === 'forecast'" class="grid forecast-layout">
+        <article class="panel import-panel"><h2>现金流预测</h2><label>预测天数<input v-model.number="forecastHorizon" min="1" max="90" type="number" /></label><label>历史窗口<input v-model.number="forecastWindow" min="1" max="30" type="number" /></label><button class="primary-button" :disabled="forecastLoading" type="button" @click="submitForecast">{{ forecastLoading ? '预测中...' : '生成预测' }}</button><button v-if="forecast.job?.status === 'failed'" class="ghost-button" :disabled="forecastLoading" type="button" @click="retryForecastJob">重试失败任务</button><p v-if="forecastMessage" class="feedback-text">{{ forecastMessage }}</p></article>
+        <article class="panel table-panel"><div class="section-heading"><div><h2>预测结果</h2><span class="meta">{{ forecast.job ? `任务 #${forecast.job.id} · ${forecast.job.status}` : '暂无已完成预测' }}</span></div><span v-if="forecast.job?.model_name" class="pill">{{ forecast.job.model_name }}</span></div><p v-if="forecast.job?.error_message" class="error-banner">{{ forecast.job.error_message }}</p><div v-if="forecast.results.length" class="table-scroll"><table><thead><tr><th>日期</th><th>预测净现金流</th><th>预计应收</th><th>预计余额</th><th>实际金额</th><th>偏差</th><th>风险</th></tr></thead><tbody><tr v-for="item in forecast.results" :key="item.id"><td>{{ item.forecast_date }}</td><td :class="Number(item.forecast_amount) < 0 ? 'expense-amount' : 'income-amount'">{{ formatCurrency(item.forecast_amount) }}</td><td>{{ formatCurrency(item.expected_receivable) }}</td><td>{{ formatCurrency(item.projected_balance) }}</td><td>{{ item.actual_amount ? formatCurrency(item.actual_amount) : '-' }}</td><td>{{ item.deviation_amount ? formatCurrency(item.deviation_amount) : '-' }}</td><td><span class="pill" :class="`risk-${item.risk_level}`">{{ item.risk_level }} · {{ item.risk_message }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无预测结果，请先生成预测。</p></article>
+      </section>
       <section v-else class="grid transaction-layout">
         <article class="panel import-panel"><h2>导入银行流水</h2><label>银行账户<select v-model="selectedAccountId"><option :value="null" disabled>请选择账户</option><option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}</option></select></label><label>CSV 文件<input accept=".csv,text/csv" type="file" @change="onFileChange" /></label><p v-if="selectedFile" class="meta">已选择：{{ selectedFile.name }}</p><p v-if="selectedAccount" class="meta">当前账户余额：{{ formatCurrency(selectedAccount.current_balance) }}</p><p v-if="importMessage" class="feedback-text">{{ importMessage }}</p><button class="primary-button" :disabled="importLoading" type="button" @click="submitImport">{{ importLoading ? '导入中...' : '开始导入' }}</button><p class="meta import-hint">必填列：transaction_no、transaction_date、direction、amount。</p></article>
         <article class="panel table-panel"><div class="section-heading"><h2>流水明细</h2><span class="meta">共 {{ totalTransactions }} 条</span></div><div v-if="transactions.length" class="table-scroll"><table><thead><tr><th>交易日期</th><th>方向</th><th>金额</th><th>对方户名</th><th>摘要</th><th>匹配状态</th><th>追溯</th></tr></thead><tbody><tr v-for="transaction in transactions" :key="transaction.id"><td>{{ transaction.transaction_date }}</td><td>{{ directionLabel[transaction.direction] ?? transaction.direction }}</td><td :class="transaction.direction === 'expense' ? 'expense-amount' : 'income-amount'">{{ formatCurrency(transaction.amount) }}</td><td>{{ transaction.counterparty_name || '-' }}</td><td>{{ transaction.summary || '-' }}</td><td><span class="pill">{{ transaction.match_status }}</span></td><td><button class="text-button" type="button" @click="showDetail(`流水 ${transaction.transaction_no}`, () => loadTransactionDetail(backendBase, token, user!.tenant_id, transaction.id))">详情</button></td></tr></tbody></table></div><p v-else class="empty-state">暂无流水，请先导入 CSV 文件。</p></article>

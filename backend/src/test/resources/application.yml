@@ -9,6 +9,10 @@ spring:
       enabled: false
 
 bank-forecast:
+  analytics:
+    base-url: http://localhost:8001
+    connect-timeout-ms: 200
+    read-timeout-ms: 500
   bootstrap:
     default-admin-password: test-password-123
   security:

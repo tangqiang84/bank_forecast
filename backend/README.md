@@ -12,6 +12,9 @@ export JWT_SECRET='<本地随机长字符串>'
 
 默认地址：`http://localhost:8080`
 
+预测服务地址默认读取 `ANALYTICS_BASE_URL`（默认 `http://localhost:8001`）。连接和读取超时
+分别由 `ANALYTICS_CONNECT_TIMEOUT_MS`（默认 2000）和 `ANALYTICS_READ_TIMEOUT_MS`（默认 10000）控制。
+
 ## 本地数据库
 
 - 默认使用 H2 文件库：`./data/bank_connector`
@@ -86,3 +89,16 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 详情接口用于财务对账追溯，所有查询按当前登录租户隔离；匹配结果保留确认人和确认时间，审计日志保留操作人、TraceID、对象和操作详情。驾驶舱的应收总额、已收金额、逾期未收金额和异常数量均从数据库实时汇总。
 
 当前匹配支持精确匹配、部分收款、未知收款和逾期未收；客户名称比较会统一处理公司后缀、空格和标点，且可通过 `MATCH_CUSTOMER_NAME_MIN_LENGTH` 和 `MATCH_CUSTOMER_NAME_ALLOW_CONTAINS` 配置匹配规则。部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。拆分匹配和合并匹配仍待新增分配明细表后实现。
+
+## 现金流预测
+
+预测任务接口：
+
+- `POST /api/v1/forecast/cashflow/jobs?horizon=7&window_size=3`：按当前租户流水和应收计划创建并执行预测任务；`horizon` 范围为 1-90，`window_size` 范围为 1-30。
+- `GET /api/v1/forecast/cashflow/latest`：查询当前租户最近一次成功预测及预测点。
+- `GET /api/v1/forecast/cashflow/jobs/{id}`：查询预测任务及结果详情。
+- `POST /api/v1/forecast/cashflow/jobs/{id}/retry`：重试失败任务，单个任务最多执行 3 次。
+
+预测任务和预测点分别落库到 `forecast_job`、`forecast_result`。预测失败会记录失败状态和错误信息，接口返回结构化错误，不会伪装为成功。所有查询按当前登录租户隔离。
+
+当前 analytics 使用 `moving-average-with-trend` MVP 算法。`actual_amount` 和 `deviation_amount` 字段已预留，但实际金额回填和真实偏差统计属于后续增强任务。

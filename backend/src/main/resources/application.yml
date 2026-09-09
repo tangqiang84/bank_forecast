@@ -24,6 +24,10 @@ management:
         include: health,info
 
 bank-forecast:
+  analytics:
+    base-url: ${ANALYTICS_BASE_URL:http://localhost:8001}
+    connect-timeout-ms: ${ANALYTICS_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${ANALYTICS_READ_TIMEOUT_MS:10000}
   bootstrap:
     default-admin-password: ${DEV_ADMIN_PASSWORD:}
   cors:

@@ -162,6 +162,11 @@ label {
   align-items: start;
 }
 
+.forecast-layout {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
 .import-panel {
   display: grid;
   gap: 14px;
@@ -251,6 +256,21 @@ th {
 
 .small-danger-button {
   background: #b42318;
+}
+
+.risk-high {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.risk-medium {
+  background: #fff8e6;
+  color: #9a6700;
+}
+
+.risk-low {
+  background: #ecfdf3;
+  color: #087443;
 }
 
 .small-primary-button:disabled,
