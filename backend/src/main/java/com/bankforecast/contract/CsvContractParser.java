@@ -39,12 +39,12 @@ public class CsvContractParser {
       List<String> headers = parseLine(headerLine, delimiter);
       Map<String, Integer> indexes = new HashMap<>();
       for (int i = 0; i < headers.size(); i++) indexes.put(canonicalHeader(headers.get(i)), i);
-      String[] required = {"contract_no", "customer_name", "contract_amount"};
+      String[] required = {"contract_no", "customer_name"};
       for (String key : required) {
         if (!indexes.containsKey(key)) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "缺少必填列 " + key);
       }
-      boolean hasReceivablePlan = indexes.containsKey("node_name") && indexes.containsKey("node_type")
-          && indexes.containsKey("due_date") && indexes.containsKey("plan_amount");
+      boolean hasReceivablePlan = indexes.containsKey("node_name") && indexes.containsKey("due_date")
+          && indexes.containsKey("plan_amount");
 
       List<CsvContractRow> rows = new ArrayList<>();
       List<CsvRowError> errors = new ArrayList<>();
@@ -68,9 +68,9 @@ public class CsvContractParser {
               contractName,
               required(raw, "customer_name", rowNo),
               raw.get("project_no"), raw.get("project_name"),
-              positive(raw, "contract_amount", rowNo),
+              optionalPositive(raw, "contract_amount", rowNo),
               hasReceivablePlan ? required(raw, "node_name", rowNo) : null,
-              hasReceivablePlan ? required(raw, "node_type", rowNo) : null,
+              hasReceivablePlan ? optionalOrDefault(raw, "node_type", "receivable") : null,
               hasReceivablePlan ? parseDate(raw, "due_date", rowNo) : null,
               hasReceivablePlan ? positive(raw, "plan_amount", rowNo) : null,
               raw.get("owner_name"),
@@ -106,6 +106,15 @@ public class CsvContractParser {
     } catch (NumberFormatException ex) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行金额格式错误");
     }
+  }
+
+  private BigDecimal optionalPositive(Map<String, String> raw, String key, int rowNo) {
+    return optional(raw, key) == null ? null : positive(raw, key, rowNo);
+  }
+
+  private String optionalOrDefault(Map<String, String> raw, String key, String defaultValue) {
+    String value = optional(raw, key);
+    return value == null ? defaultValue : value;
   }
 
   private LocalDate parseDate(Map<String, String> raw, String key, int rowNo) {

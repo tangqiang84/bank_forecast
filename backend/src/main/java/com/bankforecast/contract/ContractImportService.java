@@ -66,20 +66,29 @@ public class ContractImportService {
     }
     for (CsvContractRow row : parsed.getRows()) {
       try {
-        validateAmount(row.getContractAmount(), row.getRowNo(), "contract_amount");
         if (row.getNodeName() != null && planExists(principal.getTenantId(), row)) {
           skipped++;
           continue;
         }
-        Long projectId = upsertProject(principal.getTenantId(), row);
         Long contractId = findContract(principal.getTenantId(), row.getContractNo());
+        if (contractId == null && row.getContractAmount() == null) {
+          throw new BusinessException(ErrorCode.ROW_DATA_ERROR,
+              "第 " + row.getRowNo() + " 行缺少 contract_amount，且合同 " + row.getContractNo() + " 不存在");
+        }
+        if (row.getContractAmount() != null) {
+          validateAmount(row.getContractAmount(), row.getRowNo(), "contract_amount");
+        }
+        Long projectId = upsertProject(principal.getTenantId(), row);
         if (contractId == null) contractId = insertContract(principal.getTenantId(), row, projectId);
         if (row.getNodeName() == null) {
           success++;
           continue;
         }
         validateAmount(row.getPlanAmount(), row.getRowNo(), "plan_amount");
-        if (row.getPlanAmount().compareTo(row.getContractAmount()) > 0) {
+        BigDecimal contractAmount = row.getContractAmount() == null
+            ? jdbcTemplate.queryForObject("select contract_amount from contract where id = ? and tenant_id = ?", BigDecimal.class, contractId, principal.getTenantId())
+            : row.getContractAmount();
+        if (contractAmount != null && row.getPlanAmount().compareTo(contractAmount) > 0) {
           throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + row.getRowNo() + " 行应收计划金额不能超过合同金额");
         }
         validatePlanAmount(principal.getTenantId(), contractId, row);

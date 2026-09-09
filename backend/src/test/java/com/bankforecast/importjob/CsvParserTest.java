@@ -83,4 +83,19 @@ class CsvParserTest {
     assertEquals(null, result.getRows().get(0).getNodeName());
     assertTrue(result.getErrors().isEmpty());
   }
+
+  @Test
+  void parsesReceivableSampleWithoutContractAmountAndNodeType() throws Exception {
+    CsvContractParser parser = new CsvContractParser(objectMapper);
+    String csv = "plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,received_amount,status\n"
+        + "RP-001,XC-2026-001,瑞丰金融集团,PRJ-001,验收款,2026-08-15,400000.00,0.00,逾期未收\n";
+
+    CsvParseResult<CsvContractRow> result = parser.parse(
+        new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)), 10);
+
+    assertEquals(1, result.getRows().size());
+    assertEquals(null, result.getRows().get(0).getContractAmount());
+    assertEquals("receivable", result.getRows().get(0).getNodeType());
+    assertTrue(result.getErrors().isEmpty());
+  }
 }
