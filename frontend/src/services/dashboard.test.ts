@@ -34,6 +34,7 @@ describe('loadDashboardOverview', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8080/api/v1/dashboard/overview', {
       headers: {
+        'Content-Type': 'application/json',
         Authorization: 'Bearer token-1',
         'X-Tenant-Id': '1',
       },
