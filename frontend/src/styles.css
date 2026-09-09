@@ -128,12 +128,30 @@ label {
   border-bottom: 0;
 }
 
+.exception-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef3f8;
+}
+
+.exception-row:last-child {
+  border-bottom: 0;
+}
+
 .empty-state {
   color: #6d7f92;
   font-size: 13px;
 }
 
 .transaction-layout {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.receivable-layout {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   align-items: start;
 }
@@ -420,6 +438,14 @@ code {
 
   .transaction-layout {
     grid-template-columns: 1fr;
+  }
+
+  .receivable-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .exception-row {
+    flex-direction: column;
   }
 
   .auth-panel {

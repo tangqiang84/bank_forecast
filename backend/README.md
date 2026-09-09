@@ -36,3 +36,26 @@ TXN-001,2026-09-09,income,128400.00,2865300.00,ACME客户,项目回款
 ```
 
 `direction` 支持：`income`、`expense`、`transfer`、`refund`、`reversal`。
+
+## 合同应收 CSV 导入
+
+接口：`POST /api/v1/imports/contracts`，使用 multipart 字段 `file`。
+
+必填字段：
+
+```csv
+contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount
+CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01,100000.00
+```
+
+可选字段：`project_no`、`project_name`、`owner_name`。
+
+## 回款匹配与异常
+
+- `GET /api/v1/contracts`：查询合同。
+- `GET /api/v1/contracts/receivables`：查询应收计划。
+- `POST /api/v1/matching/receivables/run`：运行回款匹配并生成异常。
+- `GET /api/v1/matching/results`：查询匹配结果。
+- `GET /api/v1/matching/exceptions`：查询异常事项。
+
+当前匹配为 MVP 规则，支持精确匹配、部分收款、未知收款和逾期未收；拆分匹配、合并匹配及人工确认将在后续阶段补充。

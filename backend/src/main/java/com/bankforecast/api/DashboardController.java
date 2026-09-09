@@ -40,7 +40,7 @@ public class DashboardController {
         BigDecimal.class,
         tenantId)));
     data.put("yesterday_net_inflow", yesterdayNetInflow(tenantId));
-    data.put("pending_exceptions", 0);
+    data.put("pending_exceptions", pendingExceptions(tenantId));
     data.put("idle_accounts", countAccounts(tenantId, "idle"));
     data.put("match_rate", matchRate(tenantId));
     data.put("last_sync_at", latestImportTime(tenantId));
@@ -113,6 +113,14 @@ public class DashboardController {
       risks.add(risk("未知收款", unmatchedIncome, "尚未匹配到合同或项目的到账流水"));
     }
     return risks;
+  }
+
+  private int pendingExceptions(Long tenantId) {
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and status not in ('closed', 'resolved') and deleted_at is null",
+        Integer.class,
+        tenantId);
+    return count == null ? 0 : count;
   }
 
   private int countAccounts(Long tenantId, String status) {

@@ -1,6 +1,7 @@
 package com.bankforecast.api;
 
 import com.bankforecast.common.ApiResponse;
+import com.bankforecast.contract.ContractImportService;
 import com.bankforecast.importjob.ImportJobService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,9 +17,16 @@ import org.springframework.web.multipart.MultipartFile;
 public class ImportController {
 
   private final ImportJobService importJobService;
+  private final ContractImportService contractImportService;
 
-  public ImportController(ImportJobService importJobService) {
+  public ImportController(ImportJobService importJobService, ContractImportService contractImportService) {
     this.importJobService = importJobService;
+    this.contractImportService = contractImportService;
+  }
+
+  @PostMapping("/contracts")
+  public ApiResponse<Map<String, Object>> importContracts(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(contractImportService.importContracts(file));
   }
 
   @PostMapping("/bank-statements")
