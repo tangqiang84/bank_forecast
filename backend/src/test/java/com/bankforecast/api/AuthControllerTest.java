@@ -54,4 +54,15 @@ class AuthControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(41006));
   }
+
+  @Test
+  void returnsStructuredErrorForUnsupportedRequestMediaType() throws Exception {
+    mockMvc.perform(post("/api/v1/auth/login")
+            .contentType(MediaType.TEXT_PLAIN)
+            .content("finance01/123123"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(40001))
+        .andExpect(jsonPath("$.message").value("请求格式不正确，请使用 JSON 请求体"))
+        .andExpect(jsonPath("$.data.trace_id").isNotEmpty());
+  }
 }
