@@ -1,4 +1,5 @@
 import { fetchJson } from './http'
+import { authHeaders } from './auth'
 
 export type ApiResponse<T> = {
   code: number
@@ -36,6 +37,12 @@ export type DashboardOverview = {
   }>
 }
 
-export async function loadDashboardOverview(baseUrl: string): Promise<ApiResponse<DashboardOverview>> {
-  return fetchJson<ApiResponse<DashboardOverview>>(`${baseUrl}/api/v1/dashboard/overview`)
+export async function loadDashboardOverview(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+): Promise<ApiResponse<DashboardOverview>> {
+  return fetchJson<ApiResponse<DashboardOverview>>(`${baseUrl}/api/v1/dashboard/overview`, {
+    headers: authHeaders(token, tenantId),
+  })
 }

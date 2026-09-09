@@ -30,10 +30,13 @@ describe('loadDashboardOverview', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await loadDashboardOverview('http://localhost:8080')
+    const result = await loadDashboardOverview('http://localhost:8080', 'token-1', 1)
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8080/api/v1/dashboard/overview', {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: 'Bearer token-1',
+        'X-Tenant-Id': '1',
+      },
     })
     expect(result.data.total_balance).toBe('2865300.00')
     expect(result.trace_id).toBe('trace-1')

@@ -15,6 +15,173 @@ body {
   background: #f3f6fa;
 }
 
+input,
+select {
+  width: 100%;
+  border: 1px solid #cbd8e6;
+  border-radius: 6px;
+  background: #fff;
+  color: #102033;
+  padding: 10px 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #33475b;
+  font-size: 13px;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-panel {
+  width: min(420px, 100%);
+  background: #fff;
+  border: 1px solid #d8e3ee;
+  border-radius: 8px;
+  padding: 32px;
+  box-shadow: 0 12px 32px rgba(16, 32, 51, 0.08);
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.app-shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+}
+
+.topbar,
+.section-heading,
+.user-actions,
+.view-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topbar {
+  margin-bottom: 18px;
+}
+
+.view-tabs {
+  justify-content: flex-start;
+  border-bottom: 1px solid #d8e3ee;
+  margin-bottom: 20px;
+}
+
+.view-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #526579;
+  padding: 10px 4px;
+}
+
+.view-tabs button.active {
+  border-bottom-color: #155eef;
+  color: #155eef;
+}
+
+.refresh-button {
+  margin-left: auto;
+  border: 1px solid #cbd8e6 !important;
+  border-radius: 6px;
+  padding: 8px 12px !important;
+}
+
+.error-banner,
+.feedback-text {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fff1f0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.list-stack,
+.account-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.account-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef3f8;
+}
+
+.account-row:last-child {
+  border-bottom: 0;
+}
+
+.empty-state {
+  color: #6d7f92;
+  font-size: 13px;
+}
+
+.transaction-layout {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.import-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.import-panel h2 {
+  margin-bottom: 0;
+}
+
+.import-hint {
+  line-height: 1.5;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid #eef3f8;
+  padding: 12px 10px;
+}
+
+th {
+  color: #6d7f92;
+  font-weight: 600;
+}
+
+.income-amount {
+  color: #087443;
+}
+
+.expense-amount {
+  color: #b42318;
+}
+
 button,
 code {
   font: inherit;
@@ -242,5 +409,20 @@ code {
   .amount-block {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .topbar,
+  .user-actions,
+  .account-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .transaction-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel {
+    padding: 24px;
   }
 }
