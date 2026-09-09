@@ -34,7 +34,8 @@ public class CsvBankStatementParser {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
 
-      List<String> headers = parseLine(headerLine);
+      char delimiter = CsvImportSupport.detectDelimiter(headerLine);
+      List<String> headers = parseLine(headerLine, delimiter);
       for (int i = 0; i < headers.size(); i++) headers.set(i, canonicalHeader(headers.get(i)));
       Map<String, Integer> headerIndex = headerIndex(headers);
       requireHeaders(headerIndex);
@@ -53,7 +54,7 @@ public class CsvBankStatementParser {
           throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
         }
         dataRows++;
-        List<String> values = parseLine(line);
+        List<String> values = parseLine(line, delimiter);
         String rawJson = rawJson(headers, values);
         try {
           rows.add(toRow(rowNo, headers, headerIndex, values));
@@ -223,7 +224,7 @@ public class CsvBankStatementParser {
     return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }
 
-  private List<String> parseLine(String line) {
+  private List<String> parseLine(String line, char delimiter) {
     List<String> values = new ArrayList<>();
     StringBuilder current = new StringBuilder();
     boolean inQuote = false;
@@ -231,7 +232,7 @@ public class CsvBankStatementParser {
       char c = line.charAt(i);
       if (c == '"') {
         inQuote = !inQuote;
-      } else if (c == ',' && !inQuote) {
+      } else if (c == delimiter && !inQuote) {
         values.add(current.toString());
         current.setLength(0);
       } else {

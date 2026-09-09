@@ -35,7 +35,8 @@ public class CsvContractParser {
       if (headerLine == null || headerLine.trim().isEmpty()) {
         throw new BusinessException(ErrorCode.FILE_EMPTY, "文件为空");
       }
-      List<String> headers = parseLine(headerLine);
+      char delimiter = CsvImportSupport.detectDelimiter(headerLine);
+      List<String> headers = parseLine(headerLine, delimiter);
       Map<String, Integer> indexes = new HashMap<>();
       for (int i = 0; i < headers.size(); i++) indexes.put(canonicalHeader(headers.get(i)), i);
       String[] required = {"contract_no", "contract_name", "customer_name", "contract_amount",
@@ -55,7 +56,7 @@ public class CsvContractParser {
         if (dataRows >= maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
         dataRows++;
         Map<String, String> raw = new LinkedHashMap<>();
-        List<String> values = parseLine(line);
+        List<String> values = parseLine(line, delimiter);
         for (int i = 0; i < headers.size(); i++) raw.put(canonicalHeader(headers.get(i)), value(values, i));
         try {
           rows.add(new CsvContractRow(rowNo,
@@ -124,14 +125,14 @@ public class CsvContractParser {
 
   private String value(List<String> values, int index) { return index < values.size() ? values.get(index).trim() : ""; }
 
-  private List<String> parseLine(String line) {
+  private List<String> parseLine(String line, char delimiter) {
     List<String> values = new ArrayList<>();
     StringBuilder current = new StringBuilder();
     boolean quoted = false;
     for (int i = 0; i < line.length(); i++) {
       char c = line.charAt(i);
       if (c == '"') quoted = !quoted;
-      else if (c == ',' && !quoted) { values.add(current.toString()); current.setLength(0); }
+      else if (c == delimiter && !quoted) { values.add(current.toString()); current.setLength(0); }
       else current.append(c);
     }
     values.add(current.toString());
@@ -166,6 +167,8 @@ public class CsvContractParser {
     aliases.put("项目编号", "project_no");
     aliases.put("项目名称", "project_name");
     aliases.put("负责人", "owner_name");
+    if (normalized.contains("合同") && normalized.contains("名称")) return "contract_name";
+    if (normalized.contains("contract") && normalized.contains("name")) return "contract_name";
     return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }
 }

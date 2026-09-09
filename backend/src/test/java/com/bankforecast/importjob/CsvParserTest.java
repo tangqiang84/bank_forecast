@@ -55,4 +55,17 @@ class CsvParserTest {
     assertEquals(1, result.getRows().size());
     assertTrue(result.getErrors().isEmpty());
   }
+
+  @Test
+  void parsesSemicolonSeparatedUtf16ContractFile() {
+    CsvContractParser parser = new CsvContractParser(objectMapper);
+    String csv = "contract_no;合同名称（文本）;customer_name;contract_amount;node_name;node_type;due_date;plan_amount\n"
+        + "HT-3;跨境合同;客户;100.00;验收款;acceptance;2026-09-09;100.00\n";
+    byte[] content = ("\uFEFF" + csv).getBytes(Charset.forName("UTF-16LE"));
+
+    CsvParseResult<CsvContractRow> result = parser.parse(new ByteArrayInputStream(content), 10);
+
+    assertEquals(1, result.getRows().size());
+    assertEquals("跨境合同", result.getRows().get(0).getContractName());
+  }
 }
