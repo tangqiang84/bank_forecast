@@ -141,6 +141,12 @@ label {
   border-bottom: 0;
 }
 
+.exception-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
 .empty-state {
   color: #6d7f92;
   font-size: 13px;
@@ -480,6 +486,11 @@ code {
 
   .exception-row {
     flex-direction: column;
+  }
+
+  .exception-actions {
+    width: 100%;
+    justify-items: start;
   }
 
   .auth-panel {

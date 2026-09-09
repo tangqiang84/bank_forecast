@@ -1,6 +1,7 @@
 package com.bankforecast.api;
 
 import com.bankforecast.common.ApiResponse;
+import com.bankforecast.api.dto.ExceptionActionRequest;
 import com.bankforecast.api.dto.RejectMatchResultRequest;
 import com.bankforecast.matching.MatchingService;
 import javax.validation.Valid;
@@ -38,5 +39,34 @@ public class MatchingController {
   public ApiResponse<Map<String, Object>> reject(@PathVariable Long id,
       @Valid @RequestBody(required = false) RejectMatchResultRequest request) {
     return ApiResponse.ok(matchingService.rejectResult(id, request == null ? null : request.getReason()));
+  }
+
+  @PostMapping("/exceptions/{id}/assign")
+  public ApiResponse<Map<String, Object>> assignException(@PathVariable Long id,
+      @Valid @RequestBody(required = false) ExceptionActionRequest request) {
+    return ApiResponse.ok(matchingService.assignException(id, request == null ? null : request.getOwnerUserId()));
+  }
+
+  @PostMapping("/exceptions/{id}/comment")
+  public ApiResponse<Map<String, Object>> commentException(@PathVariable Long id,
+      @Valid @RequestBody ExceptionActionRequest request) {
+    return ApiResponse.ok(matchingService.commentException(id, request == null ? null : request.getText()));
+  }
+
+  @PostMapping("/exceptions/{id}/resolve")
+  public ApiResponse<Map<String, Object>> resolveException(@PathVariable Long id,
+      @Valid @RequestBody(required = false) ExceptionActionRequest request) {
+    return ApiResponse.ok(matchingService.resolveException(id, request == null ? null : request.getText()));
+  }
+
+  @PostMapping("/exceptions/{id}/close")
+  public ApiResponse<Map<String, Object>> closeException(@PathVariable Long id,
+      @Valid @RequestBody(required = false) ExceptionActionRequest request) {
+    return ApiResponse.ok(matchingService.closeException(id, request == null ? null : request.getText()));
+  }
+
+  @GetMapping("/exceptions/{id}/logs")
+  public ApiResponse<List<Map<String, Object>>> exceptionLogs(@PathVariable Long id) {
+    return ApiResponse.ok(matchingService.listExceptionLogs(id));
   }
 }

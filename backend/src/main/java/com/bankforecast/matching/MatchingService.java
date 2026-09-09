@@ -162,9 +162,118 @@ public class MatchingService {
   public List<Map<String, Object>> listExceptions() {
     AuthPrincipal principal = requireAuth();
     return jdbcTemplate.queryForList(
-        "select id, exception_no, exception_type, source_type, source_id, title, description, status, severity, due_date, created_at "
+        "select id, exception_no, exception_type, source_type, source_id, title, description, owner_user_id, status, severity, due_date, closed_at, created_at, updated_at "
             + "from exception_case where tenant_id = ? and deleted_at is null order by id desc limit 100",
         principal.getTenantId());
+  }
+
+  @Transactional
+  public Map<String, Object> assignException(Long exceptionId, Long ownerUserId) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> exception = findException(tenantId, exceptionId);
+    ensureExceptionOpen(exception);
+    Long assignee = ownerUserId == null ? principal.getUserId() : ownerUserId;
+    Integer activeUsers = jdbcTemplate.queryForObject(
+        "select count(*) from user_account where id = ? and tenant_id = ? and status = 'active'",
+        Integer.class, assignee, tenantId);
+    if (activeUsers == null || activeUsers == 0) {
+      throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "指定的处理人不存在或已停用");
+    }
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update exception_case set owner_user_id = ?, status = case when status = 'new' then 'in_progress' else status end, updated_at = ? where id = ? and tenant_id = ?",
+        assignee, now, exceptionId, tenantId);
+    String actionText = "分派给用户 " + assignee;
+    recordExceptionAction(tenantId, exceptionId, "ASSIGN", principal.getUserId(), actionText);
+    auditService.record("ASSIGN_EXCEPTION", "exception_case", String.valueOf(exceptionId), actionText);
+    return findException(tenantId, exceptionId);
+  }
+
+  @Transactional
+  public Map<String, Object> commentException(Long exceptionId, String text) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> exception = findException(tenantId, exceptionId);
+    ensureExceptionOpen(exception);
+    String comment = requireActionText(text);
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update exception_case set status = case when status = 'new' then 'in_progress' else status end, description = ?, updated_at = ? where id = ? and tenant_id = ?",
+        truncate(text(exception.get("description")) + "\n备注：" + comment, 2000), now, exceptionId, tenantId);
+    recordExceptionAction(tenantId, exceptionId, "COMMENT", principal.getUserId(), comment);
+    auditService.record("COMMENT_EXCEPTION", "exception_case", String.valueOf(exceptionId), comment);
+    return findException(tenantId, exceptionId);
+  }
+
+  @Transactional
+  public Map<String, Object> resolveException(Long exceptionId, String note) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> exception = findException(tenantId, exceptionId);
+    ensureExceptionOpen(exception);
+    String actionText = note == null || note.trim().isEmpty() ? "已处理异常" : note.trim();
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, updated_at = ? where id = ? and tenant_id = ? and status in ('new', 'in_progress')",
+        truncate(text(exception.get("description")) + "\n处理说明：" + actionText, 2000), now, exceptionId, tenantId);
+    recordExceptionAction(tenantId, exceptionId, "RESOLVE", principal.getUserId(), actionText);
+    auditService.record("RESOLVE_EXCEPTION", "exception_case", String.valueOf(exceptionId), actionText);
+    return findException(tenantId, exceptionId);
+  }
+
+  @Transactional
+  public Map<String, Object> closeException(Long exceptionId, String note) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> exception = findException(tenantId, exceptionId);
+    if ("closed".equals(text(exception.get("status")))) {
+      throw new BusinessException(ErrorCode.EXCEPTION_NOT_ACTIONABLE, "异常事项已关闭，不能重复关闭");
+    }
+    if (!"resolved".equals(text(exception.get("status")))) {
+      throw new BusinessException(ErrorCode.EXCEPTION_NOT_ACTIONABLE, "异常事项需先处理完成，再执行关闭");
+    }
+    String actionText = note == null || note.trim().isEmpty() ? "关闭异常事项" : note.trim();
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update exception_case set status = 'closed', description = ?, closed_at = ?, updated_at = ? where id = ? and tenant_id = ? and status = 'resolved'",
+        truncate(text(exception.get("description")) + "\n关闭说明：" + actionText, 2000), now, now, exceptionId, tenantId);
+    recordExceptionAction(tenantId, exceptionId, "CLOSE", principal.getUserId(), actionText);
+    auditService.record("CLOSE_EXCEPTION", "exception_case", String.valueOf(exceptionId), actionText);
+    return findException(tenantId, exceptionId);
+  }
+
+  public List<Map<String, Object>> listExceptionLogs(Long exceptionId) {
+    AuthPrincipal principal = requireAuth();
+    findException(principal.getTenantId(), exceptionId);
+    return jdbcTemplate.queryForList(
+        "select id, exception_case_id, action_type, action_by, action_text, action_at from exception_action_log "
+            + "where tenant_id = ? and exception_case_id = ? order by id asc",
+        principal.getTenantId(), exceptionId);
+  }
+
+  private Map<String, Object> findException(Long tenantId, Long exceptionId) {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select id, exception_no, exception_type, source_type, source_id, title, description, owner_user_id, status, severity, due_date, closed_at, created_at, updated_at "
+            + "from exception_case where id = ? and tenant_id = ? and deleted_at is null",
+        exceptionId, tenantId);
+    if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "异常事项不存在");
+    return rows.get(0);
+  }
+
+  private void ensureExceptionOpen(Map<String, Object> exception) {
+    if ("closed".equals(text(exception.get("status")))) {
+      throw new BusinessException(ErrorCode.EXCEPTION_NOT_ACTIONABLE, "异常事项已关闭，不能继续处理");
+    }
+  }
+
+  private String requireActionText(String value) {
+    if (value == null || value.trim().isEmpty()) {
+      throw new BusinessException(ErrorCode.PARAM_ERROR, "备注内容不能为空");
+    }
+    return value.trim();
+  }
+
+  private void recordExceptionAction(Long tenantId, Long exceptionId, String actionType, Long userId, String actionText) {
+    jdbcTemplate.update(
+        "insert into exception_action_log (tenant_id, exception_case_id, action_type, action_by, action_text) values (?, ?, ?, ?, ?)",
+        tenantId, exceptionId, actionType, userId, actionText);
   }
 
   private MatchCandidate findCandidate(Map<String, Object> transaction, List<Map<String, Object>> plans) {
@@ -288,11 +397,22 @@ public class MatchingService {
             + "and source_type = 'contract_receivable_plan' and source_id = ? and deleted_at is null",
         tenantId, planId);
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    Integer pendingResults = jdbcTemplate.queryForObject(
+        "select count(*) from match_result where tenant_id = ? and contract_receivable_plan_id = ? "
+            + "and match_status = 'suggested' and deleted_at is null",
+        Integer.class, tenantId, planId);
     for (Map<String, Object> exception : exceptions) {
-      jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, closed_at = ?, updated_at = ? "
-              + "where id = ? and tenant_id = ?",
-          truncate(text(exception.get("description")) + "；" + actionText, 2000), now, now,
-          number(exception.get("id")), tenantId);
+      if (pendingResults == null || pendingResults == 0) {
+        jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, closed_at = ?, updated_at = ? "
+                + "where id = ? and tenant_id = ?",
+            truncate(text(exception.get("description")) + "；" + actionText, 2000), now, now,
+            number(exception.get("id")), tenantId);
+      } else {
+        jdbcTemplate.update("update exception_case set status = case when status = 'new' then 'in_progress' else status end, description = ?, updated_at = ? "
+                + "where id = ? and tenant_id = ?",
+            truncate(text(exception.get("description")) + "；" + actionText + "；仍有待确认候选", 2000), now,
+            number(exception.get("id")), tenantId);
+      }
       jdbcTemplate.update(
           "insert into exception_action_log (tenant_id, exception_case_id, action_type, action_by, action_text) values (?, ?, ?, ?, ?)",
           tenantId, number(exception.get("id")), actionType, principal.getUserId(), actionText);
@@ -328,6 +448,13 @@ public class MatchingService {
           description, "new", severity, dueDate == null ? null : Date.valueOf(dueDate));
       return true;
     } catch (DuplicateKeyException ex) {
+      if ("partial_receipt".equals(type)) {
+        jdbcTemplate.update(
+            "update exception_case set title = ?, description = ?, status = 'new', closed_at = null, due_date = ?, updated_at = ? "
+                + "where tenant_id = ? and exception_type = ? and source_type = ? and source_id = ? and deleted_at is null",
+            title, description, dueDate == null ? null : Date.valueOf(dueDate), Timestamp.valueOf(LocalDateTime.now()),
+            tenantId, type, sourceType, sourceId);
+      }
       return false;
     }
   }

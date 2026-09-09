@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getToken, loadCurrentUser, login, logout, type User } from './services/auth'
 import { loadDashboardOverview, type DashboardOverview } from './services/dashboard'
 import { importStatements, loadAccounts, loadTransactions, type BankAccount, type BankTransaction } from './services/bank'
-import { confirmMatchResult, importContracts, loadContracts, loadExceptions, loadMatchResults, loadReceivables, rejectMatchResult, runMatching, type Contract, type ExceptionCase, type MatchResult, type Receivable } from './services/receivables'
+import { assignException, closeException, commentException, confirmMatchResult, importContracts, loadContracts, loadExceptions, loadMatchResults, loadReceivables, rejectMatchResult, resolveException, runMatching, type Contract, type ExceptionCase, type MatchResult, type Receivable } from './services/receivables'
 import { formatCurrency } from './utils/number'
 
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL ?? 'http://localhost:8080'
@@ -34,6 +34,8 @@ const matchingLoading = ref(false)
 const matchingMessage = ref('')
 const matchActionLoading = ref<number | null>(null)
 const matchActionMessage = ref('')
+const exceptionActionLoading = ref<number | null>(null)
+const exceptionActionMessage = ref('')
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -131,6 +133,26 @@ async function rejectResult(resultId: number) {
     matchActionMessage.value = error instanceof Error ? error.message : '拒绝失败，请稍后重试'
   } finally {
     matchActionLoading.value = null
+  }
+}
+
+async function runExceptionAction(exceptionId: number, action: 'assign' | 'comment' | 'resolve' | 'close') {
+  if (!user.value || !token.value) return
+  const text = action === 'assign' ? '' : window.prompt(action === 'comment' ? '请输入备注' : '请输入处理说明', '')
+  if (text === null) return
+  exceptionActionLoading.value = exceptionId
+  exceptionActionMessage.value = ''
+  try {
+    if (action === 'assign') await assignException(backendBase, token.value, user.value.tenant_id, exceptionId)
+    if (action === 'comment') await commentException(backendBase, token.value, user.value.tenant_id, exceptionId, text)
+    if (action === 'resolve') await resolveException(backendBase, token.value, user.value.tenant_id, exceptionId, text)
+    if (action === 'close') await closeException(backendBase, token.value, user.value.tenant_id, exceptionId, text)
+    exceptionActionMessage.value = '异常事项操作已完成。'
+    await loadWorkspace()
+  } catch (error) {
+    exceptionActionMessage.value = error instanceof Error ? error.message : '异常事项操作失败'
+  } finally {
+    exceptionActionLoading.value = null
   }
 }
 
@@ -259,7 +281,7 @@ onMounted(async () => {
         <div v-if="matchResults.length" class="table-scroll"><table><thead><tr><th>流水</th><th>金额</th><th>合同/节点</th><th>类型</th><th>置信度</th><th>匹配理由</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in matchResults" :key="item.id"><td>{{ item.transaction_no }}</td><td class="income-amount">{{ formatCurrency(item.amount) }}</td><td>{{ item.contract_no || '-' }}<br />{{ item.contract_name || '-' }} · {{ item.node_name || '-' }}</td><td>{{ item.match_type }}</td><td>{{ item.confidence_level }}</td><td class="reason-cell">{{ item.match_reason }}</td><td><span class="pill">{{ item.match_status }}</span></td><td><div v-if="item.match_status === 'suggested'" class="action-group"><button class="small-primary-button" :disabled="matchActionLoading !== null" type="button" @click="confirmResult(item.id)">{{ matchActionLoading === item.id ? '处理中...' : '确认' }}</button><button class="small-danger-button" :disabled="matchActionLoading !== null" type="button" @click="rejectResult(item.id)">拒绝</button></div><span v-else class="meta">已处理</span></td></tr></tbody></table></div>
         <p v-else class="empty-state">暂无匹配结果，请先在异常事项页面运行回款匹配。</p>
       </section>
-      <section v-else-if="activeView === 'exceptions'" class="panel"><div class="section-heading"><h2>异常事项</h2><button class="primary-button" :disabled="matchingLoading" type="button" @click="submitMatching">{{ matchingLoading ? '匹配中...' : '运行回款匹配' }}</button></div><p v-if="matchingMessage" class="feedback-text">{{ matchingMessage }}</p><div v-if="exceptions.length" class="list-stack"><div v-for="item in exceptions" :key="item.id" class="exception-row"><div><strong>{{ item.title }}</strong><p class="meta">{{ item.description }}</p></div><span class="pill">{{ item.exception_type }} · {{ item.status }}</span></div></div><p v-else class="empty-state">暂无异常事项。点击“运行回款匹配”生成结果。</p></section>
+      <section v-else-if="activeView === 'exceptions'" class="panel"><div class="section-heading"><h2>异常事项</h2><button class="primary-button" :disabled="matchingLoading" type="button" @click="submitMatching">{{ matchingLoading ? '匹配中...' : '运行回款匹配' }}</button></div><p v-if="matchingMessage" class="feedback-text">{{ matchingMessage }}</p><p v-if="exceptionActionMessage" class="feedback-text">{{ exceptionActionMessage }}</p><div v-if="exceptions.length" class="list-stack"><div v-for="item in exceptions" :key="item.id" class="exception-row"><div><strong>{{ item.title }}</strong><p class="meta">{{ item.description }}</p><p class="meta">处理人：{{ item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派' }}</p></div><div class="exception-actions"><span class="pill">{{ item.exception_type }} · {{ item.status }}</span><div class="action-group"><button v-if="item.status !== 'closed' && !item.owner_user_id" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'assign')">分派给我</button><button v-if="item.status !== 'closed'" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'comment')">备注</button><button v-if="item.status === 'new' || item.status === 'in_progress'" class="small-primary-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'resolve')">处理完成</button><button v-if="item.status === 'resolved'" class="small-danger-button" :disabled="exceptionActionLoading !== null" type="button" @click="runExceptionAction(item.id, 'close')">关闭</button></div></div></div></div><p v-else class="empty-state">暂无异常事项。点击“运行回款匹配”生成结果。</p></section>
       <section v-else class="grid transaction-layout">
         <article class="panel import-panel"><h2>导入银行流水</h2><label>银行账户<select v-model="selectedAccountId"><option :value="null" disabled>请选择账户</option><option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}</option></select></label><label>CSV 文件<input accept=".csv,text/csv" type="file" @change="onFileChange" /></label><p v-if="selectedFile" class="meta">已选择：{{ selectedFile.name }}</p><p v-if="selectedAccount" class="meta">当前账户余额：{{ formatCurrency(selectedAccount.current_balance) }}</p><p v-if="importMessage" class="feedback-text">{{ importMessage }}</p><button class="primary-button" :disabled="importLoading" type="button" @click="submitImport">{{ importLoading ? '导入中...' : '开始导入' }}</button><p class="meta import-hint">必填列：transaction_no、transaction_date、direction、amount。</p></article>
         <article class="panel table-panel"><div class="section-heading"><h2>流水明细</h2><span class="meta">共 {{ totalTransactions }} 条</span></div><div v-if="transactions.length" class="table-scroll"><table><thead><tr><th>交易日期</th><th>方向</th><th>金额</th><th>对方户名</th><th>摘要</th><th>匹配状态</th></tr></thead><tbody><tr v-for="transaction in transactions" :key="transaction.id"><td>{{ transaction.transaction_date }}</td><td>{{ directionLabel[transaction.direction] ?? transaction.direction }}</td><td :class="transaction.direction === 'expense' ? 'expense-amount' : 'income-amount'">{{ formatCurrency(transaction.amount) }}</td><td>{{ transaction.counterparty_name || '-' }}</td><td>{{ transaction.summary || '-' }}</td><td><span class="pill">{{ transaction.match_status }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无流水，请先导入 CSV 文件。</p></article>

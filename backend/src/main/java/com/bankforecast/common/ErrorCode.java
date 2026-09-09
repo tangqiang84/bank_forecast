@@ -13,6 +13,7 @@ public final class ErrorCode {
   public static final int RESOURCE_NOT_FOUND = 42001;
   public static final int DUPLICATE_DATA = 43001;
   public static final int MATCH_RESULT_NOT_ACTIONABLE = 43002;
+  public static final int EXCEPTION_NOT_ACTIONABLE = 43003;
   public static final int SYSTEM_ERROR = 50001;
 
   private ErrorCode() {}

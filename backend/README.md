@@ -56,6 +56,13 @@ CT-001,软件实施合同,示例客户,100000.00,验收款,acceptance,2026-10-01
 - `GET /api/v1/contracts/receivables`：查询应收计划。
 - `POST /api/v1/matching/receivables/run`：运行回款匹配并生成异常。
 - `GET /api/v1/matching/results`：查询匹配结果。
+- `POST /api/v1/matching/results/{id}/confirm`：人工确认待确认匹配，并更新流水和应收金额。
+- `POST /api/v1/matching/results/{id}/reject`：人工拒绝待确认匹配，可提交 `reason`。
 - `GET /api/v1/matching/exceptions`：查询异常事项。
+- `POST /api/v1/matching/exceptions/{id}/assign`：分派异常事项，默认分派给当前用户。
+- `POST /api/v1/matching/exceptions/{id}/comment`：追加异常备注。
+- `POST /api/v1/matching/exceptions/{id}/resolve`：标记异常已处理。
+- `POST /api/v1/matching/exceptions/{id}/close`：关闭已处理异常。
+- `GET /api/v1/matching/exceptions/{id}/logs`：查询异常操作日志。
 
-当前匹配为 MVP 规则，支持精确匹配、部分收款、未知收款和逾期未收；拆分匹配、合并匹配及人工确认将在后续阶段补充。
+当前匹配为 MVP 规则，支持精确匹配、部分收款、未知收款和逾期未收；部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。拆分匹配、合并匹配及客户名称归一化将在后续阶段补充。

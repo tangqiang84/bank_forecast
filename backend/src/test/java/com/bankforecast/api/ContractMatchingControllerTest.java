@@ -154,6 +154,93 @@ class ContractMatchingControllerTest {
         .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(41003));
   }
 
+  @Test
+  void managesExceptionLifecycleAndRecordsActions() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    createPartialMatch(tenantId, suffix);
+    Long exceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' "
+            + "and source_type = 'contract_receivable_plan' order by id desc limit 1", Long.class, tenantId);
+
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/assign")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("in_progress"))
+        .andExpect(jsonPath("$.data.owner_user_id").exists());
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/comment")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"已联系客户核实\"}")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.description").value(org.hamcrest.Matchers.containsString("已联系客户核实")));
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/resolve")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"确认待收款项\"}")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("resolved"));
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/close")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("closed"));
+    mockMvc.perform(get("/api/v1/matching/exceptions/" + exceptionId + "/logs")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()" ).value(4));
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/close")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(43003));
+  }
+
+  @Test
+  void repeatedMatchingRunDoesNotCreateDuplicateResultsOrFinancialEffect() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String contractNo = "CT-IDEMP-" + suffix;
+    String transactionNo = "TX-IDEMP-" + suffix;
+    String csv = "contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount\n"
+        + contractNo + ",幂等合同,唯一客户" + suffix + ",1000.00,验收款,acceptance,2026-09-01,1000.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/contracts")
+            .file(new MockMultipartFile("file", "contracts.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statement = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + transactionNo + ",2026-09-01,income,1000.00,唯一客户" + suffix + ",合同 " + contractNo + "\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements").file(new MockMultipartFile("file", "statement.csv", "text/csv", statement.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId)).header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/receivables/run").header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.matched").value(1));
+    mockMvc.perform(post("/api/v1/matching/receivables/run").header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.matched").value(0)).andExpect(jsonPath("$.data.suggested").value(0));
+    Long transactionId = jdbcTemplate.queryForObject("select id from bank_transaction where transaction_no = ?", Long.class, transactionNo);
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("select count(*) from match_result where bank_transaction_id = ?", Integer.class, transactionId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals("1000.00", jdbcTemplate.queryForObject("select paid_amount from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ?", String.class, contractNo));
+  }
+
+  @Test
+  void keepsPartialExceptionOpenUntilAllSuggestedResultsAreProcessed() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String customer = "多笔客户" + suffix;
+    String contractNo = "CT-MULTI-" + suffix;
+    String csv = "contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount\n"
+        + contractNo + ",多笔部分收款合同," + customer + ",2000.00,首付款,milestone,2026-09-01,2000.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/contracts").file(new MockMultipartFile("file", "contracts.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statements = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + "TX-M1-" + suffix + ",2026-09-01,income,500.00," + customer + ",首付款\n"
+        + "TX-M2-" + suffix + ",2026-09-02,income,600.00," + customer + ",首付款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements").file(new MockMultipartFile("file", "statements.csv", "text/csv", statements.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId)).header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/receivables/run").header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.suggested").value(2));
+    Long planId = jdbcTemplate.queryForObject("select p.id from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ?", Long.class, contractNo);
+    Long firstResultId = jdbcTemplate.queryForObject("select mr.id from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id where bt.transaction_no = ?", Long.class, "TX-M1-" + suffix);
+    mockMvc.perform(post("/api/v1/matching/results/" + firstResultId + "/reject").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"暂不确认\"}")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
+  }
+
   private Long createPartialMatch(Long tenantId, String suffix) throws Exception {
     String token = loginToken();
     String contractNo = "CT-A-" + suffix;

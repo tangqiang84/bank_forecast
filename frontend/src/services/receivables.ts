@@ -32,6 +32,8 @@ export type ExceptionCase = {
   status: string
   severity: string
   due_date: string | null
+  owner_user_id: number | null
+  closed_at?: string | null
 }
 export type MatchResult = {
   id: number
@@ -93,5 +95,36 @@ export function rejectMatchResult(baseUrl: string, token: string, tenantId: numb
     method: 'POST',
     headers: authHeaders(token, tenantId),
     body: JSON.stringify({ reason }),
+  })
+}
+
+export function assignException(baseUrl: string, token: string, tenantId: number, exceptionId: number) {
+  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/assign`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function commentException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
+  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/comment`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function resolveException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
+  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/resolve`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function closeException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
+  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/close`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+    body: JSON.stringify({ text }),
   })
 }
