@@ -42,4 +42,17 @@ class CsvParserTest {
     assertEquals("2026-09-09", result.getRows().get(0).getDueDate().toString());
     assertTrue(result.getErrors().isEmpty());
   }
+
+  @Test
+  void acceptsRequiredMarkerInContractHeader() {
+    CsvContractParser parser = new CsvContractParser(objectMapper);
+    String csv = "合同编号,合同名称（必填）,客户名称,合同金额,节点名称,节点类型,到期日期,应收金额\n"
+        + "HT-2,软件合同,甲方公司,100.00,验收款,acceptance,2026-09-09,100.00\n";
+
+    CsvParseResult<CsvContractRow> result = parser.parse(
+        new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)), 10);
+
+    assertEquals(1, result.getRows().size());
+    assertTrue(result.getErrors().isEmpty());
+  }
 }

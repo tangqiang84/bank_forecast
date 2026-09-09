@@ -31,6 +31,9 @@ public final class CsvImportSupport {
     return value.replace("\uFEFF", "")
         .replace("\u200B", "")
         .replace('\u3000', ' ')
+        .replace('＿', '_')
+        .replaceAll("[（(][^）)]*[）)]", "")
+        .replace("*", "")
         .trim()
         .toLowerCase()
         .replaceAll("\\s+", "");

@@ -154,6 +154,7 @@ public class CsvContractParser {
     aliases.put("ownername", "owner_name");
     aliases.put("合同编号", "contract_no");
     aliases.put("合同名称", "contract_name");
+    aliases.put("合同名", "contract_name");
     aliases.put("客户名称", "customer_name");
     aliases.put("合同金额", "contract_amount");
     aliases.put("节点名称", "node_name");
