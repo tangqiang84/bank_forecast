@@ -61,6 +61,7 @@ public class ExcelBankStatementParser {
           if (totalRows > maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
           int rowNo = rowIndex + 1;
           Map<String, String> raw = rawValues(row, header);
+          if (isMetadataRow(raw)) continue;
           try {
             rows.add(toRow(rowNo, raw, bankName, sheet.getSheetName()));
           } catch (BusinessException ex) {
@@ -209,6 +210,26 @@ public class ExcelBankStatementParser {
     if (row == null) return true;
     for (Cell cell : row) if (!text(cell).isEmpty()) return false;
     return true;
+  }
+
+  private boolean isMetadataRow(Map<String, String> raw) {
+    String date = raw.get("transaction_date");
+    if (date == null || date.trim().isEmpty()) return false;
+    if (raw.get("debit_amount") != null && !raw.get("debit_amount").trim().isEmpty()) return false;
+    if (raw.get("credit_amount") != null && !raw.get("credit_amount").trim().isEmpty()) return false;
+    for (String key : new String[] {"transaction_no", "balance_after", "counterparty_name", "summary", "booking_date"}) {
+      String value = raw.get(key);
+      if (value != null && !value.trim().isEmpty()) return false;
+    }
+    return !isDate(date);
+  }
+
+  private boolean isDate(String value) {
+    for (DateTimeFormatter formatter : new DateTimeFormatter[] {
+        DateTimeFormatter.ISO_LOCAL_DATE, DateTimeFormatter.ofPattern("yyyy/MM/dd"), DateTimeFormatter.ofPattern("yyyyMMdd")}) {
+      try { LocalDate.parse(value, formatter); return true; } catch (DateTimeParseException ignored) { }
+    }
+    return false;
   }
 
   private String fieldFromMessage(String message) {

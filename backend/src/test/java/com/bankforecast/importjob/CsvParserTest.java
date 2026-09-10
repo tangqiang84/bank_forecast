@@ -119,6 +119,7 @@ class CsvParserTest {
       data.createCell(4).setCellValue(1000.00);
       data.createCell(5).setCellValue("示例客户");
       data.createCell(6).setCellValue(bank + "-TX-001");
+      sheet.createRow(3).createCell(0).setCellValue("备注：以上为样本数据");
     }
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     workbook.write(output);
