@@ -29,6 +29,7 @@ public class ImportJobService {
 
   private final JdbcTemplate jdbcTemplate;
   private final CsvBankStatementParser parser;
+  private final ExcelBankStatementParser excelParser;
   private final BankAccountRepository bankAccountRepository;
   private final AuditService auditService;
   private final int maxRows;
@@ -36,7 +37,7 @@ public class ImportJobService {
   private final int maxDateRangeDays;
   private final BigDecimal maxAmount;
 
-  public ImportJobService(JdbcTemplate jdbcTemplate, CsvBankStatementParser parser,
+  public ImportJobService(JdbcTemplate jdbcTemplate, CsvBankStatementParser parser, ExcelBankStatementParser excelParser,
       BankAccountRepository bankAccountRepository, AuditService auditService,
       @Value("${bank-forecast.import.max-rows}") int maxRows,
       @Value("${bank-forecast.import.max-file-size-bytes}") long maxFileSize,
@@ -44,6 +45,7 @@ public class ImportJobService {
       @Value("${bank-forecast.import.max-amount}") BigDecimal maxAmount) {
     this.jdbcTemplate = jdbcTemplate;
     this.parser = parser;
+    this.excelParser = excelParser;
     this.bankAccountRepository = bankAccountRepository;
     this.auditService = auditService;
     this.maxRows = maxRows;
@@ -62,8 +64,9 @@ public class ImportJobService {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "文件大小超过上限 " + maxFileSize + " 字节");
     }
     String fileName = file.getOriginalFilename() == null ? "bank_statement.csv" : file.getOriginalFilename();
-    if (!fileName.toLowerCase().endsWith(".csv")) {
-      throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED, "当前接口先支持 CSV 文件导入");
+    String lowerFileName = fileName.toLowerCase();
+    if (!lowerFileName.endsWith(".csv") && !lowerFileName.endsWith(".xlsx")) {
+      throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED, "仅支持 CSV 或 XLSX 文件导入");
     }
     if (!bankAccountRepository.existsByTenant(principal.getTenantId(), bankAccountId)) {
       throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "银行账户不存在");
@@ -75,7 +78,15 @@ public class ImportJobService {
     int skippedRows = 0;
     String errorMessage = null;
 
-    CsvParseResult<CsvBankStatementRow> parsed = parser.parse(open(file), maxRows);
+    CsvParseResult<CsvBankStatementRow> parsed;
+    List<Map<String, Object>> templates = new java.util.ArrayList<>();
+    if (lowerFileName.endsWith(".xlsx")) {
+      ExcelBankStatementParser.ExcelParseResult excel = excelParser.parse(open(file), maxRows);
+      parsed = new CsvParseResult<>(excel.getRows(), excel.getErrors(), excel.getTotalRows());
+      templates = excel.getTemplates();
+    } else {
+      parsed = parser.parse(open(file), maxRows);
+    }
     for (CsvRowError rowError : parsed.getErrors()) {
       failedRows++;
       insertRawError(principal.getTenantId(), jobId, bankAccountId, rowError);
@@ -106,6 +117,8 @@ public class ImportJobService {
     auditService.record("IMPORT_BANK_STATEMENT", "import_job", String.valueOf(jobId), "file=" + fileName);
     Map<String, Object> result = getJob(jobId, principal.getTenantId());
     result.put("error_details", listErrors(jobId, principal.getTenantId()));
+    result.put("file_format", lowerFileName.endsWith(".xlsx") ? "xlsx" : "csv");
+    if (!templates.isEmpty()) result.put("recognized_templates", templates);
     return result;
   }
 
