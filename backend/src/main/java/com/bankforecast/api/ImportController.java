@@ -44,6 +44,28 @@ public class ImportController {
     return ApiResponse.ok(importJobService.importBankStatements(bankAccountId, file));
   }
 
+  @PostMapping("/bank-statements/preview")
+  public ApiResponse<Map<String, Object>> previewBankStatements(
+      @RequestParam("bank_account_id") Long bankAccountId,
+      @RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(importJobService.previewBankStatements(bankAccountId, file));
+  }
+
+  @GetMapping("/{jobId}/preview")
+  public ApiResponse<Map<String, Object>> preview(@PathVariable Long jobId) {
+    return ApiResponse.ok(importJobService.getPreview(jobId));
+  }
+
+  @PostMapping("/{jobId}/confirm")
+  public ApiResponse<Map<String, Object>> confirm(@PathVariable Long jobId) {
+    return ApiResponse.ok(importJobService.confirmPreview(jobId));
+  }
+
+  @PostMapping("/{jobId}/retry-errors")
+  public ApiResponse<Map<String, Object>> retryErrors(@PathVariable Long jobId, @org.springframework.web.bind.annotation.RequestBody Map<String, Object> request) {
+    return ApiResponse.ok(importJobService.retryPreviewErrors(jobId, request));
+  }
+
   @PostMapping("/finance-records")
   public ApiResponse<Map<String, Object>> importFinanceRecords(@RequestParam("file") MultipartFile file) {
     return ApiResponse.ok(financeRecordImportService.importRecords(file));

@@ -108,6 +108,7 @@ class CsvParserTest {
         .parse(Files.newInputStream(Paths.get(sample)), 100);
 
     assertEquals(6, result.getTemplates().size());
+    assertTrue(result.getTemplates().stream().allMatch(item -> "recognized".equals(item.get("status"))));
     assertEquals(30, result.getRows().size());
     assertEquals("expense", result.getRows().get(0).getDirection());
     assertEquals("150000", result.getRows().get(0).getAmount().toPlainString());

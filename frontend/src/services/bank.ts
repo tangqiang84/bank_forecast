@@ -128,3 +128,49 @@ export function importStatements(
     tenantId,
   )
 }
+
+export type ImportPreviewRow = {
+  id: number
+  row_no: number
+  transaction_no: string | null
+  transaction_date: string | null
+  direction: string | null
+  amount: string | null
+  balance_after: string | null
+  counterparty_name: string | null
+  summary: string | null
+  status: string
+  error_message: string | null
+}
+
+export type ImportPreview = Record<string, unknown> & {
+  job_id: number
+  status: string
+  total_rows: number
+  success_rows: number
+  failed_rows: number
+  skipped_rows: number
+  preview_rows: ImportPreviewRow[]
+  recognized_templates?: Array<{ sheet_name: string; bank_name?: string; status: string; message: string }>
+}
+
+export function previewStatements(baseUrl: string, token: string, tenantId: number, accountId: number, file: File) {
+  const formData = new FormData()
+  formData.append('bank_account_id', String(accountId))
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/bank-statements/preview`, formData, token, tenantId)
+}
+
+export function loadImportPreview(baseUrl: string, token: string, tenantId: number, jobId: number) {
+  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/preview`, { headers: authHeaders(token, tenantId) })
+}
+
+export function confirmImportPreview(baseUrl: string, token: string, tenantId: number, jobId: number) {
+  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/confirm`, { method: 'POST', headers: authHeaders(token, tenantId) })
+}
+
+export function retryImportErrors(baseUrl: string, token: string, tenantId: number, jobId: number, rows: Array<Record<string, unknown>>) {
+  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/retry-errors`, {
+    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }),
+  })
+}

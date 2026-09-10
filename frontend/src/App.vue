@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getToken, loadCurrentUser, login, logout, type User } from './services/auth'
 import { loadDashboardOverview, type DashboardOverview } from './services/dashboard'
-import { classifyTransaction, closeBankAccount, createBankAccount, exportTransactions, importStatements, loadAccounts, loadTransactionDetail, loadTransactions, scanIdleAccounts, type BankAccount, type BankAccountInput, type BankTransaction, unlinkTransaction, updateBankAccount } from './services/bank'
+import { classifyTransaction, closeBankAccount, confirmImportPreview, createBankAccount, exportTransactions, loadAccounts, loadTransactionDetail, loadTransactions, previewStatements, retryImportErrors, scanIdleAccounts, type BankAccount, type BankAccountInput, type BankTransaction, type ImportPreview, type ImportPreviewRow, unlinkTransaction, updateBankAccount } from './services/bank'
 import { assignException, batchExceptionAction, closeException, commentException, confirmMatchResult, deleteExceptionAttachment, importContracts, loadContractDetail, loadContracts, loadExceptions, loadMatchResultDetail, loadMatchResults, loadReceivables, markFalsePositive, previewExceptionAttachment, rejectMatchResult, resolveException, runMatching, type Contract, type ExceptionAttachment, type ExceptionCase, type MatchResult, type Receivable, uploadExceptionAttachment } from './services/receivables'
 import { batchUpdateProjectStatus, loadProjectDetail, loadProjectRiskRules, loadProjects, updateProject, updateProjectRiskRule, type Project, type ProjectRiskRule } from './services/projects'
 import { fetchJson } from './services/http'
@@ -29,6 +29,8 @@ const selectedAccountId = ref<number | null>(null)
 const selectedFile = ref<File | null>(null)
 const importLoading = ref(false)
 const importMessage = ref('')
+const importPreview = ref<ImportPreview | null>(null)
+const importRetryJson = ref('')
 const pageError = ref('')
 const contracts = ref<Contract[]>([])
 const receivables = ref<Receivable[]>([])
@@ -604,6 +606,8 @@ function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   selectedFile.value = input.files?.[0] ?? null
   importMessage.value = ''
+  importPreview.value = null
+  importRetryJson.value = ''
 }
 
 async function submitImport() {
@@ -614,18 +618,52 @@ async function submitImport() {
   importLoading.value = true
   importMessage.value = ''
   try {
-    const result = await importStatements(backendBase, token.value, user.value.tenant_id, selectedAccountId.value, selectedFile.value)
+    const result = await previewStatements(backendBase, token.value, user.value.tenant_id, selectedAccountId.value, selectedFile.value)
     const job = result.data
+    importPreview.value = job
     const templateText = Array.isArray(job.recognized_templates)
       ? `；模板 ${job.recognized_templates.filter((item: { status?: string }) => item.status === 'recognized').map((item: { bank_name?: string }) => item.bank_name).filter(Boolean).join('、') || '未识别'}`
       : ''
-    importMessage.value = `导入${job.status === 'success' ? '完成' : '结束'}：成功 ${job.success_rows ?? 0} 行，失败 ${job.failed_rows ?? 0} 行${templateText}`
-    await loadWorkspace()
+    importMessage.value = `预览完成：有效 ${job.success_rows ?? 0} 行，失败 ${job.failed_rows ?? 0} 行${templateText}，请确认后入账。`
   } catch (error) {
     importMessage.value = error instanceof Error ? error.message : '导入失败，请检查文件后重试'
   } finally {
     importLoading.value = false
   }
+}
+
+async function confirmPreview() {
+  if (!user.value || !token.value || !importPreview.value) return
+  importLoading.value = true
+  try {
+    const result = await confirmImportPreview(backendBase, token.value, user.value.tenant_id, importPreview.value.job_id)
+    importPreview.value = result.data
+    importMessage.value = `确认完成：成功 ${result.data.success_rows ?? 0} 行，跳过 ${result.data.skipped_rows ?? 0} 行，失败 ${result.data.failed_rows ?? 0} 行。`
+    await loadWorkspace()
+  } catch (error) { importMessage.value = error instanceof Error ? error.message : '确认导入失败' }
+  finally { importLoading.value = false }
+}
+
+async function retryPreviewErrorsAction() {
+  if (!user.value || !token.value || !importPreview.value) return
+  let rows: Array<Record<string, unknown>>
+  try {
+    const parsed = JSON.parse(importRetryJson.value)
+    if (!Array.isArray(parsed)) throw new Error('请输入 JSON 数组')
+    rows = parsed as Array<Record<string, unknown>>
+  } catch (error) { importMessage.value = error instanceof Error ? error.message : '失败行 JSON 格式不正确'; return }
+  importLoading.value = true
+  try {
+    const result = await retryImportErrors(backendBase, token.value, user.value.tenant_id, importPreview.value.job_id, rows)
+    importPreview.value = result.data
+    importRetryJson.value = ''
+    importMessage.value = `失败行重试完成：当前有效 ${result.data.success_rows ?? 0} 行，仍失败 ${result.data.failed_rows ?? 0} 行。`
+  } catch (error) { importMessage.value = error instanceof Error ? error.message : '失败行重试失败' }
+  finally { importLoading.value = false }
+}
+
+function retryPayload(rows: ImportPreviewRow[]) {
+  return JSON.stringify(rows.filter((row) => row.status === 'failed').map((row) => ({ row_no: row.row_no, transaction_no: row.transaction_no || '', transaction_date: row.transaction_date || '', direction: row.direction || 'income', amount: row.amount || '', balance_after: row.balance_after || '', counterparty_name: row.counterparty_name || '', summary: row.summary || '' })), null, 2)
 }
 
 onMounted(async () => {
@@ -733,7 +771,7 @@ onMounted(async () => {
         <article class="panel table-panel"><div class="section-heading"><div><h2>预测结果</h2><span class="meta">{{ forecast.job ? `任务 #${forecast.job.id} · ${forecast.job.status} · ${forecast.job.model_version || '-'}` : '暂无已完成预测' }}</span></div><span v-if="forecast.job?.model_name" class="pill">{{ forecast.job.model_name }}</span></div><p v-if="forecast.job?.error_message" class="error-banner">{{ forecast.job.error_message }}</p><div v-if="forecast.results.length" class="table-scroll"><table><thead><tr><th>日期</th><th>预测净现金流</th><th>预计应收</th><th>预计余额</th><th>实际金额</th><th>偏差</th><th>风险</th></tr></thead><tbody><tr v-for="item in forecast.results" :key="item.id"><td>{{ item.forecast_date }}</td><td :class="Number(item.forecast_amount) < 0 ? 'expense-amount' : 'income-amount'">{{ formatCurrency(item.forecast_amount) }}</td><td>{{ formatCurrency(item.expected_receivable) }}</td><td>{{ formatCurrency(item.projected_balance) }}</td><td>{{ item.actual_amount !== null ? formatCurrency(item.actual_amount) : '-' }}</td><td>{{ item.deviation_amount !== null ? formatCurrency(item.deviation_amount) : '-' }}</td><td><span class="pill" :class="`risk-${item.risk_level}`">{{ item.risk_level }} · {{ item.risk_message }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无预测结果，请先生成预测。</p><div v-if="forecast.job" class="forecast-evaluation"><strong>评估点数 {{ forecast.evaluation?.evaluated_points ?? 0 }}</strong><span>MAE {{ formatCurrency(forecast.evaluation?.mae ?? '0') }}</span><span>RMSE {{ formatCurrency(forecast.evaluation?.rmse ?? '0') }}</span><span>平均偏差 {{ formatCurrency(forecast.evaluation?.mean_deviation ?? '0') }}</span></div></article>
       </section>
       <section v-else class="grid transaction-layout">
-        <article class="panel import-panel"><h2>导入银行流水</h2><label>银行账户<select v-model="selectedAccountId"><option :value="null" disabled>请选择账户</option><option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}</option></select></label><label>CSV / Excel 文件<input accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" type="file" @change="onFileChange" /></label><p v-if="selectedFile" class="meta">已选择：{{ selectedFile.name }}</p><p v-if="selectedAccount" class="meta">当前账户余额：{{ formatCurrency(selectedAccount.current_balance) }}</p><p v-if="importMessage" class="feedback-text">{{ importMessage }}</p><button class="primary-button" :disabled="importLoading" type="button" @click="submitImport">{{ importLoading ? '导入中...' : '开始导入' }}</button><p class="meta import-hint">CSV 必填列：transaction_no、transaction_date、direction、amount；XLSX 支持六家银行样本工作表及借方/贷方金额映射。</p></article>
+        <article class="panel import-panel"><h2>导入银行流水</h2><label>银行账户<select v-model="selectedAccountId"><option :value="null" disabled>请选择账户</option><option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}</option></select></label><label>CSV / Excel 文件<input accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" type="file" @change="onFileChange" /></label><p v-if="selectedFile" class="meta">已选择：{{ selectedFile.name }}</p><p v-if="selectedAccount" class="meta">当前账户余额：{{ formatCurrency(selectedAccount.current_balance) }}</p><p v-if="importMessage" class="feedback-text">{{ importMessage }}</p><div class="action-group"><button class="primary-button" :disabled="importLoading" type="button" @click="submitImport">{{ importLoading ? '处理中...' : '预览导入' }}</button><button v-if="importPreview && (importPreview.status === 'preview_pending' || importPreview.status === 'preview_failed')" class="primary-button" :disabled="importLoading || importPreview.success_rows === 0" type="button" @click="confirmPreview">确认入账</button></div><p class="meta import-hint">先预览并核对有效行，确认后才写入正式流水。XLSX 支持六家银行真实样本工作表及借方/贷方金额映射。</p><template v-if="importPreview"><h3>预览结果</h3><p class="meta">任务 #{{ importPreview.job_id }} · 共 {{ importPreview.total_rows }} 行 · 有效 {{ importPreview.success_rows }} · 失败 {{ importPreview.failed_rows }} · 跳过 {{ importPreview.skipped_rows }}</p><div v-if="importPreview.preview_rows.length" class="table-scroll"><table><thead><tr><th>行号</th><th>流水号</th><th>日期</th><th>方向</th><th>金额</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in importPreview.preview_rows" :key="row.id"><td>{{ row.row_no }}</td><td>{{ row.transaction_no || '-' }}</td><td>{{ row.transaction_date || '-' }}</td><td>{{ row.direction || '-' }}</td><td>{{ row.amount || '-' }}</td><td><span class="pill">{{ row.status }}</span></td><td>{{ row.error_message || '-' }}</td></tr></tbody></table></div><template v-if="importPreview.failed_rows > 0"><label>失败行修正 JSON<textarea v-model="importRetryJson" rows="6" :placeholder="retryPayload(importPreview.preview_rows)"></textarea></label><button class="ghost-button" :disabled="importLoading" type="button" @click="retryPreviewErrorsAction">提交失败行重试</button><p class="meta import-hint">JSON 为数组，每项至少包含 row_no、transaction_no、transaction_date（YYYY-MM-DD）、direction、amount；可点击占位内容复制后修正。</p></template></template></article>
         <article class="panel table-panel"><div class="section-heading"><div><h2>流水明细</h2><span class="meta">共 {{ totalTransactions }} 条</span></div><button class="primary-button" type="button" @click="downloadTransactionExport">导出 CSV</button></div><p v-if="transactionMessage" class="feedback-text">{{ transactionMessage }}</p><div v-if="transactions.length" class="table-scroll"><table><thead><tr><th>交易日期</th><th>方向</th><th>金额</th><th>对方户名</th><th>摘要</th><th>分类</th><th>匹配状态</th><th>操作</th></tr></thead><tbody><tr v-for="transaction in transactions" :key="transaction.id"><td>{{ transaction.transaction_date }}</td><td>{{ directionLabel[transaction.direction] ?? transaction.direction }}</td><td :class="transaction.direction === 'expense' ? 'expense-amount' : 'income-amount'">{{ formatCurrency(transaction.amount) }}</td><td>{{ transaction.counterparty_name || '-' }}</td><td>{{ transaction.summary || '-' }}</td><td>{{ transaction.category || '-' }}<br /><span class="meta">{{ transaction.purpose || '' }}</span></td><td><span class="pill">{{ transaction.match_status }}</span></td><td><div class="action-group"><button class="text-button" type="button" @click="showDetail(`流水 ${transaction.transaction_no}`, () => loadTransactionDetail(backendBase, token, user!.tenant_id, transaction.id))">详情</button><button class="text-button" :disabled="transactionActionLoading !== null" type="button" @click="classifyTransactionRow(transaction)">分类</button><button v-if="transaction.match_status !== 'unmatched'" class="small-danger-button" :disabled="transactionActionLoading !== null" type="button" @click="unlinkTransactionRow(transaction)">解除关联</button></div></td></tr></tbody></table></div><p v-else class="empty-state">暂无流水，请先导入 CSV 文件。</p></article>
       </section>
     </template>

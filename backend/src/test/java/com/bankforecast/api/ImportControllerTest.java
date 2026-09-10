@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.Collections;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -109,6 +110,54 @@ class ImportControllerTest {
         .andExpect(jsonPath("$.data.success_rows").value(0)).andExpect(jsonPath("$.data.skipped_rows").value(1));
     org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
         "select count(*) from bank_transaction where tenant_id = ? and transaction_no = ?", Integer.class, tenantId, transactionNo).intValue());
+  }
+
+  @Test
+  void previewsThenConfirmsBankStatementsWithoutWritingBeforeConfirmation() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
+    Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
+    String transactionNo = "TXN-PREVIEW-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "transaction_no,transaction_date,direction,amount\n" + transactionNo + ",2026-09-09,income,18.00\n";
+    int before = jdbcTemplate.queryForObject("select count(*) from bank_transaction where tenant_id = ? and transaction_no = ?", Integer.class, tenantId, transactionNo);
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/bank-statements/preview")
+            .file(new MockMultipartFile("file", "preview.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.success_rows").value(1)).andExpect(jsonPath("$.data.preview_rows[0].status").value("valid"))
+        .andReturn();
+    org.junit.jupiter.api.Assertions.assertEquals(before, jdbcTemplate.queryForObject("select count(*) from bank_transaction where tenant_id = ? and transaction_no = ?", Integer.class, tenantId, transactionNo));
+    String body = result.getResponse().getContentAsString();
+    String jobId = body.substring(body.indexOf("job_id") + 8, body.indexOf(',', body.indexOf("job_id")));
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.preview_rows[0].status").value("confirmed"));
+    org.junit.jupiter.api.Assertions.assertEquals(before + 1, jdbcTemplate.queryForObject("select count(*) from bank_transaction where tenant_id = ? and transaction_no = ?", Integer.class, tenantId, transactionNo));
+  }
+
+  @Test
+  void retriesFailedPreviewRowBeforeConfirmation() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
+    Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
+    String transactionNo = "TXN-RETRY-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "transaction_no,transaction_date,direction,amount\n" + transactionNo + ",2026-09-09,income,bad-number\n";
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/bank-statements/preview")
+            .file(new MockMultipartFile("file", "retry.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.failed_rows").value(1)).andReturn();
+    String body = result.getResponse().getContentAsString();
+    String jobId = body.substring(body.indexOf("job_id") + 8, body.indexOf(',', body.indexOf("job_id")));
+    String retry = "{\"rows\":[{\"row_no\":2,\"transaction_no\":\"" + transactionNo + "\",\"transaction_date\":\"2026-09-09\",\"direction\":\"income\",\"amount\":\"22.00\"}]}";
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/retry-errors").contentType(MediaType.APPLICATION_JSON).content(retry)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.failed_rows").value(0)).andExpect(jsonPath("$.data.preview_rows[0].status").value("retry_success"));
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("success"));
   }
 
   private String loginToken() throws Exception {
