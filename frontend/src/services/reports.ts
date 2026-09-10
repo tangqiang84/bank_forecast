@@ -15,6 +15,17 @@ export type ReportTask = {
   result?: Record<string, unknown>
 }
 
+export type ReportAuditLog = {
+  id: number
+  user_id: number | null
+  action: string
+  target_type: string
+  target_id: string | null
+  trace_id: string
+  detail: string | null
+  created_at: string
+}
+
 export function createReport(baseUrl: string, token: string, tenantId: number, reportType: string, params: Record<string, string>) {
   return fetchJson<ApiResponse<ReportTask>>(`${baseUrl}/api/v1/reports`, {
     method: 'POST',
@@ -25,6 +36,15 @@ export function createReport(baseUrl: string, token: string, tenantId: number, r
 
 export function loadReports(baseUrl: string, token: string, tenantId: number) {
   return fetchJson<ApiResponse<ReportTask[]>>(`${baseUrl}/api/v1/reports`, { headers: authHeaders(token, tenantId) })
+}
+
+export function loadReportDetail(baseUrl: string, token: string, tenantId: number, reportId: number) {
+  return fetchJson<ApiResponse<ReportTask>>(`${baseUrl}/api/v1/reports/${reportId}`, { headers: authHeaders(token, tenantId) })
+}
+
+export function loadReportAudits(baseUrl: string, token: string, tenantId: number, reportId: number) {
+  const params = new URLSearchParams({ target_type: 'report_task', target_id: String(reportId), page_size: '20' })
+  return fetchJson<ApiResponse<{ items: ReportAuditLog[]; total: number }>>(`${baseUrl}/api/v1/audit-logs?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
 export async function downloadReport(baseUrl: string, token: string, tenantId: number, reportId: number) {

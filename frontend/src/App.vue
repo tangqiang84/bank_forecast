@@ -9,7 +9,7 @@ import { authHeaders } from './services/auth'
 import { activateForecastModel, backfillForecastActuals, loadForecastModels, loadLatestForecast, retryForecast, runForecast, type ForecastDetail, type ForecastModel } from './services/forecast'
 import { formatCurrency } from './utils/number'
 import { importFinanceRecords, loadReconciliationResults, runReconciliation, type ReconciliationResult } from './services/finance'
-import { createReport, downloadReport, loadReports, type ReportTask } from './services/reports'
+import { createReport, downloadReport, loadReportAudits, loadReportDetail, loadReports, type ReportAuditLog, type ReportTask } from './services/reports'
 
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL ?? 'http://localhost:8080'
 const user = ref<User | null>(null)
@@ -70,6 +70,9 @@ const reportMonth = ref(new Date().toISOString().slice(0, 7))
 const reportDate = ref(new Date().toISOString().slice(0, 10))
 const reportLoading = ref(false)
 const reportMessage = ref('')
+const selectedReport = ref<ReportTask | null>(null)
+const reportAudits = ref<ReportAuditLog[]>([])
+const reportDetailLoading = ref(false)
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -219,6 +222,28 @@ async function submitReconciliation() {
 async function loadReportTasks() {
   if (!user.value || !token.value) return
   reports.value = (await loadReports(backendBase, token.value, user.value.tenant_id)).data
+  if (selectedReport.value) {
+    const current = reports.value.find((report) => report.id === selectedReport.value?.id)
+    if (current) await selectReport(current)
+  }
+}
+
+async function selectReport(report: ReportTask) {
+  if (!user.value || !token.value) return
+  selectedReport.value = report
+  reportDetailLoading.value = true
+  try {
+    const [detail, audits] = await Promise.all([
+      loadReportDetail(backendBase, token.value, user.value.tenant_id, report.id),
+      loadReportAudits(backendBase, token.value, user.value.tenant_id, report.id),
+    ])
+    selectedReport.value = detail.data
+    reportAudits.value = audits.data.items
+  } catch (error) {
+    reportMessage.value = error instanceof Error ? error.message : '报表详情加载失败'
+  } finally {
+    reportDetailLoading.value = false
+  }
 }
 
 async function generateReport() {
@@ -579,9 +604,20 @@ onMounted(async () => {
         <article class="panel import-panel"><h2>导入财务记录</h2><label>财务 CSV 文件<input accept=".csv,text/csv" type="file" @change="onFinanceFileChange" /></label><p v-if="financeFile" class="meta">已选择：{{ financeFile.name }}</p><p v-if="financeImportMessage" class="feedback-text">{{ financeImportMessage }}</p><button class="primary-button" type="button" @click="submitFinanceImport">导入财务记录</button><p class="meta import-hint">必填列：record_no、record_type、record_date、amount；记录类型支持 receipt、payment、voucher、journal。</p></article>
         <article class="panel table-panel"><div class="section-heading"><div><h2>银行账/财务账对账</h2><span class="meta">按金额、方向、对手方和 3 天日期窗口匹配</span></div><button class="primary-button" :disabled="reconciliationLoading" type="button" @click="submitReconciliation">{{ reconciliationLoading ? '对账中...' : '运行对账' }}</button></div><div class="filter-row"><label>开始日期<input v-model="reconciliationDateFrom" type="date" /></label><label>结束日期<input v-model="reconciliationDateTo" type="date" /></label></div><p v-if="reconciliationMessage" class="feedback-text">{{ reconciliationMessage }}</p><div v-if="reconciliationSummary" class="forecast-evaluation"><strong>匹配 {{ reconciliationSummary.matched }}</strong><span>银行未记账 {{ reconciliationSummary.bank_unrecorded }}</span><span>财务未在银行发生 {{ reconciliationSummary.finance_unmatched }}</span></div><div v-if="reconciliationResults.length" class="table-scroll"><table><thead><tr><th>差异类型</th><th>来源编号</th><th>日期</th><th>金额</th><th>标题</th><th>状态</th></tr></thead><tbody><tr v-for="item in reconciliationResults" :key="item.id"><td>{{ item.exception_type === 'bank_unrecorded' ? '银行未记账' : '财务未在银行发生' }}</td><td>{{ item.transaction_no || item.record_no || '-' }}</td><td>{{ item.transaction_date || item.record_date || '-' }}</td><td>{{ formatCurrency(item.bank_amount || item.finance_amount || '0') }}</td><td>{{ item.title }}<br /><span class="meta">{{ item.description }}</span></td><td><span class="pill">{{ item.status }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无对账差异，请先导入财务记录并运行对账。</p></article>
       </section>
-      <section v-else-if="activeView === 'reports'" class="grid reports-layout">
-        <article class="panel import-panel"><h2>生成报表</h2><label>报表类型<select v-model="reportType"><option value="monthly">月度资金报表</option><option value="daily">日报</option><option value="health">资金体检报告</option></select></label><label v-if="reportType === 'monthly'">统计月份<input v-model="reportMonth" type="month" /></label><label v-if="reportType === 'daily'">统计日期<input v-model="reportDate" type="date" /></label><button class="primary-button" :disabled="reportLoading" type="button" @click="generateReport">{{ reportLoading ? '生成中...' : '生成报表' }}</button><p v-if="reportMessage" class="feedback-text">{{ reportMessage }}</p><p class="meta import-hint">当前支持 CSV 文件导出；报表使用实时业务数据生成。</p></article>
-        <article class="panel table-panel"><div class="section-heading"><div><h2>报表任务</h2><span class="meta">最近 {{ reports.length }} 条</span></div><button class="ghost-button" type="button" @click="loadReportTasks">刷新</button></div><div v-if="reports.length" class="table-scroll"><table><thead><tr><th>报表类型</th><th>统计范围</th><th>状态</th><th>文件</th><th>生成时间</th><th>操作</th></tr></thead><tbody><tr v-for="report in reports" :key="report.id"><td>{{ report.report_type === 'health' ? '资金体检' : report.report_type === 'monthly' ? '月报' : '日报' }}</td><td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td><td><span class="pill">{{ report.status }}</span></td><td>{{ report.file_name || '-' }}</td><td>{{ report.created_at }}</td><td><button v-if="report.status === 'success'" class="text-button" type="button" @click="downloadReportFile(report)">下载 CSV</button><span v-else class="meta">不可下载</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无报表任务，请先生成报表。</p></article>
+      <section v-else-if="activeView === 'reports'" class="reports-page">
+        <section class="report-type-strip" aria-label="报表类型">
+          <button :class="{ active: reportType === 'daily' }" type="button" @click="reportType = 'daily'">日报</button>
+          <button :class="{ active: reportType === 'monthly' }" type="button" @click="reportType = 'monthly'">月报</button>
+          <button :class="{ active: reportType === 'health' }" type="button" @click="reportType = 'health'">资金体检报告</button>
+        </section>
+        <section class="grid reports-layout">
+          <article class="panel import-panel"><h2>生成报表</h2><label>报表类型<select v-model="reportType"><option value="daily">日报</option><option value="monthly">月报</option><option value="health">资金体检报告</option></select></label><label v-if="reportType === 'monthly'">统计月份<input v-model="reportMonth" type="month" /></label><label v-if="reportType === 'daily'">统计日期<input v-model="reportDate" type="date" /></label><button class="primary-button" :disabled="reportLoading" type="button" @click="generateReport">{{ reportLoading ? '生成中...' : '生成报表' }}</button><p v-if="reportMessage" class="feedback-text">{{ reportMessage }}</p><p class="meta import-hint">报表使用实时业务数据生成，生成后可查看详情、健康评分、风险项和审计记录。</p></article>
+          <article class="panel table-panel"><div class="section-heading"><div><h2>报表任务</h2><span class="meta">最近 {{ reports.length }} 条</span></div><button class="ghost-button" type="button" @click="loadReportTasks">刷新</button></div><div v-if="reports.length" class="table-scroll"><table><thead><tr><th>报表类型</th><th>统计范围</th><th>状态</th><th>文件</th><th>生成时间</th><th>操作</th></tr></thead><tbody><tr v-for="report in reports" :key="report.id" :class="{ 'selected-row': selectedReport?.id === report.id }"><td>{{ report.report_type === 'health' ? '资金体检' : report.report_type === 'monthly' ? '月报' : '日报' }}</td><td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td><td><span class="pill">{{ report.status }}</span></td><td>{{ report.file_name || '-' }}</td><td>{{ report.created_at }}</td><td><div class="action-group"><button class="text-button" type="button" @click="selectReport(report)">查看详情</button><button v-if="report.status === 'success'" class="text-button" type="button" @click="downloadReportFile(report)">下载 CSV</button></div></td></tr></tbody></table></div><p v-else class="empty-state">暂无报表任务，请先生成报表。</p></article>
+        </section>
+        <section class="grid report-detail-layout">
+          <article class="panel report-preview"><div class="section-heading"><div><h2>报表详情与预览</h2><span class="meta">{{ selectedReport ? `任务 #${selectedReport.id}` : '请选择报表任务' }}</span></div><span v-if="reportDetailLoading" class="meta">加载中...</span></div><template v-if="selectedReport?.result"><div class="report-kpi-grid"><div><span class="label">报表类型</span><strong>{{ selectedReport.result.report_name || '-' }}</strong></div><div><span class="label">净现金流</span><strong>{{ formatCurrency(String(selectedReport.result.net_cashflow ?? '0')) }}</strong></div><div v-if="selectedReport.report_type === 'health'"><span class="label">健康评分</span><strong class="health-score">{{ selectedReport.result.health_score ?? '-' }}</strong></div><div v-if="selectedReport.report_type === 'health'"><span class="label">健康等级</span><strong>{{ selectedReport.result.health_level ?? '-' }}</strong></div></div><div v-if="selectedReport.report_type === 'health'" class="risk-list"><h3>风险项</h3><div v-if="Array.isArray(selectedReport.result.risk_items) && selectedReport.result.risk_items.length" v-for="risk in selectedReport.result.risk_items as Array<Record<string, unknown>>" :key="String(risk.title)" class="list-row"><span>{{ risk.title }}：{{ risk.description }}</span><span class="pill">{{ risk.count }}</span></div><p v-else class="empty-state">当前未发现风险项。</p></div><div v-else class="report-summary-grid"><span>收入 {{ formatCurrency(String(selectedReport.result.income_total ?? '0')) }}</span><span>支出 {{ formatCurrency(String(selectedReport.result.expense_total ?? '0')) }}</span><span>交易 {{ selectedReport.result.transaction_count ?? 0 }} 笔</span><span>匹配率 {{ `${(Number(selectedReport.result.match_rate ?? 0) * 100).toFixed(1)}%` }}</span></div></template><p v-else class="empty-state">请选择一条已生成的报表查看详情。</p></article>
+          <article class="panel table-panel"><div class="section-heading"><div><h2>报表审计记录</h2><span class="meta">{{ reportAudits.length }} 条</span></div></div><div v-if="reportAudits.length" class="audit-list"><div v-for="audit in reportAudits" :key="audit.id" class="audit-row"><div><strong>{{ audit.action === 'CREATE_REPORT' ? '生成报表' : audit.action === 'DOWNLOAD_REPORT' ? '下载报表' : audit.action }}</strong><p class="meta">{{ audit.detail || '-' }}</p></div><span class="meta">{{ audit.created_at }}</span></div></div><p v-else class="empty-state">请选择报表任务查看审计记录。</p></article>
+        </section>
       </section>
       <section v-else-if="activeView === 'forecast'" class="grid forecast-layout">
         <article class="panel import-panel"><h2>现金流预测</h2><label>预测天数<input v-model.number="forecastHorizon" min="1" max="90" type="number" /></label><label>历史窗口<input v-model.number="forecastWindow" min="1" max="30" type="number" /></label><button class="primary-button" :disabled="forecastLoading" type="button" @click="submitForecast">{{ forecastLoading ? '预测中...' : '生成预测' }}</button><button v-if="forecast.job?.status === 'failed'" class="ghost-button" :disabled="forecastLoading" type="button" @click="retryForecastJob">重试失败任务</button><button v-if="forecast.job?.status === 'success'" class="ghost-button" :disabled="forecastLoading" type="button" @click="backfillForecast">回填实际金额</button><p v-if="forecastMessage" class="feedback-text">{{ forecastMessage }}</p><h3>模型版本</h3><div v-for="model in forecastModels" :key="model.version" class="list-row"><span>{{ model.version }} · {{ model.model_name }}</span><button v-if="model.status !== 'active'" class="text-button" type="button" @click="activateModel(model.version)">启用</button><span v-else class="pill">当前启用</span></div></article>
