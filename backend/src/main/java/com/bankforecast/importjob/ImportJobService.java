@@ -252,11 +252,18 @@ public class ImportJobService {
   private void validateRow(CsvBankStatementRow row) { validateDate(row); validateAmount(row.getAmount(), row.getRowNo(), "amount"); }
 
   private void insertPreviewRow(Long tenantId, Long jobId, Long bankAccountId, CsvBankStatementRow row, String status, String error) {
-    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, status, error_message) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tenantId, jobId, bankAccountId, row.getRowNo(), row.getRawJson(), row.getTransactionNo(), row.getTransactionDate() == null ? null : Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), status, error);
+    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, status, error_message) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tenantId, jobId, bankAccountId, allocatePreviewRowNo(tenantId, jobId, row.getRowNo()), row.getRawJson(), row.getTransactionNo(), row.getTransactionDate() == null ? null : Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), status, error);
   }
 
   private void insertPreviewError(Long tenantId, Long jobId, Long bankAccountId, CsvRowError error) {
-    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, status, error_message) values (?, ?, ?, ?, ?, 'failed', ?)", tenantId, jobId, bankAccountId, error.getRowNo(), error.getRawJson(), error.getMessage());
+    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, status, error_message) values (?, ?, ?, ?, ?, 'failed', ?)", tenantId, jobId, bankAccountId, allocatePreviewRowNo(tenantId, jobId, error.getRowNo()), error.getRawJson(), error.getMessage());
+  }
+
+  private int allocatePreviewRowNo(Long tenantId, Long jobId, int sourceRowNo) {
+    Integer count = jdbcTemplate.queryForObject("select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and row_no = ? and deleted_at is null", Integer.class, tenantId, jobId, sourceRowNo);
+    if (count == null || count == 0) return sourceRowNo;
+    Integer max = jdbcTemplate.queryForObject("select coalesce(max(row_no), 0) from import_preview_row where tenant_id = ? and import_job_id = ? and deleted_at is null", Integer.class, tenantId, jobId);
+    return (max == null ? sourceRowNo : max) + 1;
   }
 
   private Map<String, Object> getPreview(Long jobId, Long tenantId) {

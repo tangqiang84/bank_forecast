@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collections;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -158,6 +160,26 @@ class ImportControllerTest {
     mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
         .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("success"));
+  }
+
+  @Test
+  void previewsSixBankWorkbookWithUniquePreviewRowNumbers() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
+    Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
+    byte[] workbook = Files.readAllBytes(Paths.get("../../docs/sample/六家银行企业网银交易明细流水格式与样本.xlsx"));
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/bank-statements/preview")
+            .file(new MockMultipartFile("file", "six-banks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbook))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.success_rows").value(30)).andExpect(jsonPath("$.data.failed_rows").value(0))
+        .andExpect(jsonPath("$.data.recognized_templates.length()").value(6)).andReturn();
+    String body = result.getResponse().getContentAsString();
+    int first = body.indexOf("\"row_no\":") + 9;
+    int second = body.indexOf("\"row_no\":", first);
+    org.junit.jupiter.api.Assertions.assertTrue(first > 8 && second > first);
   }
 
   private String loginToken() throws Exception {
