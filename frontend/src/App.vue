@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getToken, loadCurrentUser, login, logout, type User } from './services/auth'
 import { loadDashboardOverview, type DashboardOverview } from './services/dashboard'
-import { importStatements, loadAccounts, loadTransactionDetail, loadTransactions, type BankAccount, type BankTransaction } from './services/bank'
+import { closeBankAccount, createBankAccount, importStatements, loadAccounts, loadTransactionDetail, loadTransactions, scanIdleAccounts, type BankAccount, type BankAccountInput, type BankTransaction, updateBankAccount } from './services/bank'
 import { assignException, closeException, commentException, confirmMatchResult, importContracts, loadContractDetail, loadContracts, loadExceptions, loadMatchResultDetail, loadMatchResults, loadReceivables, rejectMatchResult, resolveException, runMatching, type Contract, type ExceptionCase, type MatchResult, type Receivable } from './services/receivables'
 import { fetchJson } from './services/http'
 import { authHeaders } from './services/auth'
@@ -16,7 +16,7 @@ const loginName = ref('finance01')
 const password = ref('')
 const loginLoading = ref(false)
 const loginError = ref('')
-const activeView = ref<'dashboard' | 'transactions' | 'receivables' | 'matching' | 'exceptions' | 'forecast'>('dashboard')
+const activeView = ref<'dashboard' | 'accounts' | 'transactions' | 'receivables' | 'matching' | 'exceptions' | 'forecast'>('dashboard')
 const loading = ref(false)
 const overview = ref<DashboardOverview | null>(null)
 const accounts = ref<BankAccount[]>([])
@@ -48,6 +48,10 @@ const forecastWindow = ref(3)
 const forecastLoading = ref(false)
 const forecastMessage = ref('')
 const forecastModels = ref<ForecastModel[]>([])
+const accountForm = ref<BankAccountInput>({ bankCode: '', bankName: '', accountName: '', accountNo: '', currency: 'CNY', currentBalance: '0' })
+const editingAccountId = ref<number | null>(null)
+const accountMessage = ref('')
+const accountLoading = ref(false)
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -63,6 +67,7 @@ const overviewCards = computed(() => {
   ]
 })
 const directionLabel: Record<string, string> = { income: '收入', expense: '支出', transfer: '内部转账', refund: '退款', reversal: '冲正' }
+const idleLabel: Record<string, string> = { normal: '正常', idle_30: '闲置 30 天', idle_90: '闲置 90 天', idle_180: '闲置 180 天以上' }
 
 async function submitLogin() {
   loginLoading.value = true
@@ -87,6 +92,47 @@ function signOut() {
   overview.value = null
   accounts.value = []
   transactions.value = []
+}
+
+function resetAccountForm() {
+  editingAccountId.value = null
+  accountForm.value = { bankCode: '', bankName: '', accountName: '', accountNo: '', currency: 'CNY', currentBalance: '0' }
+}
+
+function editAccount(account: BankAccount) {
+  editingAccountId.value = account.id
+  accountForm.value = { bankCode: account.bank_code, bankName: account.bank_name, accountName: account.account_name, accountNo: '', currency: account.currency, currentBalance: account.current_balance }
+  accountMessage.value = '编辑时请输入完整账号，系统只展示后四位。'
+}
+
+async function saveAccount() {
+  if (!user.value || !token.value) return
+  accountLoading.value = true
+  accountMessage.value = ''
+  try {
+    if (editingAccountId.value) await updateBankAccount(backendBase, token.value, user.value.tenant_id, editingAccountId.value, accountForm.value)
+    else await createBankAccount(backendBase, token.value, user.value.tenant_id, accountForm.value)
+    accountMessage.value = editingAccountId.value ? '账户已更新。' : '账户已新增。'
+    resetAccountForm()
+    await loadWorkspace()
+  } catch (error) { accountMessage.value = error instanceof Error ? error.message : '账户保存失败' }
+  finally { accountLoading.value = false }
+}
+
+async function closeAccount(account: BankAccount) {
+  if (!user.value || !token.value || account.status === 'closed' || !window.confirm(`确认将 ${account.bank_name} · ${account.account_name} 标记为已销户？`)) return
+  accountLoading.value = true
+  try { await closeBankAccount(backendBase, token.value, user.value.tenant_id, account.id); accountMessage.value = '账户已标记为已销户。'; await loadWorkspace() }
+  catch (error) { accountMessage.value = error instanceof Error ? error.message : '账户销户失败' }
+  finally { accountLoading.value = false }
+}
+
+async function runIdleScan() {
+  if (!user.value || !token.value) return
+  accountLoading.value = true
+  try { const result = await scanIdleAccounts(backendBase, token.value, user.value.tenant_id); accountMessage.value = `账户盘点完成，更新 ${result.data.updated_accounts} 个账户。`; accounts.value = result.data.accounts; await loadWorkspace() }
+  catch (error) { accountMessage.value = error instanceof Error ? error.message : '账户盘点失败' }
+  finally { accountLoading.value = false }
 }
 
 async function loadWorkspace() {
@@ -367,6 +413,7 @@ onMounted(async () => {
     </header>
     <nav class="view-tabs" aria-label="工作区">
       <button :class="{ active: activeView === 'dashboard' }" type="button" @click="activeView = 'dashboard'">驾驶舱</button>
+      <button :class="{ active: activeView === 'accounts' }" type="button" @click="activeView = 'accounts'">银行账户</button>
       <button :class="{ active: activeView === 'transactions' }" type="button" @click="activeView = 'transactions'">银行流水</button>
       <button :class="{ active: activeView === 'receivables' }" type="button" @click="activeView = 'receivables'">合同应收</button>
       <button :class="{ active: activeView === 'matching' }" type="button" @click="activeView = 'matching'">匹配结果</button>
@@ -388,6 +435,10 @@ onMounted(async () => {
     </template>
 
     <template v-else>
+      <section v-if="activeView === 'accounts'" class="grid account-management-layout">
+        <article class="panel import-panel"><div class="section-heading"><h2>{{ editingAccountId ? '编辑银行账户' : '新增银行账户' }}</h2><button v-if="editingAccountId" class="ghost-button" type="button" @click="resetAccountForm">取消编辑</button></div><label>银行代码<input v-model.trim="accountForm.bankCode" placeholder="例如 CMB" required /></label><label>银行名称<input v-model.trim="accountForm.bankName" placeholder="例如 招商银行" required /></label><label>账户名称<input v-model.trim="accountForm.accountName" required /></label><label>完整账号<input v-model.trim="accountForm.accountNo" inputmode="numeric" autocomplete="off" required /></label><label>币种<input v-model.trim="accountForm.currency" required /></label><label>当前余额<input v-model="accountForm.currentBalance" inputmode="decimal" type="number" min="0" step="0.01" required /></label><button class="primary-button" :disabled="accountLoading" type="button" @click="saveAccount">{{ accountLoading ? '处理中...' : (editingAccountId ? '保存账户' : '新增账户') }}</button><p v-if="accountMessage" class="feedback-text">{{ accountMessage }}</p><p class="meta import-hint">完整账号仅用于保存和校验，页面只展示后四位。</p></article>
+        <article class="panel table-panel"><div class="section-heading"><div><h2>账户盘点</h2><span class="meta">共 {{ accounts.length }} 个账户</span></div><button class="primary-button" :disabled="accountLoading" type="button" @click="runIdleScan">盘点闲置账户</button></div><div v-if="accounts.length" class="table-scroll"><table><thead><tr><th>银行/账户</th><th>后四位</th><th>余额</th><th>状态</th><th>最近动账</th><th>闲置级别</th><th>操作</th></tr></thead><tbody><tr v-for="account in accounts" :key="account.id"><td>{{ account.bank_name }}<br />{{ account.account_name }}</td><td>{{ account.account_no_last4 }}</td><td>{{ formatCurrency(account.current_balance) }}</td><td><span class="pill">{{ account.status }}</span></td><td>{{ account.last_transaction_at || '暂无流水' }}<br /><span v-if="account.idle_days !== null" class="meta">{{ account.idle_days }} 天</span></td><td><span class="pill" :class="account.idle_level === 'normal' ? '' : 'risk-medium'">{{ idleLabel[account.idle_level || 'normal'] }}</span></td><td><div class="action-group"><button class="text-button" type="button" @click="editAccount(account)">编辑</button><button v-if="account.status !== 'closed'" class="small-danger-button" type="button" @click="closeAccount(account)">标记销户</button></div></td></tr></tbody></table></div><p v-else class="empty-state">暂无银行账户。</p></article>
+      </section>
       <section v-if="activeView === 'receivables'" class="grid receivable-layout">
         <article class="panel import-panel"><h2>导入合同应收</h2><label>合同 CSV 文件<input accept=".csv,text/csv" type="file" @change="onContractFileChange" /></label><p v-if="contractFile" class="meta">已选择：{{ contractFile.name }}</p><p v-if="contractImportMessage" class="feedback-text">{{ contractImportMessage }}</p><button class="primary-button" type="button" @click="submitContractImport">导入合同</button><p class="meta import-hint">支持英文或中文表头，例如 contract_name / 合同名称；必填列为合同编号、合同名称、客户名称、合同金额、节点名称、节点类型、到期日期、应收金额。</p></article>
         <article class="panel table-panel"><div class="section-heading"><h2>应收计划</h2><span class="meta">{{ receivables.length }} 个节点</span></div><div v-if="receivables.length" class="table-scroll"><table><thead><tr><th>合同</th><th>客户</th><th>节点</th><th>应收日期</th><th>计划金额</th><th>已收金额</th><th>状态</th><th>追溯</th></tr></thead><tbody><tr v-for="item in receivables" :key="item.id"><td>{{ item.contract_no }}<br />{{ item.contract_name }}</td><td>{{ item.customer_name }}</td><td>{{ item.node_name }}</td><td>{{ item.due_date }}</td><td>{{ formatCurrency(item.plan_amount) }}</td><td>{{ formatCurrency(item.paid_amount) }}</td><td><span class="pill">{{ item.status }}</span></td><td><button class="text-button" type="button" @click="showDetail(`合同 ${item.contract_no}`, () => loadContractDetail(backendBase, token, user!.tenant_id, item.contract_id))">详情</button></td></tr></tbody></table></div><p v-else class="empty-state">暂无应收计划，请先导入合同 CSV。</p></article>

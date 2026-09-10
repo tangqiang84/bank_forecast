@@ -4,6 +4,7 @@ import { fetchJson, fetchMultipart } from './http'
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 
 export type BankAccount = {
+  bank_code: string
   id: number
   bank_name: string
   account_name: string
@@ -11,6 +12,9 @@ export type BankAccount = {
   currency: string
   status: string
   current_balance: string
+  last_transaction_at: string | null
+  idle_days: number | null
+  idle_level: 'normal' | 'idle_30' | 'idle_90' | 'idle_180' | null
 }
 
 export type BankTransaction = {
@@ -30,6 +34,45 @@ export type TransactionPage = { items: BankTransaction[]; page: number; page_siz
 
 export function loadAccounts(baseUrl: string, token: string, tenantId: number) {
   return fetchJson<ApiResponse<BankAccount[]>>(`${baseUrl}/api/v1/bank-accounts`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export type BankAccountInput = {
+  bankCode: string
+  bankName: string
+  accountName: string
+  accountNo: string
+  currency: string
+  currentBalance: string
+}
+
+export function createBankAccount(baseUrl: string, token: string, tenantId: number, input: BankAccountInput) {
+  return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateBankAccount(baseUrl: string, token: string, tenantId: number, id: number, input: BankAccountInput) {
+  return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts/${id}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function closeBankAccount(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts/${id}/close`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function scanIdleAccounts(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<{ updated_accounts: number; accounts: BankAccount[] }>>(`${baseUrl}/api/v1/bank-accounts/idle-scan`, {
+    method: 'POST',
     headers: authHeaders(token, tenantId),
   })
 }

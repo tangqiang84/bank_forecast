@@ -27,6 +27,16 @@ export JWT_SECRET='<本地随机长字符串>'
 - 密码：开发环境启动前通过 `DEV_ADMIN_PASSWORD` 环境变量设置，例如 `DEV_ADMIN_PASSWORD=123123`；已有本地数据库也会在启动时同步该开发密码
 - 租户：演示企业
 
+## 银行账户管理
+
+- `GET /api/v1/bank-accounts`：返回账户列表、脱敏账号后四位、最近动账日期、闲置天数和闲置级别。
+- `POST /api/v1/bank-accounts`：新增银行账户。
+- `PUT /api/v1/bank-accounts/{id}`：编辑账户基础信息和余额，编辑时需提交完整账号，接口不返回明文账号。
+- `POST /api/v1/bank-accounts/{id}/close`：标记账户已销户，不物理删除历史流水。
+- `POST /api/v1/bank-accounts/idle-scan`：按最近流水执行账户盘点；30 天、90 天、180 天分别返回对应闲置级别，状态同步为 `idle` 或 `active`。
+
+当前账号存储为本地开发演示方案，页面和接口只返回后四位；正式投产前需替换为合规密钥管理和加密存储方案。
+
 ## 银行流水 CSV / Excel 导入
 
 当前接口：`POST /api/v1/imports/bank-statements`

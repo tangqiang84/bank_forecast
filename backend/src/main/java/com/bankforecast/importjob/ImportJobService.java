@@ -216,6 +216,8 @@ public class ImportJobService {
         row.getCounterpartyName(),
         row.getSummary(),
         "unmatched");
+    jdbcTemplate.update("update bank_account set last_transaction_at = case when last_transaction_at is null or last_transaction_at < ? then ? else last_transaction_at end, updated_at = current_timestamp where id = ? and tenant_id = ?",
+        Date.valueOf(row.getTransactionDate()), Date.valueOf(row.getTransactionDate()), bankAccountId, tenantId);
   }
 
   private Map<String, Object> getJob(Long jobId, Long tenantId) {
