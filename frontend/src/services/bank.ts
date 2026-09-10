@@ -35,10 +35,17 @@ export type BankTransaction = {
 export type TransactionPage = { items: BankTransaction[]; page: number; page_size: number; total: number }
 export type BankAccountPage = { items: BankAccount[]; page: number; page_size: number; total: number }
 
-export function loadAccounts(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
-  return fetchJson<ApiResponse<BankAccountPage>>(`${baseUrl}/api/v1/bank-accounts?page=${page}&page_size=${pageSize}`, {
+export async function loadAccounts(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  const response = await fetchJson<ApiResponse<BankAccountPage | BankAccount[]>>(`${baseUrl}/api/v1/bank-accounts?page=${page}&page_size=${pageSize}`, {
     headers: authHeaders(token, tenantId),
   })
+  if (Array.isArray(response.data)) {
+    return {
+      ...response,
+      data: { items: response.data, page, page_size: pageSize, total: response.data.length },
+    } as ApiResponse<BankAccountPage>
+  }
+  return response as ApiResponse<BankAccountPage>
 }
 
 export type BankAccountInput = {

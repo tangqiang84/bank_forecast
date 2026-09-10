@@ -35,8 +35,15 @@ export function createReport(baseUrl: string, token: string, tenantId: number, r
   })
 }
 
-export function loadReports(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
-  return fetchJson<ApiResponse<ReportPage>>(`${baseUrl}/api/v1/reports?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) })
+export async function loadReports(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  const response = await fetchJson<ApiResponse<ReportPage | ReportTask[]>>(`${baseUrl}/api/v1/reports?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) })
+  if (Array.isArray(response.data)) {
+    return {
+      ...response,
+      data: { items: response.data, page, page_size: pageSize, total: response.data.length },
+    } as ApiResponse<ReportPage>
+  }
+  return response as ApiResponse<ReportPage>
 }
 
 export function loadReportDetail(baseUrl: string, token: string, tenantId: number, reportId: number) {
