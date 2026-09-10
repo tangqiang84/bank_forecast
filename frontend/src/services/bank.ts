@@ -27,6 +27,8 @@ export type BankTransaction = {
   balance_after: string | null
   counterparty_name: string | null
   summary: string | null
+  purpose: string | null
+  category: string | null
   match_status: string
 }
 
@@ -87,6 +89,26 @@ export function loadTransactions(baseUrl: string, token: string, tenantId: numbe
 
 export function loadTransactionDetail(baseUrl: string, token: string, tenantId: number, id: number) {
   return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/bank-transactions/${id}`, { headers: authHeaders(token, tenantId) })
+}
+
+export function classifyTransaction(baseUrl: string, token: string, tenantId: number, id: number, category: string, purpose: string, remark: string) {
+  return fetchJson<ApiResponse<BankTransaction>>(`${baseUrl}/api/v1/bank-transactions/${id}/manual-classify`, {
+    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ category, purpose, remark }),
+  })
+}
+
+export function unlinkTransaction(baseUrl: string, token: string, tenantId: number, id: number, reason: string) {
+  return fetchJson<ApiResponse<BankTransaction & { unlinked_groups: number; rolled_back_plans: number }>>(`${baseUrl}/api/v1/bank-transactions/${id}/unlink`, {
+    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
+  })
+}
+
+export async function exportTransactions(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
+  const response = await fetch(`${baseUrl}/api/v1/bank-transactions/export?${params.toString()}`, { headers: authHeaders(token, tenantId) })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.blob()
 }
 
 export function importStatements(

@@ -1,5 +1,7 @@
 package com.bankforecast.bank;
 
+import com.bankforecast.api.dto.TransactionClassifyRequest;
+import com.bankforecast.audit.AuditService;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
@@ -7,17 +9,25 @@ import com.bankforecast.security.AuthPrincipal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BankTransactionService {
 
   private final JdbcTemplate jdbcTemplate;
+  private final AuditService auditService;
 
-  public BankTransactionService(JdbcTemplate jdbcTemplate) {
+  public BankTransactionService(JdbcTemplate jdbcTemplate, AuditService auditService) {
     this.jdbcTemplate = jdbcTemplate;
+    this.auditService = auditService;
   }
 
   public Map<String, Object> list(int page, int pageSize, Long bankAccountId, String contractNo,
@@ -39,7 +49,7 @@ public class BankTransactionService {
         + "where mr.bank_transaction_id = bt.id and mr.deleted_at is null and p.project_no = ?))";
     Object[] args = filterArgs(principal.getTenantId(), bankAccountId, dateFrom, dateTo, status, contractNo, projectNo);
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
-        "select bt.id, bt.bank_account_id, bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.balance_after, bt.counterparty_name, bt.summary, bt.match_status"
+        "select bt.id, bt.bank_account_id, bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.balance_after, bt.counterparty_name, bt.summary, bt.purpose, bt.category, bt.match_status"
             + filter + " order by bt.transaction_date desc, bt.id desc limit ? offset ?",
         append(args, safePageSize, offset));
     Integer total = jdbcTemplate.queryForObject("select count(*)" + filter, args, Integer.class);
@@ -70,6 +80,81 @@ public class BankTransactionService {
             + "where tenant_id = ? and target_type = 'bank_transaction' and target_id = ? order by id desc", principal.getTenantId(), String.valueOf(transactionId)));
     return data;
   }
+
+  @Transactional
+  public Map<String, Object> classify(Long transactionId, TransactionClassifyRequest request) {
+    AuthPrincipal principal = requireAuth();
+    findTransaction(principal.getTenantId(), transactionId);
+    jdbcTemplate.update("update bank_transaction set category = ?, purpose = ?, updated_at = current_timestamp where id = ? and tenant_id = ? and deleted_at is null",
+        request.getCategory().trim(), clean(request.getPurpose()), transactionId, principal.getTenantId());
+    auditService.record("CLASSIFY_BANK_TRANSACTION", "bank_transaction", String.valueOf(transactionId),
+        "category=" + request.getCategory().trim() + ", purpose=" + clean(request.getPurpose()) + ", remark=" + clean(request.getRemark()));
+    return findTransaction(principal.getTenantId(), transactionId);
+  }
+
+  @Transactional
+  public Map<String, Object> unlink(Long transactionId, String reason) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    findTransaction(tenantId, transactionId);
+    List<Map<String, Object>> allocations = jdbcTemplate.queryForList(
+        "select a.match_group_id, a.contract_receivable_plan_id, a.allocated_amount "
+            + "from match_result_allocation a where a.tenant_id = ? and a.bank_transaction_id = ? "
+            + "and a.status in ('matched', 'confirmed', 'manual_confirmed') and a.deleted_at is null",
+        tenantId, transactionId);
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    Map<Long, BigDecimal> rollback = new LinkedHashMap<>();
+    Set<String> groups = new HashSet<>();
+    for (Map<String, Object> allocation : allocations) {
+      Long planId = ((Number) allocation.get("contract_receivable_plan_id")).longValue();
+      BigDecimal amount = new BigDecimal(String.valueOf(allocation.get("allocated_amount")));
+      rollback.put(planId, rollback.containsKey(planId) ? rollback.get(planId).add(amount) : amount);
+      groups.add(String.valueOf(allocation.get("match_group_id")));
+    }
+    for (Map.Entry<Long, BigDecimal> entry : rollback.entrySet()) {
+      Map<String, Object> plan = jdbcTemplate.queryForMap("select plan_amount, paid_amount from contract_receivable_plan where id = ? and tenant_id = ?", entry.getKey(), tenantId);
+      BigDecimal paid = new BigDecimal(String.valueOf(plan.get("paid_amount"))).subtract(entry.getValue()).max(BigDecimal.ZERO);
+      BigDecimal planAmount = new BigDecimal(String.valueOf(plan.get("plan_amount")));
+      String status = paid.compareTo(BigDecimal.ZERO) == 0 ? "unpaid" : (paid.compareTo(planAmount) >= 0 ? "paid" : "partial");
+      jdbcTemplate.update("update contract_receivable_plan set paid_amount = ?, status = ?, updated_at = ? where id = ? and tenant_id = ?", paid, status, now, entry.getKey(), tenantId);
+    }
+    if (!groups.isEmpty()) {
+      jdbcTemplate.update("update match_result_allocation set status = 'unlinked', deleted_at = ?, updated_at = ? where tenant_id = ? and bank_transaction_id = ? and deleted_at is null", now, now, tenantId, transactionId);
+      jdbcTemplate.update("update match_result set match_status = 'unlinked', match_reason = concat(match_reason, '；已解除关联：', ?), updated_at = ?, deleted_at = ? where tenant_id = ? and bank_transaction_id = ? and deleted_at is null", clean(reason), now, now, tenantId, transactionId);
+    }
+    jdbcTemplate.update("update bank_transaction set match_status = 'unmatched', updated_at = ? where id = ? and tenant_id = ? and deleted_at is null", now, transactionId, tenantId);
+    auditService.record("UNLINK_BANK_TRANSACTION", "bank_transaction", String.valueOf(transactionId), "reason=" + clean(reason) + ", groups=" + groups);
+    Map<String, Object> result = findTransaction(tenantId, transactionId);
+    result.put("unlinked_groups", groups.size());
+    result.put("rolled_back_plans", rollback.size());
+    return result;
+  }
+
+  public String exportCsv(Long bankAccountId, LocalDate dateFrom, LocalDate dateTo, String status, String category) {
+    AuthPrincipal principal = requireAuth();
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.balance_after, bt.counterparty_name, bt.summary, bt.purpose, bt.category, bt.match_status "
+            + "from bank_transaction bt where bt.tenant_id = ? and bt.deleted_at is null and (? is null or bt.bank_account_id = ?) "
+            + "and (? is null or bt.transaction_date >= ?) and (? is null or bt.transaction_date <= ?) and (? is null or bt.match_status = ?) and (? is null or bt.category = ?) "
+            + "order by bt.transaction_date desc, bt.id desc", principal.getTenantId(), bankAccountId, bankAccountId, dateFrom, dateFrom, dateTo, dateTo, status, status, category, category);
+    StringBuilder csv = new StringBuilder("transaction_no,transaction_date,direction,amount,balance_after,counterparty_name,summary,purpose,category,match_status\n");
+    for (Map<String, Object> row : rows) {
+      csv.append(csv(row.get("transaction_no"))).append(',').append(csv(row.get("transaction_date"))).append(',')
+          .append(csv(row.get("direction"))).append(',').append(csv(row.get("amount"))).append(',').append(csv(row.get("balance_after"))).append(',')
+          .append(csv(row.get("counterparty_name"))).append(',').append(csv(row.get("summary"))).append(',').append(csv(row.get("purpose"))).append(',')
+          .append(csv(row.get("category"))).append(',').append(csv(row.get("match_status"))).append('\n');
+    }
+    return "\uFEFF" + csv;
+  }
+
+  private Map<String, Object> findTransaction(Long tenantId, Long transactionId) {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList("select id, bank_account_id, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, purpose, category, match_status from bank_transaction where id = ? and tenant_id = ? and deleted_at is null", transactionId, tenantId);
+    if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "银行流水不存在");
+    return new LinkedHashMap<>(rows.get(0));
+  }
+
+  private String clean(String value) { return value == null ? "" : value.trim(); }
+  private String csv(Object value) { String text = value == null ? "" : String.valueOf(value); return "\"" + text.replace("\"", "\"\"") + "\""; }
 
   private Object[] filterArgs(Long tenantId, Long accountId, LocalDate from, LocalDate to, String status,
       String contractNo, String projectNo) {

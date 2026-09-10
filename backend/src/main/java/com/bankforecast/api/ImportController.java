@@ -3,6 +3,7 @@ package com.bankforecast.api;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.contract.ContractImportService;
 import com.bankforecast.importjob.ImportJobService;
+import com.bankforecast.finance.FinanceRecordImportService;
 import java.util.Map;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -22,10 +23,13 @@ public class ImportController {
 
   private final ImportJobService importJobService;
   private final ContractImportService contractImportService;
+  private final FinanceRecordImportService financeRecordImportService;
 
-  public ImportController(ImportJobService importJobService, ContractImportService contractImportService) {
+  public ImportController(ImportJobService importJobService, ContractImportService contractImportService,
+      FinanceRecordImportService financeRecordImportService) {
     this.importJobService = importJobService;
     this.contractImportService = contractImportService;
+    this.financeRecordImportService = financeRecordImportService;
   }
 
   @PostMapping("/contracts")
@@ -38,6 +42,11 @@ public class ImportController {
       @RequestParam("bank_account_id") Long bankAccountId,
       @RequestParam("file") MultipartFile file) {
     return ApiResponse.ok(importJobService.importBankStatements(bankAccountId, file));
+  }
+
+  @PostMapping("/finance-records")
+  public ApiResponse<Map<String, Object>> importFinanceRecords(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(financeRecordImportService.importRecords(file));
   }
 
   @GetMapping("/{jobId}")

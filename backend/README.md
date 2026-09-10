@@ -56,6 +56,14 @@ TXN-001,2026-09-09,income,128400.00,2865300.00,ACME客户,项目回款
 
 导入限制由配置控制：默认单文件不超过 10 MB、最多 10000 行、交易日期距当前日期不超过 3650 天、金额最多 2 位小数且不超过 `IMPORT_MAX_AMOUNT`。单行错误不会阻止其他正确行导入，任务摘要会返回成功、失败、跳过数量和错误明细。重复交易号按跳过处理。
 
+## 财务记录导入与对账
+
+- `POST /api/v1/imports/finance-records`：导入财务收付款 CSV，必填列为 `record_no`、`record_type`、`record_date`、`amount`；支持 `receipt`、`payment`、`voucher`、`journal`。
+- `POST /api/v1/reconciliation/run`：按可选日期范围执行银行账/财务账对账。收款匹配 `income`，付款匹配 `expense`，金额一致且日期相差不超过 3 天；同时优先比较归一化对手方名称。
+- `GET /api/v1/reconciliation/results`：查询本次或全部对账差异，支持 `job_id`、`difference_type`、`page`、`page_size`。
+
+对账成功记录写入 `match_result` 并关联 `finance_record_id`；银行有流水但财务无记录生成 `bank_unrecorded`，财务有记录但银行无流水生成 `finance_unmatched`，两类差异均进入异常事项中心并保留任务编号和审计日志。当前为 CSV + 单笔一对一规则，复杂拆分、跨月、科目级和财务系统 API 对接后置。
+
 ## 合同应收 CSV 导入
 
 接口：`POST /api/v1/imports/contracts`，使用 multipart 字段 `file`。
@@ -109,6 +117,9 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 - `GET /api/v1/matching/exceptions/{id}/logs`：查询异常操作日志。
 - `GET /api/v1/bank-transactions`：按账户、合同编号、项目编号、交易日期和匹配状态分页查询银行流水。
 - `GET /api/v1/bank-transactions/{id}`：查看流水、匹配结果和审计日志。
+- `POST /api/v1/bank-transactions/{id}/manual-classify`：人工更新流水分类和用途，并写入审计日志。
+- `POST /api/v1/bank-transactions/{id}/unlink`：解除流水与匹配组的关联，回滚应收节点已收金额并保留软删除记录。
+- `GET /api/v1/bank-transactions/export`：按账户、日期、匹配状态和分类筛选，导出 UTF-8 BOM CSV；Excel 导出暂未实现。
 - `GET /api/v1/contracts/{id}`：查看合同、应收节点、关联流水和审计日志。
 - `GET /api/v1/matching/results/{id}`：查看匹配结果、原始流水、关联异常和审计日志。
 - `GET /api/v1/matching/exceptions/{id}`：查看异常来源和处理日志。

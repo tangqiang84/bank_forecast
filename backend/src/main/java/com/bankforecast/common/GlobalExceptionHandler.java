@@ -13,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -52,6 +53,14 @@ public class GlobalExceptionHandler {
     data.put("supported_content_type", MediaType.APPLICATION_JSON_VALUE);
     return ResponseEntity.badRequest().body(ApiResponse.fail(ErrorCode.PARAM_ERROR,
         "请求格式不正确，请使用 JSON 请求体", data));
+  }
+
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("field", ex.getName());
+    data.put("value", ex.getValue());
+    return ResponseEntity.badRequest().body(ApiResponse.fail(ErrorCode.PARAM_ERROR, "参数格式不正确", data));
   }
 
   @ExceptionHandler(BusinessException.class)

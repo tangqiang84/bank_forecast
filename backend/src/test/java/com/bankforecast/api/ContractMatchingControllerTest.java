@@ -17,9 +17,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.annotation.DirtiesContext;
 
-@SpringBootTest(properties = "bank-forecast.bootstrap.default-admin-password=test-password-123")
+@SpringBootTest(properties = {
+    "bank-forecast.bootstrap.default-admin-password=test-password-123",
+    "spring.datasource.url=jdbc:h2:mem:contract_matching_controller_test;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1"
+})
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class ContractMatchingControllerTest {
   @Autowired private MockMvc mockMvc;
   @Autowired private JdbcTemplate jdbcTemplate;

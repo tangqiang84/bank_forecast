@@ -167,6 +167,11 @@ label {
   align-items: start;
 }
 
+.reconciliation-layout {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
 .account-management-layout {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   align-items: start;
@@ -543,6 +548,10 @@ code {
   }
 
   .receivable-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .reconciliation-layout {
     grid-template-columns: 1fr;
   }
 
