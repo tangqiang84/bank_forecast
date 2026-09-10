@@ -7,12 +7,11 @@ import com.bankforecast.contract.CsvContractParser;
 import com.bankforecast.contract.CsvContractRow;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import org.junit.jupiter.api.Test;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 class CsvParserTest {
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -104,34 +103,14 @@ class CsvParserTest {
 
   @Test
   void recognizesSixBankSheetsAndMapsDebitCreditColumns() throws Exception {
-    XSSFWorkbook workbook = new XSSFWorkbook();
-    String[] banks = {"中国银行", "工商银行", "广发银行", "平安银行", "上海银行", "苏州银行"};
-    for (String bank : banks) {
-      org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet(bank);
-      sheet.createRow(0).createCell(0).setCellValue(bank + "交易明细");
-      Row header = sheet.createRow(1);
-      String[] headers = {"交易日期", "摘要", "借方金额", "贷方金额", "余额", "对方户名", "凭证号"};
-      for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
-      Row data = sheet.createRow(2);
-      data.createCell(0).setCellValue("2026-09-10");
-      data.createCell(1).setCellValue("收款");
-      data.createCell(3).setCellValue(100.00);
-      data.createCell(4).setCellValue(1000.00);
-      data.createCell(5).setCellValue("示例客户");
-      data.createCell(6).setCellValue(bank + "-TX-001");
-      sheet.createRow(3).createCell(0).setCellValue("备注：以上为样本数据");
-    }
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    workbook.write(output);
-    workbook.close();
-
+    String sample = "../../docs/sample/六家银行企业网银交易明细流水格式与样本.xlsx";
     ExcelBankStatementParser.ExcelParseResult result = new ExcelBankStatementParser(objectMapper)
-        .parse(new ByteArrayInputStream(output.toByteArray()), 100);
+        .parse(Files.newInputStream(Paths.get(sample)), 100);
 
     assertEquals(6, result.getTemplates().size());
-    assertEquals(6, result.getRows().size());
-    assertEquals("income", result.getRows().get(0).getDirection());
-    assertEquals("100.00", result.getRows().get(0).getAmount().toPlainString());
+    assertEquals(30, result.getRows().size());
+    assertEquals("expense", result.getRows().get(0).getDirection());
+    assertEquals("150000", result.getRows().get(0).getAmount().toPlainString());
     assertTrue(result.getErrors().isEmpty());
   }
 }
