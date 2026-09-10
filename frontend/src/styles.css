@@ -671,3 +671,8 @@ code {
     padding: 24px;
   }
 }
+.inline-edit-form,.risk-rule-editor,.attachment-list{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:12px 0;padding:12px;border:1px solid var(--line);background:var(--surface-muted)}
+.inline-edit-form label,.risk-rule-editor label{min-width:140px}
+.rule-row{display:flex;gap:10px;align-items:center;width:100%;flex-wrap:wrap}
+.attachment-list{display:block}
+.attachment-list .list-row{margin-top:8px}

@@ -3,6 +3,7 @@ package com.bankforecast.api;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
+import com.bankforecast.audit.AuditService;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.math.BigDecimal;
@@ -11,6 +12,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
+import java.util.Collections;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,8 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/projects")
 public class ProjectController {
   private final JdbcTemplate jdbcTemplate;
+  private final AuditService auditServiceHolder;
 
-  public ProjectController(JdbcTemplate jdbcTemplate) { this.jdbcTemplate = jdbcTemplate; }
+  public ProjectController(JdbcTemplate jdbcTemplate, AuditService auditService) {
+    this.jdbcTemplate = jdbcTemplate;
+    this.auditServiceHolder = auditService;
+  }
 
   @GetMapping
   public ApiResponse<Map<String, Object>> list(
@@ -48,10 +58,11 @@ public class ProjectController {
             + "coalesce((select sum(r.plan_amount) from contract_receivable_plan r where r.project_id = p.id and r.deleted_at is null), 0) as receivable_amount, "
             + "coalesce((select sum(r.paid_amount) from contract_receivable_plan r where r.project_id = p.id and r.deleted_at is null), 0) as paid_amount, "
             + "coalesce((select sum(r.plan_amount - r.paid_amount) from contract_receivable_plan r where r.project_id = p.id and r.status <> 'paid' and r.due_date < current_date and r.deleted_at is null), 0) as overdue_amount, "
+            + "coalesce((select sum(case when bt2.direction = 'income' then a2.allocated_amount when bt2.direction = 'expense' then -a2.allocated_amount else 0 end) from match_result_allocation a2 join match_result mr2 on mr2.id = a2.match_result_id join bank_transaction bt2 on bt2.id = a2.bank_transaction_id where mr2.project_id = p.id and mr2.tenant_id = p.tenant_id and a2.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr2.deleted_at is null and a2.deleted_at is null), 0) as cashflow_amount, "
             + "(select count(*) from contract c where c.project_id = p.id and c.deleted_at is null) as contract_count, "
             + "(select count(*) from exception_case e where e.tenant_id = p.tenant_id and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = p.id) and e.status not in ('closed', 'false_positive') and e.deleted_at is null) as exception_count "
             + "from project p" + filter + " order by p.id desc limit ? offset ?", append(args, safeSize, offset));
-    for (Map<String, Object> row : rows) enrichRisk(row);
+    for (Map<String, Object> row : rows) enrichRisk(row, principal.getTenantId());
     Integer total = jdbcTemplate.queryForObject("select count(*) from project p" + filter, args, Integer.class);
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("items", rows);
@@ -59,6 +70,57 @@ public class ProjectController {
     data.put("page_size", safeSize);
     data.put("total", total == null ? 0 : total);
     return ApiResponse.ok(data);
+  }
+
+  @GetMapping("/risk-rules")
+  public ApiResponse<List<Map<String, Object>>> riskRules() {
+    AuthPrincipal principal = requireAuth();
+    ensureDefaultRules(principal.getTenantId());
+    return ApiResponse.ok(jdbcTemplate.queryForList("select id, rule_code, threshold, penalty, max_penalty, enabled, updated_at from project_risk_rule where tenant_id = ? order by id", principal.getTenantId()));
+  }
+
+  @PutMapping("/risk-rules/{ruleCode}")
+  public ApiResponse<Map<String, Object>> updateRiskRule(@PathVariable String ruleCode, @RequestBody Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    if (!allowedRule(ruleCode)) throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的项目风险规则");
+    BigDecimal threshold = decimal(request.get("threshold"));
+    BigDecimal penalty = decimal(request.get("penalty"));
+    BigDecimal maxPenalty = request.get("max_penalty") == null ? null : decimal(request.get("max_penalty"));
+    if (threshold.compareTo(BigDecimal.ZERO) < 0 || penalty.compareTo(BigDecimal.ZERO) < 0 || (maxPenalty != null && maxPenalty.compareTo(BigDecimal.ZERO) < 0)) {
+      throw new BusinessException(ErrorCode.PARAM_ERROR, "风险规则参数不能为负数");
+    }
+    boolean enabled = request.get("enabled") == null || Boolean.parseBoolean(String.valueOf(request.get("enabled")));
+    ensureDefaultRules(principal.getTenantId());
+    jdbcTemplate.update("update project_risk_rule set threshold = ?, penalty = ?, max_penalty = ?, enabled = ?, updated_by = ?, updated_at = current_timestamp where tenant_id = ? and rule_code = ?", threshold, penalty, maxPenalty, enabled, principal.getUserId(), principal.getTenantId(), ruleCode);
+    auditService().record("UPDATE_PROJECT_RISK_RULE", "project_risk_rule", ruleCode, request.toString());
+    return ApiResponse.ok(jdbcTemplate.queryForMap("select id, rule_code, threshold, penalty, max_penalty, enabled, updated_at from project_risk_rule where tenant_id = ? and rule_code = ?", principal.getTenantId(), ruleCode));
+  }
+
+  @PutMapping("/{id}")
+  public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @RequestBody Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    String projectName = requiredText(request, "project_name");
+    String customerName = optionalText(request, "customer_name");
+    String projectManager = optionalText(request, "project_manager");
+    String projectStatus = optionalText(request, "project_status");
+    if (projectStatus == null) projectStatus = "active";
+    if (!Arrays.asList("active", "completed", "paused", "cancelled").contains(projectStatus)) throw new BusinessException(ErrorCode.PARAM_ERROR, "项目状态不合法");
+    int count = jdbcTemplate.update("update project set project_name = ?, customer_name = ?, project_manager = ?, project_status = ?, updated_at = current_timestamp where id = ? and tenant_id = ? and deleted_at is null", projectName, customerName, projectManager, projectStatus, id, principal.getTenantId());
+    if (count == 0) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "项目不存在");
+    auditService().record("UPDATE_PROJECT", "project", String.valueOf(id), request.toString());
+    return ApiResponse.ok(jdbcTemplate.queryForMap("select id, project_no, project_name, customer_name, project_manager, project_status, created_at, updated_at from project where id = ? and tenant_id = ?", id, principal.getTenantId()));
+  }
+
+  @PostMapping("/batch-status")
+  public ApiResponse<Map<String, Object>> batchStatus(@RequestBody Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    List<Long> ids = longList(request.get("project_ids"));
+    String status = optionalText(request, "project_status");
+    if (ids.isEmpty() || status == null || !Arrays.asList("active", "completed", "paused", "cancelled").contains(status)) throw new BusinessException(ErrorCode.PARAM_ERROR, "项目批量更新参数不合法");
+    int updated = 0;
+    for (Long id : ids) updated += jdbcTemplate.update("update project set project_status = ?, updated_at = current_timestamp where id = ? and tenant_id = ? and deleted_at is null", status, id, principal.getTenantId());
+    auditService().record("BATCH_UPDATE_PROJECT_STATUS", "project", ids.toString(), "status=" + status);
+    return ApiResponse.ok(Collections.<String, Object>singletonMap("updated", updated));
   }
 
   @GetMapping("/{id}")
@@ -81,7 +143,8 @@ public class ProjectController {
         Integer.class, principal.getTenantId(), id);
     Map<String, Object> summary = new LinkedHashMap<>(metrics);
     summary.put("exception_count", exceptions);
-    enrichRisk(summary);
+    summary.put("cashflow_amount", jdbcTemplate.queryForObject("select coalesce(sum(case when bt.direction = 'income' then a.allocated_amount when bt.direction = 'expense' then -a.allocated_amount else 0 end), 0) from match_result_allocation a join match_result mr on mr.id = a.match_result_id join bank_transaction bt on bt.id = a.bank_transaction_id where mr.project_id = ? and mr.tenant_id = ? and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr.deleted_at is null and a.deleted_at is null", BigDecimal.class, id, principal.getTenantId()));
+    enrichRisk(summary, principal.getTenantId());
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("project", project);
     data.put("summary", summary);
@@ -92,27 +155,77 @@ public class ProjectController {
     return ApiResponse.ok(data);
   }
 
-  private void enrichRisk(Map<String, Object> row) {
+  private void enrichRisk(Map<String, Object> row, Long tenantId) {
+    ensureDefaultRules(tenantId);
     BigDecimal receivable = decimal(row.get("receivable_amount"));
     BigDecimal paid = decimal(row.get("paid_amount"));
     BigDecimal overdue = decimal(row.get("overdue_amount"));
+    BigDecimal cashflow = decimal(row.get("cashflow_amount"));
     int exceptionCount = number(row.get("exception_count"));
     BigDecimal paidRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ONE : paid.divide(receivable, 4, RoundingMode.HALF_UP);
+    BigDecimal overdueRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : overdue.divide(receivable, 4, RoundingMode.HALF_UP);
     int riskScore = 100;
-    if (overdue.compareTo(BigDecimal.ZERO) > 0) riskScore -= 30;
-    if (paidRate.compareTo(new BigDecimal("0.5")) < 0) riskScore -= 30;
-    else if (paidRate.compareTo(new BigDecimal("0.8")) < 0) riskScore -= 15;
-    riskScore -= Math.min(30, exceptionCount * 10);
+    List<Map<String, Object>> rules = jdbcTemplate.queryForList("select rule_code, threshold, penalty, max_penalty, enabled from project_risk_rule where tenant_id = ? and enabled = true", tenantId);
+    Map<String, Object> factors = new LinkedHashMap<>();
+    List<String> risks = new ArrayList<>();
+    for (Map<String, Object> rule : rules) {
+      String code = String.valueOf(rule.get("rule_code"));
+      BigDecimal value = ruleValue(code, overdue, overdueRate, paidRate, cashflow, exceptionCount);
+      BigDecimal threshold = decimal(rule.get("threshold"));
+      boolean hit = "open_exception_count".equals(code) ? value.compareTo(threshold) >= 0 : value.compareTo(threshold) < 0;
+      if ("overdue_exists".equals(code) || "overdue_ratio_high".equals(code) || "negative_cashflow".equals(code)) hit = value.compareTo(threshold) > 0;
+      BigDecimal deduction = hit ? decimal(rule.get("penalty")) : BigDecimal.ZERO;
+      if ("open_exception_count".equals(code) && hit) deduction = deduction.multiply(BigDecimal.valueOf(exceptionCount));
+      if (rule.get("max_penalty") != null && deduction.compareTo(decimal(rule.get("max_penalty"))) > 0) deduction = decimal(rule.get("max_penalty"));
+      riskScore -= deduction.intValue();
+      Map<String, Object> factor = new LinkedHashMap<>();
+      factor.put("value", value);
+      factor.put("threshold", threshold);
+      factor.put("deduction", deduction);
+      factor.put("triggered", hit);
+      factors.put(code, factor);
+      if (hit) risks.add(ruleTitle(code));
+    }
+    riskScore = Math.max(0, riskScore);
     String riskLevel = riskScore >= 80 ? "healthy" : riskScore >= 60 ? "warning" : "danger";
     row.put("paid_rate", paidRate);
     row.put("risk_score", riskScore);
     row.put("risk_level", riskLevel);
-    List<String> risks = new ArrayList<>();
-    if (overdue.compareTo(BigDecimal.ZERO) > 0) risks.add("存在逾期应收");
-    if (paidRate.compareTo(new BigDecimal("0.8")) < 0) risks.add("回款进度低于80%");
-    if (exceptionCount > 0) risks.add("存在待处理异常");
+    row.put("cashflow_amount", cashflow);
+    row.put("overdue_rate", overdueRate);
+    row.put("risk_factors", factors);
     row.put("risk_items", risks);
   }
+
+  private BigDecimal ruleValue(String code, BigDecimal overdue, BigDecimal overdueRate, BigDecimal paidRate, BigDecimal cashflow, int exceptions) {
+    if ("overdue_exists".equals(code)) return overdue;
+    if ("overdue_ratio_high".equals(code)) return overdueRate;
+    if ("paid_rate_low".equals(code) || "paid_rate_mid".equals(code)) return paidRate;
+    if ("negative_cashflow".equals(code)) return cashflow;
+    return BigDecimal.valueOf(exceptions);
+  }
+
+  private String ruleTitle(String code) {
+    if ("overdue_exists".equals(code)) return "存在逾期应收";
+    if ("overdue_ratio_high".equals(code)) return "逾期金额占比较高";
+    if ("paid_rate_low".equals(code)) return "回款率低于50%";
+    if ("paid_rate_mid".equals(code)) return "回款率低于80%";
+    if ("negative_cashflow".equals(code)) return "项目关联流水净现金流为负";
+    return "存在待处理异常";
+  }
+
+  private void ensureDefaultRules(Long tenantId) {
+    Integer count = jdbcTemplate.queryForObject("select count(*) from project_risk_rule where tenant_id = ?", Integer.class, tenantId);
+    if (count != null && count > 0) return;
+    Object[][] defaults = {{"overdue_exists", "0", "30", null}, {"overdue_ratio_high", "0.5", "15", null}, {"paid_rate_low", "0.5", "30", null}, {"paid_rate_mid", "0.8", "15", null}, {"open_exception_count", "1", "10", "30"}, {"negative_cashflow", "0", "15", null}};
+    for (Object[] item : defaults) jdbcTemplate.update("insert into project_risk_rule (tenant_id, rule_code, threshold, penalty, max_penalty) values (?, ?, ?, ?, ?)", tenantId, item[0], new BigDecimal(String.valueOf(item[1])), new BigDecimal(String.valueOf(item[2])), item[3] == null ? null : new BigDecimal(String.valueOf(item[3])));
+  }
+
+  private boolean allowedRule(String code) { return Arrays.asList("overdue_exists", "overdue_ratio_high", "paid_rate_low", "paid_rate_mid", "open_exception_count", "negative_cashflow").contains(code); }
+  private String requiredText(Map<String, Object> request, String field) { String value = optionalText(request, field); if (value == null) throw new BusinessException(ErrorCode.PARAM_ERROR, field + " 不能为空"); return value; }
+  private String optionalText(Map<String, Object> request, String field) { Object value = request == null ? null : request.get(field); return value == null || String.valueOf(value).trim().isEmpty() ? null : String.valueOf(value).trim(); }
+  private List<Long> longList(Object value) { if (!(value instanceof List)) return Collections.emptyList(); List<Long> ids = new ArrayList<>(); for (Object item : (List<?>) value) try { ids.add(Long.valueOf(String.valueOf(item))); } catch (NumberFormatException ignored) { } return ids; }
+  private AuditService auditService() { return auditServiceHolder; }
 
   private int number(Object value) { return value == null ? 0 : ((Number) value).intValue(); }
   private BigDecimal decimal(Object value) { return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString()); }

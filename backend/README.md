@@ -71,7 +71,7 @@ TXN-001,2026-09-09,income,128400.00,2865300.00,ACME客户,项目回款
 - `GET /api/v1/reports/{id}`：查看报表结构化结果和生成状态。
 - `GET /api/v1/reports/{id}/download`：下载 UTF-8 BOM CSV 文件。
 
-当前报表为同步 MVP 实现，数据直接读取业务表；暂不生成 PDF/Excel 二进制文件，也未接入对象存储。
+当前报表为同步 MVP 实现，数据直接读取业务表；暂不生成 PDF/Excel 二进制文件。异常附件已接入 `AttachmentStorage` 抽象，开发环境默认使用本地对象目录。
 
 ## 合同应收 CSV 导入
 
@@ -128,6 +128,12 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 - `POST /api/v1/matching/exceptions/{id}/attachments`：上传异常附件，单文件不超过 10MB。
 - `GET /api/v1/matching/exceptions/{id}/attachments`：查询异常附件列表。
 - `GET /api/v1/matching/exceptions/attachments/{attachmentId}/download`：下载异常附件。
+- `GET /api/v1/matching/exceptions/attachments/{attachmentId}/preview`：以内联方式预览附件。
+- `DELETE /api/v1/matching/exceptions/attachments/{attachmentId}`：软删除附件并删除本地对象。
+- `POST /api/v1/matching/exceptions/batch-action`：批量分派、备注、处理、关闭或标记误报。
+- `PUT /api/v1/projects/{id}`：编辑项目名称、客户、负责人和状态。
+- `POST /api/v1/projects/batch-status`：批量更新项目状态。
+- `GET /api/v1/projects/risk-rules`、`PUT /api/v1/projects/risk-rules/{ruleCode}`：查询和更新项目风险规则。
 - `GET /api/v1/projects`：查询项目资金汇总和风险列表。
 - `GET /api/v1/projects/{id}`：查询项目详情、合同、应收、关联流水和异常。
 - `GET /api/v1/bank-transactions`：按账户、合同编号、项目编号、交易日期和匹配状态分页查询银行流水。
@@ -152,7 +158,7 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 
 项目风险为 MVP 规则评分：基础分 100；存在逾期应收扣 30 分，回款率低于 50% 扣 30 分、低于 80% 扣 15 分，每个未关闭/未误报异常扣 10 分，最多扣 30 分。分数 `>=80` 为 healthy，`60-79` 为 warning，低于 60 为 danger。项目汇总中的合同金额、应收金额和已收金额采用独立聚合，避免多个应收节点造成合同金额重复计算。
 
-异常附件当前存储在本地 H2 BLOB，用于开发和 MVP 验证；生产环境需迁移到对象存储，并补充删除、预览、病毒扫描和权限细化能力。
+异常附件通过 `AttachmentStorage` 抽象存储，默认写入 `ATTACHMENT_STORAGE_ROOT` 指定的本地对象目录，并在 H2 保存对象键；历史附件兼容读取 H2 BLOB。生产环境需替换为对象存储适配器，并补充病毒扫描和权限细化能力。
 
 匹配计账统一通过 `match_result_allocation` 分配明细完成：普通匹配是一条流水到一个应收节点，拆分匹配是一条流水分配到多个应收节点，合并匹配是多条流水分配到一个应收节点。`match_result` 记录 `match_group_id`、`allocation_mode` 和单条 `allocated_amount`；确认或拒绝任一待确认结果时按 `match_group_id` 整组处理。自动匹配成功后立即按分配明细更新流水匹配状态和应收已收金额，金额超过应收剩余金额时拒绝计账。
 

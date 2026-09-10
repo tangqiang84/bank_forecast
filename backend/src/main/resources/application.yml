@@ -42,3 +42,5 @@ bank-forecast:
     max-amount: ${IMPORT_MAX_AMOUNT:1000000000000.00}
     customer-name-min-length: ${MATCH_CUSTOMER_NAME_MIN_LENGTH:2}
     customer-name-allow-contains: ${MATCH_CUSTOMER_NAME_ALLOW_CONTAINS:true}
+  attachment:
+    storage-root: ${ATTACHMENT_STORAGE_ROOT:./data/attachments}

@@ -2,6 +2,7 @@ package com.bankforecast.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,6 +45,25 @@ class ProjectControllerTest {
         .andExpect(jsonPath("$.data.summary.contract_amount").value(100.0))
         .andExpect(jsonPath("$.data.summary.receivable_amount").value(100.0))
         .andExpect(jsonPath("$.data.summary.paid_amount").value(50.0));
+  }
+
+  @Test
+  void updatesProjectAndPersistsRiskRule() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    Long projectId = jdbcTemplate.queryForObject("select min(id) from project where tenant_id = ?", Long.class, tenantId);
+    mockMvc.perform(put("/api/v1/projects/" + projectId)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"project_name\":\"更新项目\",\"customer_name\":\"更新客户\",\"project_manager\":\"项目经理\",\"project_status\":\"paused\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.project_name").value("更新项目"))
+        .andExpect(jsonPath("$.data.project_status").value("paused"));
+
+    mockMvc.perform(put("/api/v1/projects/risk-rules/paid_rate_low")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"threshold\":0.4,\"penalty\":25,\"enabled\":true}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.threshold").value(0.4))
+        .andExpect(jsonPath("$.data.penalty").value(25));
   }
 
   private Long tenantId() {

@@ -4,7 +4,6 @@ import com.bankforecast.attachment.AttachmentService;
 import com.bankforecast.common.ApiResponse;
 import java.util.List;
 import java.util.Map;
-import java.sql.Blob;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,22 +30,24 @@ public class AttachmentController {
   @GetMapping("/attachments/{attachmentId}/download")
   public ResponseEntity<byte[]> download(@PathVariable Long attachmentId) {
     Map<String, Object> row = attachmentService.download(attachmentId);
-    String fileName = String.valueOf(row.get("file_name")).replace("\"", "");
-    return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-        .contentType(MediaType.parseMediaType(String.valueOf(row.get("content_type"))))
-        .body(toBytes(row.get("file_content")));
+    return response(row, "attachment");
   }
 
-  private byte[] toBytes(Object content) {
-    if (content instanceof byte[]) return (byte[]) content;
-    if (content instanceof Blob) {
-      try {
-        Blob blob = (Blob) content;
-        return blob.getBytes(1, (int) blob.length());
-      } catch (Exception ex) {
-        throw new IllegalStateException("读取附件内容失败", ex);
-      }
-    }
-    throw new IllegalStateException("附件内容格式不支持");
+  @GetMapping("/attachments/{attachmentId}/preview")
+  public ResponseEntity<byte[]> preview(@PathVariable Long attachmentId) {
+    return response(attachmentService.download(attachmentId), "inline");
+  }
+
+  @org.springframework.web.bind.annotation.DeleteMapping("/attachments/{attachmentId}")
+  public ApiResponse<Map<String, Object>> delete(@PathVariable Long attachmentId) {
+    attachmentService.delete(attachmentId);
+    return ApiResponse.ok(java.util.Collections.singletonMap("deleted", true));
+  }
+
+  private ResponseEntity<byte[]> response(Map<String, Object> row, String disposition) {
+    String fileName = String.valueOf(row.get("file_name")).replace("\"", "");
+    return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + fileName + "\"")
+        .contentType(MediaType.parseMediaType(String.valueOf(row.get("content_type"))))
+        .body(attachmentService.content(row));
   }
 }

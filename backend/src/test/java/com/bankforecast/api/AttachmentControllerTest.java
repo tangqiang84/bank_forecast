@@ -2,6 +2,7 @@ package com.bankforecast.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +49,16 @@ class AttachmentControllerTest {
         .andExpect(status().isOk())
         .andExpect(content().contentType(MediaType.TEXT_PLAIN))
         .andExpect(content().bytes(payload));
+
+    mockMvc.perform(get("/api/v1/matching/exceptions/attachments/" + attachmentId + "/preview")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(content().bytes(payload));
+    mockMvc.perform(delete("/api/v1/matching/exceptions/attachments/" + attachmentId)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.deleted").value(true));
+    mockMvc.perform(get("/api/v1/matching/exceptions/attachments/" + attachmentId + "/download")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(42001));
   }
 
   private Long tenantId() {

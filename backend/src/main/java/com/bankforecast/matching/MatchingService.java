@@ -349,6 +349,30 @@ public class MatchingService {
     return findException(tenantId, exceptionId);
   }
 
+  @Transactional
+  public Map<String, Object> batchExceptionAction(Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    Object idsValue = request == null ? null : request.get("exception_ids");
+    String action = request == null || request.get("action") == null ? null : String.valueOf(request.get("action"));
+    String text = request == null || request.get("text") == null ? null : String.valueOf(request.get("text"));
+    if (!(idsValue instanceof List) || ((List<?>) idsValue).isEmpty() || action == null) throw new BusinessException(ErrorCode.PARAM_ERROR, "批量异常操作参数不完整");
+    int updated = 0;
+    for (Object value : (List<?>) idsValue) {
+      Long id;
+      try { id = Long.valueOf(String.valueOf(value)); } catch (NumberFormatException ex) { continue; }
+      if ("assign".equals(action)) { assignException(id, principal.getUserId()); updated++; }
+      else if ("comment".equals(action)) { commentException(id, text); updated++; }
+      else if ("resolve".equals(action)) { resolveException(id, text); updated++; }
+      else if ("close".equals(action)) { closeException(id, text); updated++; }
+      else if ("false_positive".equals(action)) { markFalsePositive(id, text); updated++; }
+      else throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的批量异常操作");
+    }
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("updated", updated);
+    result.put("action", action);
+    return result;
+  }
+
   public List<Map<String, Object>> listExceptionLogs(Long exceptionId) {
     AuthPrincipal principal = requireAuth();
     findException(principal.getTenantId(), exceptionId);

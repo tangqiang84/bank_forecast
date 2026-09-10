@@ -6,7 +6,6 @@ import com.bankforecast.api.dto.RejectMatchResultRequest;
 import com.bankforecast.matching.MatchingService;
 import javax.validation.Valid;
 import java.util.List;
-import java.util.Map;
 import java.time.LocalDate;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/matching")
@@ -105,6 +105,11 @@ public class MatchingController {
   public ApiResponse<Map<String, Object>> falsePositive(@PathVariable Long id,
       @Valid @RequestBody ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.markFalsePositive(id, request == null ? null : request.getText()));
+  }
+
+  @PostMapping("/exceptions/batch-action")
+  public ApiResponse<Map<String, Object>> batchAction(@Valid @RequestBody Map<String, Object> request) {
+    return ApiResponse.ok(matchingService.batchExceptionAction(request));
   }
 
   @GetMapping("/exceptions/{id}/logs")
