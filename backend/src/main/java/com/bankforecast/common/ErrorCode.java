@@ -15,6 +15,10 @@ public final class ErrorCode {
   public static final int MATCH_RESULT_NOT_ACTIONABLE = 43002;
   public static final int EXCEPTION_NOT_ACTIONABLE = 43003;
   public static final int SYSTEM_ERROR = 50001;
+  public static final int REPORT_TYPE_INVALID = 46001;
+  public static final int REPORT_GENERATE_FAILED = 46003;
+  public static final int FILE_NOT_AVAILABLE = 46005;
+  public static final int REPORT_FILE_INVALID = 46006;
 
   private ErrorCode() {}
 }

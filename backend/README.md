@@ -64,6 +64,15 @@ TXN-001,2026-09-09,income,128400.00,2865300.00,ACME客户,项目回款
 
 对账成功记录写入 `match_result` 并关联 `finance_record_id`；银行有流水但财务无记录生成 `bank_unrecorded`，财务有记录但银行无流水生成 `finance_unmatched`，两类差异均进入异常事项中心并保留任务编号和审计日志。当前为 CSV + 单笔一对一规则，复杂拆分、跨月、科目级和财务系统 API 对接后置。
 
+## 报表中心与文件导出
+
+- `POST /api/v1/reports`：生成 `daily` 日报、`monthly` 月报或 `health` 资金体检报告；`monthly` 通过 `params_json.month` 指定月份。
+- `GET /api/v1/reports`：查询当前租户最近报表任务。
+- `GET /api/v1/reports/{id}`：查看报表结构化结果和生成状态。
+- `GET /api/v1/reports/{id}/download`：下载 UTF-8 BOM CSV 文件。
+
+当前报表为同步 MVP 实现，数据直接读取业务表；暂不生成 PDF/Excel 二进制文件，也未接入对象存储。
+
 ## 合同应收 CSV 导入
 
 接口：`POST /api/v1/imports/contracts`，使用 multipart 字段 `file`。

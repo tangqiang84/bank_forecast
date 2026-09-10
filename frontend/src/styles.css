@@ -172,6 +172,11 @@ label {
   align-items: start;
 }
 
+.reports-layout {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
 .account-management-layout {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   align-items: start;

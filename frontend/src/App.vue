@@ -9,6 +9,7 @@ import { authHeaders } from './services/auth'
 import { activateForecastModel, backfillForecastActuals, loadForecastModels, loadLatestForecast, retryForecast, runForecast, type ForecastDetail, type ForecastModel } from './services/forecast'
 import { formatCurrency } from './utils/number'
 import { importFinanceRecords, loadReconciliationResults, runReconciliation, type ReconciliationResult } from './services/finance'
+import { createReport, downloadReport, loadReports, type ReportTask } from './services/reports'
 
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL ?? 'http://localhost:8080'
 const user = ref<User | null>(null)
@@ -17,7 +18,7 @@ const loginName = ref('finance01')
 const password = ref('')
 const loginLoading = ref(false)
 const loginError = ref('')
-const activeView = ref<'dashboard' | 'accounts' | 'transactions' | 'receivables' | 'matching' | 'exceptions' | 'reconciliation' | 'forecast'>('dashboard')
+const activeView = ref<'dashboard' | 'accounts' | 'transactions' | 'receivables' | 'matching' | 'exceptions' | 'reconciliation' | 'reports' | 'forecast'>('dashboard')
 const loading = ref(false)
 const overview = ref<DashboardOverview | null>(null)
 const accounts = ref<BankAccount[]>([])
@@ -63,6 +64,12 @@ const reconciliationDateFrom = ref('')
 const reconciliationDateTo = ref('')
 const reconciliationResults = ref<ReconciliationResult[]>([])
 const reconciliationSummary = ref<{ matched: number; bank_unrecorded: number; finance_unmatched: number } | null>(null)
+const reports = ref<ReportTask[]>([])
+const reportType = ref('monthly')
+const reportMonth = ref(new Date().toISOString().slice(0, 7))
+const reportDate = ref(new Date().toISOString().slice(0, 10))
+const reportLoading = ref(false)
+const reportMessage = ref('')
 
 const loggedIn = computed(() => Boolean(user.value && token.value))
 const selectedAccount = computed(() => accounts.value.find((account) => account.id === selectedAccountId.value))
@@ -209,6 +216,47 @@ async function submitReconciliation() {
   finally { reconciliationLoading.value = false }
 }
 
+async function loadReportTasks() {
+  if (!user.value || !token.value) return
+  reports.value = (await loadReports(backendBase, token.value, user.value.tenant_id)).data
+}
+
+async function generateReport() {
+  if (!user.value || !token.value) return
+  reportLoading.value = true
+  reportMessage.value = ''
+  try {
+    const params: Record<string, string> = reportType.value === 'monthly'
+      ? { month: reportMonth.value }
+      : reportType.value === 'daily'
+        ? { date_from: reportDate.value, date_to: reportDate.value }
+        : {}
+    await createReport(backendBase, token.value, user.value.tenant_id, reportType.value, params)
+    await loadReportTasks()
+    reportMessage.value = '报表已生成。'
+  } catch (error) {
+    reportMessage.value = error instanceof Error ? error.message : '报表生成失败'
+  } finally {
+    reportLoading.value = false
+  }
+}
+
+async function downloadReportFile(report: ReportTask) {
+  if (!user.value || !token.value) return
+  try {
+    const blob = await downloadReport(backendBase, token.value, user.value.tenant_id, report.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = report.file_name || `report-${report.id}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    reportMessage.value = '报表 CSV 已导出。'
+  } catch (error) {
+    reportMessage.value = error instanceof Error ? error.message : '报表导出失败'
+  }
+}
+
 async function loadWorkspace() {
   if (!user.value || !token.value) return
   loading.value = true
@@ -231,6 +279,7 @@ async function loadWorkspace() {
     receivables.value = receivableResult.data.items
     matchResults.value = matchResult.data.items
     exceptions.value = exceptionResult.data.items
+    await loadReportTasks()
     if (!selectedAccountId.value && accounts.value.length > 0) selectedAccountId.value = accounts.value[0].id
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '工作台加载失败，请刷新重试'
@@ -493,6 +542,7 @@ onMounted(async () => {
       <button :class="{ active: activeView === 'matching' }" type="button" @click="activeView = 'matching'">匹配结果</button>
       <button :class="{ active: activeView === 'exceptions' }" type="button" @click="activeView = 'exceptions'">异常事项</button>
       <button :class="{ active: activeView === 'reconciliation' }" type="button" @click="activeView = 'reconciliation'">财务对账</button>
+      <button :class="{ active: activeView === 'reports' }" type="button" @click="activeView = 'reports'; loadReportTasks()">报表中心</button>
       <button :class="{ active: activeView === 'forecast' }" type="button" @click="activeView = 'forecast'; loadForecast()">现金预测</button>
       <button class="refresh-button" :disabled="loading" type="button" @click="loadWorkspace">{{ loading ? '刷新中...' : '刷新数据' }}</button>
     </nav>
@@ -528,6 +578,10 @@ onMounted(async () => {
       <section v-else-if="activeView === 'reconciliation'" class="grid reconciliation-layout">
         <article class="panel import-panel"><h2>导入财务记录</h2><label>财务 CSV 文件<input accept=".csv,text/csv" type="file" @change="onFinanceFileChange" /></label><p v-if="financeFile" class="meta">已选择：{{ financeFile.name }}</p><p v-if="financeImportMessage" class="feedback-text">{{ financeImportMessage }}</p><button class="primary-button" type="button" @click="submitFinanceImport">导入财务记录</button><p class="meta import-hint">必填列：record_no、record_type、record_date、amount；记录类型支持 receipt、payment、voucher、journal。</p></article>
         <article class="panel table-panel"><div class="section-heading"><div><h2>银行账/财务账对账</h2><span class="meta">按金额、方向、对手方和 3 天日期窗口匹配</span></div><button class="primary-button" :disabled="reconciliationLoading" type="button" @click="submitReconciliation">{{ reconciliationLoading ? '对账中...' : '运行对账' }}</button></div><div class="filter-row"><label>开始日期<input v-model="reconciliationDateFrom" type="date" /></label><label>结束日期<input v-model="reconciliationDateTo" type="date" /></label></div><p v-if="reconciliationMessage" class="feedback-text">{{ reconciliationMessage }}</p><div v-if="reconciliationSummary" class="forecast-evaluation"><strong>匹配 {{ reconciliationSummary.matched }}</strong><span>银行未记账 {{ reconciliationSummary.bank_unrecorded }}</span><span>财务未在银行发生 {{ reconciliationSummary.finance_unmatched }}</span></div><div v-if="reconciliationResults.length" class="table-scroll"><table><thead><tr><th>差异类型</th><th>来源编号</th><th>日期</th><th>金额</th><th>标题</th><th>状态</th></tr></thead><tbody><tr v-for="item in reconciliationResults" :key="item.id"><td>{{ item.exception_type === 'bank_unrecorded' ? '银行未记账' : '财务未在银行发生' }}</td><td>{{ item.transaction_no || item.record_no || '-' }}</td><td>{{ item.transaction_date || item.record_date || '-' }}</td><td>{{ formatCurrency(item.bank_amount || item.finance_amount || '0') }}</td><td>{{ item.title }}<br /><span class="meta">{{ item.description }}</span></td><td><span class="pill">{{ item.status }}</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无对账差异，请先导入财务记录并运行对账。</p></article>
+      </section>
+      <section v-else-if="activeView === 'reports'" class="grid reports-layout">
+        <article class="panel import-panel"><h2>生成报表</h2><label>报表类型<select v-model="reportType"><option value="monthly">月度资金报表</option><option value="daily">日报</option><option value="health">资金体检报告</option></select></label><label v-if="reportType === 'monthly'">统计月份<input v-model="reportMonth" type="month" /></label><label v-if="reportType === 'daily'">统计日期<input v-model="reportDate" type="date" /></label><button class="primary-button" :disabled="reportLoading" type="button" @click="generateReport">{{ reportLoading ? '生成中...' : '生成报表' }}</button><p v-if="reportMessage" class="feedback-text">{{ reportMessage }}</p><p class="meta import-hint">当前支持 CSV 文件导出；报表使用实时业务数据生成。</p></article>
+        <article class="panel table-panel"><div class="section-heading"><div><h2>报表任务</h2><span class="meta">最近 {{ reports.length }} 条</span></div><button class="ghost-button" type="button" @click="loadReportTasks">刷新</button></div><div v-if="reports.length" class="table-scroll"><table><thead><tr><th>报表类型</th><th>统计范围</th><th>状态</th><th>文件</th><th>生成时间</th><th>操作</th></tr></thead><tbody><tr v-for="report in reports" :key="report.id"><td>{{ report.report_type === 'health' ? '资金体检' : report.report_type === 'monthly' ? '月报' : '日报' }}</td><td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td><td><span class="pill">{{ report.status }}</span></td><td>{{ report.file_name || '-' }}</td><td>{{ report.created_at }}</td><td><button v-if="report.status === 'success'" class="text-button" type="button" @click="downloadReportFile(report)">下载 CSV</button><span v-else class="meta">不可下载</span></td></tr></tbody></table></div><p v-else class="empty-state">暂无报表任务，请先生成报表。</p></article>
       </section>
       <section v-else-if="activeView === 'forecast'" class="grid forecast-layout">
         <article class="panel import-panel"><h2>现金流预测</h2><label>预测天数<input v-model.number="forecastHorizon" min="1" max="90" type="number" /></label><label>历史窗口<input v-model.number="forecastWindow" min="1" max="30" type="number" /></label><button class="primary-button" :disabled="forecastLoading" type="button" @click="submitForecast">{{ forecastLoading ? '预测中...' : '生成预测' }}</button><button v-if="forecast.job?.status === 'failed'" class="ghost-button" :disabled="forecastLoading" type="button" @click="retryForecastJob">重试失败任务</button><button v-if="forecast.job?.status === 'success'" class="ghost-button" :disabled="forecastLoading" type="button" @click="backfillForecast">回填实际金额</button><p v-if="forecastMessage" class="feedback-text">{{ forecastMessage }}</p><h3>模型版本</h3><div v-for="model in forecastModels" :key="model.version" class="list-row"><span>{{ model.version }} · {{ model.model_name }}</span><button v-if="model.status !== 'active'" class="text-button" type="button" @click="activateModel(model.version)">启用</button><span v-else class="pill">当前启用</span></div></article>
