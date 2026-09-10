@@ -36,6 +36,7 @@ export type ExceptionCase = {
   owner_user_id: number | null
   closed_at?: string | null
 }
+export type ExceptionAttachment = { id: number; exception_case_id: number; file_name: string; content_type: string; file_size: number; uploaded_by: number | null; created_at: string }
 export type MatchResult = {
   id: number
   match_group_id: string
@@ -146,4 +147,13 @@ export function closeException(baseUrl: string, token: string, tenantId: number,
     headers: authHeaders(token, tenantId),
     body: JSON.stringify({ text }),
   })
+}
+
+export function markFalsePositive(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
+  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/false-positive`, { method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+}
+
+export function uploadExceptionAttachment(baseUrl: string, token: string, tenantId: number, exceptionId: number, file: File) {
+  const formData = new FormData(); formData.append('file', file)
+  return fetchMultipart<ApiResponse<ExceptionAttachment>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/attachments`, formData, token, tenantId)
 }

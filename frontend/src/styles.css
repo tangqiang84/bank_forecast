@@ -267,6 +267,19 @@ label {
   align-items: start;
 }
 
+.attachment-button {
+  display: inline-block;
+  border: 0;
+  padding: 0;
+  color: #155eef;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.attachment-button input {
+  display: none;
+}
+
 .forecast-evaluation {
   display: flex;
   flex-wrap: wrap;

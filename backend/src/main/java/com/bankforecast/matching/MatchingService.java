@@ -251,6 +251,9 @@ public class MatchingService {
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("exception", exception);
     data.put("logs", listExceptionLogs(exceptionId));
+    data.put("attachments", jdbcTemplate.queryForList(
+        "select id, exception_case_id, file_name, content_type, file_size, uploaded_by, created_at from exception_attachment where tenant_id = ? and exception_case_id = ? and deleted_at is null order by id desc",
+        principal.getTenantId(), exceptionId));
     data.put("source", jdbcTemplate.queryForList(
         "select e.source_type, e.source_id, bt.transaction_no, bt.amount, bt.transaction_date, c.contract_no, c.contract_name, p.node_name, p.due_date, p.plan_amount, p.paid_amount "
             + "from exception_case e left join bank_transaction bt on e.source_type = 'bank_transaction' and bt.id = e.source_id "
@@ -328,6 +331,21 @@ public class MatchingService {
         truncate(text(exception.get("description")) + "\n关闭说明：" + actionText, 2000), now, now, exceptionId, tenantId);
     recordExceptionAction(tenantId, exceptionId, "CLOSE", principal.getUserId(), actionText);
     auditService.record("CLOSE_EXCEPTION", "exception_case", String.valueOf(exceptionId), actionText);
+    return findException(tenantId, exceptionId);
+  }
+
+  @Transactional
+  public Map<String, Object> markFalsePositive(Long exceptionId, String note) {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> exception = findException(tenantId, exceptionId);
+    ensureExceptionOpen(exception);
+    String actionText = requireActionText(note);
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    jdbcTemplate.update("update exception_case set status = 'false_positive', description = ?, closed_at = ?, updated_at = ? where id = ? and tenant_id = ? and status <> 'closed'",
+        truncate(text(exception.get("description")) + "\n误报原因：" + actionText, 2000), now, now, exceptionId, tenantId);
+    recordExceptionAction(tenantId, exceptionId, "FALSE_POSITIVE", principal.getUserId(), actionText);
+    auditService.record("FALSE_POSITIVE_EXCEPTION", "exception_case", String.valueOf(exceptionId), actionText);
     return findException(tenantId, exceptionId);
   }
 

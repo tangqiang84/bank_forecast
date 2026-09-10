@@ -123,7 +123,13 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 - `POST /api/v1/matching/exceptions/{id}/comment`：追加异常备注。
 - `POST /api/v1/matching/exceptions/{id}/resolve`：标记异常已处理。
 - `POST /api/v1/matching/exceptions/{id}/close`：关闭已处理异常。
+- `POST /api/v1/matching/exceptions/{id}/false-positive`：标记误报，必须提交说明并写入处理/审计日志。
 - `GET /api/v1/matching/exceptions/{id}/logs`：查询异常操作日志。
+- `POST /api/v1/matching/exceptions/{id}/attachments`：上传异常附件，单文件不超过 10MB。
+- `GET /api/v1/matching/exceptions/{id}/attachments`：查询异常附件列表。
+- `GET /api/v1/matching/exceptions/attachments/{attachmentId}/download`：下载异常附件。
+- `GET /api/v1/projects`：查询项目资金汇总和风险列表。
+- `GET /api/v1/projects/{id}`：查询项目详情、合同、应收、关联流水和异常。
 - `GET /api/v1/bank-transactions`：按账户、合同编号、项目编号、交易日期和匹配状态分页查询银行流水。
 - `GET /api/v1/bank-transactions/{id}`：查看流水、匹配结果和审计日志。
 - `POST /api/v1/bank-transactions/{id}/manual-classify`：人工更新流水分类和用途，并写入审计日志。
@@ -143,6 +149,10 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 详情接口用于财务对账追溯，所有查询按当前登录租户隔离；匹配结果保留确认人和确认时间，审计日志保留操作人、TraceID、对象和操作详情。驾驶舱的应收总额、已收金额、逾期未收金额和异常数量均从数据库实时汇总。
 
 当前匹配支持精确匹配、部分收款、拆分匹配、合并匹配、未知收款和逾期未收；客户名称比较会统一处理公司后缀、空格和标点，且可通过 `MATCH_CUSTOMER_NAME_MIN_LENGTH` 和 `MATCH_CUSTOMER_NAME_ALLOW_CONTAINS` 配置匹配规则。部分收款候选需人工确认或拒绝，异常事项支持分派、备注、处理、关闭和日志追踪。
+
+项目风险为 MVP 规则评分：基础分 100；存在逾期应收扣 30 分，回款率低于 50% 扣 30 分、低于 80% 扣 15 分，每个未关闭/未误报异常扣 10 分，最多扣 30 分。分数 `>=80` 为 healthy，`60-79` 为 warning，低于 60 为 danger。项目汇总中的合同金额、应收金额和已收金额采用独立聚合，避免多个应收节点造成合同金额重复计算。
+
+异常附件当前存储在本地 H2 BLOB，用于开发和 MVP 验证；生产环境需迁移到对象存储，并补充删除、预览、病毒扫描和权限细化能力。
 
 匹配计账统一通过 `match_result_allocation` 分配明细完成：普通匹配是一条流水到一个应收节点，拆分匹配是一条流水分配到多个应收节点，合并匹配是多条流水分配到一个应收节点。`match_result` 记录 `match_group_id`、`allocation_mode` 和单条 `allocated_amount`；确认或拒绝任一待确认结果时按 `match_group_id` 整组处理。自动匹配成功后立即按分配明细更新流水匹配状态和应收已收金额，金额超过应收剩余金额时拒绝计账。
 

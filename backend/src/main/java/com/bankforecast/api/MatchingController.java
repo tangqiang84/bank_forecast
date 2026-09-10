@@ -101,6 +101,12 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.closeException(id, request == null ? null : request.getText()));
   }
 
+  @PostMapping("/exceptions/{id}/false-positive")
+  public ApiResponse<Map<String, Object>> falsePositive(@PathVariable Long id,
+      @Valid @RequestBody ExceptionActionRequest request) {
+    return ApiResponse.ok(matchingService.markFalsePositive(id, request == null ? null : request.getText()));
+  }
+
   @GetMapping("/exceptions/{id}/logs")
   public ApiResponse<List<Map<String, Object>>> exceptionLogs(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.listExceptionLogs(id));

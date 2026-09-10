@@ -19,6 +19,7 @@ public final class ErrorCode {
   public static final int REPORT_GENERATE_FAILED = 46003;
   public static final int FILE_NOT_AVAILABLE = 46005;
   public static final int REPORT_FILE_INVALID = 46006;
+  public static final int ATTACHMENT_TOO_LARGE = 46007;
 
   private ErrorCode() {}
 }
