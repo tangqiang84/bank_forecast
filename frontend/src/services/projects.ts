@@ -8,7 +8,7 @@ export type Project = {
   paid_rate: number; risk_score: number; risk_level: string; risk_items: string[]
 }
 export type ProjectPage = { items: Project[]; page: number; page_size: number; total: number }
-export function loadProjects(baseUrl: string, token: string, tenantId: number) { return fetchJson<ApiResponse<ProjectPage>>(`${baseUrl}/api/v1/projects?page=1&page_size=100`, { headers: authHeaders(token, tenantId) }) }
+export function loadProjects(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) { return fetchJson<ApiResponse<ProjectPage>>(`${baseUrl}/api/v1/projects?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) }) }
 export function loadProjectDetail(baseUrl: string, token: string, tenantId: number, id: number) { return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/projects/${id}`, { headers: authHeaders(token, tenantId) }) }
 export type ProjectRiskRule = { id: number; rule_code: string; threshold: string; penalty: string; max_penalty: string | null; enabled: boolean; updated_at: string }
 export function updateProject(baseUrl: string, token: string, tenantId: number, id: number, payload: Record<string, unknown>) { return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/projects/${id}`, { method: 'PUT', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }) }

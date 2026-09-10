@@ -33,7 +33,9 @@ class BankAccountControllerTest {
     id = id.substring(id.indexOf("\"id\":") + 5);
     id = id.substring(0, id.indexOf(','));
     mockMvc.perform(get("/api/v1/bank-accounts").header("Authorization", "Bearer " + token).header("X-Tenant-Id", "1"))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].idle_level").exists());
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].idle_level").exists())
+        .andExpect(jsonPath("$.data.page").value(1)).andExpect(jsonPath("$.data.page_size").value(20))
+        .andExpect(jsonPath("$.data.total").isNumber());
     mockMvc.perform(post("/api/v1/bank-accounts/" + id + "/close").header("Authorization", "Bearer " + token).header("X-Tenant-Id", "1"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("closed"));
   }

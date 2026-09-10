@@ -25,6 +25,7 @@ export type ReportAuditLog = {
   detail: string | null
   created_at: string
 }
+export type ReportPage = { items: ReportTask[]; page: number; page_size: number; total: number }
 
 export function createReport(baseUrl: string, token: string, tenantId: number, reportType: string, params: Record<string, string>) {
   return fetchJson<ApiResponse<ReportTask>>(`${baseUrl}/api/v1/reports`, {
@@ -34,8 +35,8 @@ export function createReport(baseUrl: string, token: string, tenantId: number, r
   })
 }
 
-export function loadReports(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<ReportTask[]>>(`${baseUrl}/api/v1/reports`, { headers: authHeaders(token, tenantId) })
+export function loadReports(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  return fetchJson<ApiResponse<ReportPage>>(`${baseUrl}/api/v1/reports?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function loadReportDetail(baseUrl: string, token: string, tenantId: number, reportId: number) {

@@ -2,7 +2,6 @@ package com.bankforecast.api;
 
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.report.ReportService;
-import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,8 +28,12 @@ public class ReportController {
   }
 
   @GetMapping
-  public ApiResponse<List<Map<String, Object>>> list(@RequestParam(required = false, name = "report_type") String reportType,
-      @RequestParam(required = false) String status) { return ApiResponse.ok(reportService.list(reportType, status)); }
+  public ApiResponse<Map<String, Object>> list(@RequestParam(defaultValue = "1") int page,
+      @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
+      @RequestParam(required = false, name = "report_type") String reportType,
+      @RequestParam(required = false) String status) {
+    return ApiResponse.ok(reportService.list(reportType, status, page, pageSize));
+  }
 
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) { return ApiResponse.ok(reportService.detail(id)); }

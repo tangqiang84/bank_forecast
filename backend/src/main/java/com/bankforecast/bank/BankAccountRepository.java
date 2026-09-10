@@ -5,6 +5,7 @@ import com.bankforecast.common.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -38,6 +39,30 @@ public class BankAccountRepository {
             + "from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null "
             + "where ba.tenant_id = ? and ba.deleted_at is null group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance order by ba.id desc",
         tenantId);
+  }
+
+  public Map<String, Object> listByTenant(Long tenantId, int page, int pageSize) {
+    int safePage = Math.max(page, 1);
+    int safeSize = Math.min(Math.max(pageSize, 1), 100);
+    int offset = (safePage - 1) * safeSize;
+    String from = " from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null"
+        + " where ba.tenant_id = ? and ba.deleted_at is null";
+    String select = "select ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, "
+        + "max(bt.transaction_date) as last_transaction_at, "
+        + "case when max(bt.transaction_date) is null then null else datediff('DAY', max(bt.transaction_date), current_date) end as idle_days, "
+        + "case when max(bt.transaction_date) is null or datediff('DAY', max(bt.transaction_date), current_date) < 30 then 'normal' "
+        + "when datediff('DAY', max(bt.transaction_date), current_date) < 90 then 'idle_30' "
+        + "when datediff('DAY', max(bt.transaction_date), current_date) < 180 then 'idle_90' else 'idle_180' end as idle_level"
+        + from + " group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance"
+        + " order by ba.id desc limit ? offset ?";
+    List<Map<String, Object>> items = jdbcTemplate.queryForList(select, tenantId, safeSize, offset);
+    Integer total = jdbcTemplate.queryForObject("select count(*) from bank_account ba where ba.tenant_id = ? and ba.deleted_at is null", Integer.class, tenantId);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("items", items);
+    data.put("page", safePage);
+    data.put("page_size", safeSize);
+    data.put("total", total == null ? 0 : total);
+    return data;
   }
 
   public Map<String, Object> create(Long tenantId, String bankCode, String bankName, String accountName,

@@ -60,11 +60,30 @@ public class ReportService {
     }
   }
 
-  public List<Map<String, Object>> list(String reportType, String status) {
+  public Map<String, Object> list(String reportType, String status, int page, int pageSize) {
     AuthPrincipal principal = requireAuth();
-    return jdbcTemplate.queryForList(
-        "select id, report_type, date_from, date_to, status, file_name, error_message, created_at, updated_at from report_task where tenant_id = ? and deleted_at is null and (? is null or report_type = ?) and (? is null or status = ?) order by id desc limit 100",
-        principal.getTenantId(), blankToNull(reportType), blankToNull(reportType), blankToNull(status), blankToNull(status));
+    int safePage = Math.max(page, 1);
+    int safeSize = Math.min(Math.max(pageSize, 1), 100);
+    int offset = (safePage - 1) * safeSize;
+    String filter = " from report_task where tenant_id = ? and deleted_at is null and (? is null or report_type = ?) and (? is null or status = ?)";
+    Object[] args = {principal.getTenantId(), blankToNull(reportType), blankToNull(reportType), blankToNull(status), blankToNull(status)};
+    List<Map<String, Object>> items = jdbcTemplate.queryForList(
+        "select id, report_type, date_from, date_to, status, file_name, error_message, created_at, updated_at" + filter + " order by id desc limit ? offset ?",
+        append(args, safeSize, offset));
+    Integer total = jdbcTemplate.queryForObject("select count(*)" + filter, args, Integer.class);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("items", items);
+    data.put("page", safePage);
+    data.put("page_size", safeSize);
+    data.put("total", total == null ? 0 : total);
+    return data;
+  }
+
+  private Object[] append(Object[] values, Object... extra) {
+    Object[] result = new Object[values.length + extra.length];
+    System.arraycopy(values, 0, result, 0, values.length);
+    System.arraycopy(extra, 0, result, values.length, extra.length);
+    return result;
   }
 
   public Map<String, Object> detail(Long reportId) {

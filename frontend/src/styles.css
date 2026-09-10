@@ -116,6 +116,36 @@ label {
   gap: 10px;
 }
 
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e5edf5;
+  color: #526579;
+  font-size: 13px;
+}
+
+.pagination-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.pagination-controls select {
+  width: auto;
+  min-width: 72px;
+  padding: 7px 9px;
+}
+
+.pagination-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .account-row {
   display: flex;
   justify-content: space-between;

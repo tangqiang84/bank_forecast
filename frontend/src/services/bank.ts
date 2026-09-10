@@ -33,9 +33,10 @@ export type BankTransaction = {
 }
 
 export type TransactionPage = { items: BankTransaction[]; page: number; page_size: number; total: number }
+export type BankAccountPage = { items: BankAccount[]; page: number; page_size: number; total: number }
 
-export function loadAccounts(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<BankAccount[]>>(`${baseUrl}/api/v1/bank-accounts`, {
+export function loadAccounts(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  return fetchJson<ApiResponse<BankAccountPage>>(`${baseUrl}/api/v1/bank-accounts?page=${page}&page_size=${pageSize}`, {
     headers: authHeaders(token, tenantId),
   })
 }
@@ -79,8 +80,8 @@ export function scanIdleAccounts(baseUrl: string, token: string, tenantId: numbe
   })
 }
 
-export function loadTransactions(baseUrl: string, token: string, tenantId: number, page = 1, filters: Record<string, string> = {}) {
-  const params = new URLSearchParams({ page: String(page), page_size: '20' })
+export function loadTransactions(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
   return fetchJson<ApiResponse<TransactionPage>>(`${baseUrl}/api/v1/bank-transactions?${params.toString()}`, {
     headers: authHeaders(token, tenantId),

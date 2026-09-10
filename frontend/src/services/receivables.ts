@@ -74,8 +74,8 @@ export function loadContracts(baseUrl: string, token: string, tenantId: number, 
   return fetchJson<ApiResponse<{ items: Contract[]; total: number }>>(`${baseUrl}/api/v1/contracts?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
-export function loadReceivables(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
-  const params = new URLSearchParams({ page: '1', page_size: '100' })
+export function loadReceivables(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
   return fetchJson<ApiResponse<Paged<Receivable>>>(`${baseUrl}/api/v1/contracts/receivables?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
@@ -87,12 +87,12 @@ export function runMatching(baseUrl: string, token: string, tenantId: number) {
   })
 }
 
-export function loadExceptions(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=1&page_size=100&active_only=true`, { headers: authHeaders(token, tenantId) })
+export function loadExceptions(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=${page}&page_size=${pageSize}&active_only=true`, { headers: authHeaders(token, tenantId) })
 }
 
-export function loadMatchResults(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<Paged<MatchResult>>>(`${baseUrl}/api/v1/matching/results?page=1&page_size=100`, { headers: authHeaders(token, tenantId) })
+export function loadMatchResults(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
+  return fetchJson<ApiResponse<Paged<MatchResult>>>(`${baseUrl}/api/v1/matching/results?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function loadContractDetail(baseUrl: string, token: string, tenantId: number, id: number) {

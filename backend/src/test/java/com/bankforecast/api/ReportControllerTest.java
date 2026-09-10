@@ -64,7 +64,9 @@ class ReportControllerTest {
 
     mockMvc.perform(get("/api/v1/reports").header("Authorization", "Bearer " + token)
             .header("X-Tenant-Id", String.valueOf(tenantId)))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2));
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(2))
+        .andExpect(jsonPath("$.data.page").value(1)).andExpect(jsonPath("$.data.page_size").value(20))
+        .andExpect(jsonPath("$.data.total").value(2));
 
     mockMvc.perform(get("/api/v1/reports/" + monthlyId + "/download")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
