@@ -51,7 +51,10 @@ class ProjectControllerTest {
   void updatesProjectAndPersistsRiskRule() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();
-    Long projectId = jdbcTemplate.queryForObject("select min(id) from project where tenant_id = ?", Long.class, tenantId);
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    jdbcTemplate.update("insert into project (tenant_id, project_no, project_name, customer_name, project_status) values (?, ?, ?, ?, 'active')",
+        tenantId, "PRJ-EDIT-" + suffix, "待编辑项目", "待编辑客户");
+    Long projectId = jdbcTemplate.queryForObject("select id from project where project_no = ?", Long.class, "PRJ-EDIT-" + suffix);
     mockMvc.perform(put("/api/v1/projects/" + projectId)
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
             .contentType(MediaType.APPLICATION_JSON)
@@ -64,6 +67,12 @@ class ProjectControllerTest {
             .contentType(MediaType.APPLICATION_JSON).content("{\"threshold\":0.4,\"penalty\":25,\"enabled\":true}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.data.threshold").value(0.4))
         .andExpect(jsonPath("$.data.penalty").value(25));
+
+    mockMvc.perform(get("/api/v1/projects/risk-rules")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isArray());
   }
 
   private Long tenantId() {

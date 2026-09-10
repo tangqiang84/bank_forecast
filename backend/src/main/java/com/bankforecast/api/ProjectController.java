@@ -96,7 +96,7 @@ public class ProjectController {
     return ApiResponse.ok(jdbcTemplate.queryForMap("select id, rule_code, threshold, penalty, max_penalty, enabled, updated_at from project_risk_rule where tenant_id = ? and rule_code = ?", principal.getTenantId(), ruleCode));
   }
 
-  @PutMapping("/{id}")
+  @PutMapping("/{id:\\d+}")
   public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @RequestBody Map<String, Object> request) {
     AuthPrincipal principal = requireAuth();
     String projectName = requiredText(request, "project_name");
@@ -123,7 +123,7 @@ public class ProjectController {
     return ApiResponse.ok(Collections.<String, Object>singletonMap("updated", updated));
   }
 
-  @GetMapping("/{id}")
+  @GetMapping("/{id:\\d+}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
     AuthPrincipal principal = requireAuth();
     List<Map<String, Object>> projects = jdbcTemplate.queryForList(
