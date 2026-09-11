@@ -6,10 +6,15 @@ import WorkspaceLayout from './views/WorkspaceLayout.vue'
 import DashboardView from './views/DashboardView.vue'
 import TransactionsView from './views/TransactionsView.vue'
 import ImportJobView from './views/ImportJobView.vue'
-import EntityListView from './views/EntityListView.vue'
 import EntityDetailView from './views/EntityDetailView.vue'
 import ReconciliationView from './views/ReconciliationView.vue'
 import ForecastView from './views/ForecastView.vue'
+import AccountsView from './views/AccountsView.vue'
+import ReceivablesView from './views/ReceivablesView.vue'
+import ProjectsView from './views/ProjectsView.vue'
+import MatchingView from './views/MatchingView.vue'
+import ExceptionsView from './views/ExceptionsView.vue'
+import ReportsView from './views/ReportsView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -22,14 +27,14 @@ const router = createRouter({
         { path: 'dashboard', component: DashboardView },
         { path: 'transactions', component: TransactionsView },
         { path: 'imports/:jobId', component: ImportJobView },
-        { path: 'accounts', component: EntityListView, props: { kind: 'accounts' } },
-        { path: 'receivables', component: EntityListView, props: { kind: 'receivables' } },
-        { path: 'projects', component: EntityListView, props: { kind: 'projects' } },
-        { path: 'matching', component: EntityListView, props: { kind: 'matching' } },
-        { path: 'exceptions', component: EntityListView, props: { kind: 'exceptions' } },
+        { path: 'accounts', component: AccountsView },
+        { path: 'receivables', component: ReceivablesView },
+        { path: 'projects', component: ProjectsView },
+        { path: 'matching', component: MatchingView },
+        { path: 'exceptions', component: ExceptionsView },
         { path: 'reconciliation', component: ReconciliationView },
         { path: 'reconciliation/jobs/:jobId', component: ReconciliationView },
-        { path: 'reports', component: EntityListView, props: { kind: 'reports' } },
+        { path: 'reports', component: ReportsView },
         { path: 'forecast', component: ForecastView },
         { path: 'forecast/jobs/:jobId', component: ForecastView },
         { path: 'accounts/:id', component: EntityDetailView, props: { kind: 'account' } },

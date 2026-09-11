@@ -27,7 +27,7 @@ export type ReportAuditLog = {
 }
 export type ReportPage = { items: ReportTask[]; page: number; page_size: number; total: number }
 
-export function createReport(baseUrl: string, token: string, tenantId: number, reportType: string, params: Record<string, string>) {
+export function createReport(baseUrl: string, token: string, tenantId: number, reportType: string, params: Record<string, string | undefined>) {
   return fetchJson<ApiResponse<ReportTask>>(`${baseUrl}/api/v1/reports`, {
     method: 'POST',
     headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },

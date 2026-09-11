@@ -42,6 +42,8 @@ export default [
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',
       'vue/html-closing-bracket-newline': 'off',
+      // 当前业务模板使用条件渲染包裹列表，后续拆分模板时再收紧该规则。
+      'vue/no-use-v-if-with-v-for': 'off',
     },
   },
 ]
