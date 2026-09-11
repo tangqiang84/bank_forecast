@@ -15,3 +15,5 @@ __pycache__/
 .idea/
 .vscode/
 docs/开发测试账号.local.md
+frontend/test-results/
+frontend/playwright-report/

@@ -34,6 +34,18 @@ VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev
 
 - 账户详情当前通过账户列表接口定位记录，后端单条账户详情接口仍待补充。
 - 财务对账和现金预测已有独立入口，但复杂差异处理、预测任务详情和更完整时间轴仍待增强。
-- 前端已配置 ESLint；Prettier、Playwright E2E 和按钮级权限控制仍待补齐。
+- 前端已配置 ESLint 和基础 Playwright E2E；Prettier 和按钮级权限控制仍待补齐。
+
+## 代码检查与 E2E
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm e2e
+```
+
+Playwright 配置位于 `playwright.config.ts`，会自动启动 `127.0.0.1:5173` 的 Vite 服务。当前本机 E2E 使用已安装的 Chrome channel；CI 环境需提供 Chrome 或调整项目配置为 Playwright Chromium。
 
 前端只在浏览器本地保存访问令牌和当前用户信息，业务数据保存在后端数据库。
