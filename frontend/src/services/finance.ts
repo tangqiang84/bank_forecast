@@ -28,7 +28,7 @@ export type ReconciliationResult = {
   record_date: string | null
   finance_amount: string | null
 }
-export type ReconciliationPage = { items: ReconciliationResult[]; page: number; page_size: number; total: number }
+export type ReconciliationPage = { items: ReconciliationResult[]; page: number; page_size: number; total: number; job?: Record<string, unknown> }
 
 export function importFinanceRecords(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()
@@ -42,8 +42,9 @@ export function runReconciliation(baseUrl: string, token: string, tenantId: numb
   return fetchJson<ApiResponse<ReconciliationSummary>>(`${baseUrl}/api/v1/reconciliation/run?${params.toString()}`, { method: 'POST', headers: authHeaders(token, tenantId) })
 }
 
-export function loadReconciliationResults(baseUrl: string, token: string, tenantId: number, jobId?: number) {
-  const params = new URLSearchParams({ page: '1', page_size: '100' })
+export function loadReconciliationResults(baseUrl: string, token: string, tenantId: number, jobId?: number, page = 1, pageSize = 20, differenceType = '') {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   if (jobId) params.set('job_id', String(jobId))
+  if (differenceType) params.set('difference_type', differenceType)
   return fetchJson<ApiResponse<ReconciliationPage>>(`${baseUrl}/api/v1/reconciliation/results?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }

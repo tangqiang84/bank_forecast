@@ -38,6 +38,12 @@ public class BankAccountController {
     return ApiResponse.ok(bankAccountRepository.listByTenant(principal.getTenantId(), page, pageSize));
   }
 
+  @GetMapping("/{id}")
+  public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
+    AuthPrincipal principal = requireAuth();
+    return ApiResponse.ok(bankAccountRepository.findById(principal.getTenantId(), id));
+  }
+
   @PostMapping
   public ApiResponse<Map<String, Object>> create(@Valid @RequestBody BankAccountRequest request) {
     AuthPrincipal principal = requireAuth();

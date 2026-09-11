@@ -8,6 +8,8 @@ import TransactionsView from './views/TransactionsView.vue'
 import ImportJobView from './views/ImportJobView.vue'
 import EntityListView from './views/EntityListView.vue'
 import EntityDetailView from './views/EntityDetailView.vue'
+import ReconciliationView from './views/ReconciliationView.vue'
+import ForecastView from './views/ForecastView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -25,9 +27,11 @@ const router = createRouter({
         { path: 'projects', component: EntityListView, props: { kind: 'projects' } },
         { path: 'matching', component: EntityListView, props: { kind: 'matching' } },
         { path: 'exceptions', component: EntityListView, props: { kind: 'exceptions' } },
-        { path: 'reconciliation', component: EntityListView, props: { kind: 'reconciliation' } },
+        { path: 'reconciliation', component: ReconciliationView },
+        { path: 'reconciliation/jobs/:jobId', component: ReconciliationView },
         { path: 'reports', component: EntityListView, props: { kind: 'reports' } },
-        { path: 'forecast', component: EntityListView, props: { kind: 'forecast' } },
+        { path: 'forecast', component: ForecastView },
+        { path: 'forecast/jobs/:jobId', component: ForecastView },
         { path: 'accounts/:id', component: EntityDetailView, props: { kind: 'account' } },
         { path: 'transactions/:id', component: EntityDetailView, props: { kind: 'transaction' } },
         { path: 'contracts/:id', component: EntityDetailView, props: { kind: 'contract' } },

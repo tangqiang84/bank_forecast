@@ -65,6 +65,34 @@ public class BankAccountRepository {
     return data;
   }
 
+  public Map<String, Object> findById(Long tenantId, Long id) {
+    List<Map<String, Object>> accounts = jdbcTemplate.queryForList(
+        "select ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, "
+            + "max(bt.transaction_date) as last_transaction_at, "
+            + "case when max(bt.transaction_date) is null then null else datediff('DAY', max(bt.transaction_date), current_date) end as idle_days, "
+            + "case when max(bt.transaction_date) is null or datediff('DAY', max(bt.transaction_date), current_date) < 30 then 'normal' "
+            + "when datediff('DAY', max(bt.transaction_date), current_date) < 90 then 'idle_30' "
+            + "when datediff('DAY', max(bt.transaction_date), current_date) < 180 then 'idle_90' else 'idle_180' end as idle_level "
+            + "from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null "
+            + "where ba.tenant_id = ? and ba.id = ? and ba.deleted_at is null "
+            + "group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance",
+        tenantId, id);
+    if (accounts.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "银行账户不存在");
+
+    Map<String, Object> data = new LinkedHashMap<>(accounts.get(0));
+    data.put("transactions", jdbcTemplate.queryForList(
+        "select id, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, purpose, category, match_status "
+            + "from bank_transaction where tenant_id = ? and bank_account_id = ? and deleted_at is null order by transaction_date desc, id desc limit 10",
+        tenantId, id));
+    data.put("transaction_count", jdbcTemplate.queryForObject(
+        "select count(*) from bank_transaction where tenant_id = ? and bank_account_id = ? and deleted_at is null",
+        Integer.class, tenantId, id));
+    data.put("audit_logs", jdbcTemplate.queryForList(
+        "select id, action, detail, created_at from audit_log where tenant_id = ? and target_type = 'bank_account' and target_id = ? order by id desc limit 20",
+        tenantId, String.valueOf(id)));
+    return data;
+  }
+
   public Map<String, Object> create(Long tenantId, String bankCode, String bankName, String accountName,
       String accountNo, String currency, BigDecimal currentBalance) {
     jdbcTemplate.update(
@@ -95,11 +123,7 @@ public class BankAccountRepository {
         tenantId);
   }
 
-  private Map<String, Object> find(Long tenantId, Long id) {
-    List<Map<String, Object>> rows = listByTenant(tenantId);
-    for (Map<String, Object> row : rows) if (id.equals(((Number) row.get("id")).longValue())) return row;
-    throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "银行账户不存在");
-  }
+  private Map<String, Object> find(Long tenantId, Long id) { return findById(tenantId, id); }
 
   private String last4(String accountNo) {
     return accountNo.substring(Math.max(0, accountNo.length() - 4));

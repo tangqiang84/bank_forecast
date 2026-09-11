@@ -41,6 +41,12 @@ export function loadLatestForecast(baseUrl: string, token: string, tenantId: num
   })
 }
 
+export function loadForecastDetail(baseUrl: string, token: string, tenantId: number, jobId: number) {
+  return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
 export function runForecast(baseUrl: string, token: string, tenantId: number, horizon: number, windowSize: number) {
   const params = new URLSearchParams({ horizon: String(horizon), window_size: String(windowSize) })
   return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs?${params.toString()}`, {

@@ -48,11 +48,8 @@ export async function loadAccounts(baseUrl: string, token: string, tenantId: num
   return response as ApiResponse<BankAccountPage>
 }
 
-export async function loadAccountDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  const response = await loadAccounts(baseUrl, token, tenantId, 1, 100)
-  const account = response.data.items.find((item) => item.id === id)
-  if (!account) throw new Error('银行账户不存在或不在当前可查询范围内')
-  return { ...response, data: account } as ApiResponse<BankAccount>
+export function loadAccountDetail(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<BankAccount & Record<string, unknown>>>(`${baseUrl}/api/v1/bank-accounts/${id}`, { headers: authHeaders(token, tenantId) })
 }
 
 export type BankAccountInput = {

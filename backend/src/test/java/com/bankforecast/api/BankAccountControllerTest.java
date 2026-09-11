@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -20,6 +21,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class BankAccountControllerTest {
   @Autowired private MockMvc mockMvc;
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
   void createsListsAndClosesAccountWithoutExposingFullNumber() throws Exception {
@@ -45,6 +47,21 @@ class BankAccountControllerTest {
     String token = loginToken();
     mockMvc.perform(post("/api/v1/bank-accounts/idle-scan").header("Authorization", "Bearer " + token).header("X-Tenant-Id", "1"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.data.updated_accounts").isNumber()).andExpect(jsonPath("$.data.accounts").isArray());
+  }
+
+  @Test
+  void returnsSingleAccountDetailWithRecentTransactionsAndAuditLogs() throws Exception {
+    String token = loginToken();
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, 1L);
+
+    mockMvc.perform(get("/api/v1/bank-accounts/" + accountId)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(accountId.intValue()))
+        .andExpect(jsonPath("$.data.account_no_last4").exists())
+        .andExpect(jsonPath("$.data.transactions").isArray())
+        .andExpect(jsonPath("$.data.transaction_count").isNumber())
+        .andExpect(jsonPath("$.data.audit_logs").isArray());
   }
 
   private String loginToken() throws Exception {
