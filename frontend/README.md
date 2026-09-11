@@ -4,7 +4,19 @@ Vue 管理台。
 
 ## 启动
 
-先启动后端并配置本地开发账号：
+现金预测功能依赖 analytics 分析服务，因此本地开发需要按以下顺序启动三个服务。
+
+先启动分析服务：
+
+```bash
+cd ../analytics
+uv sync --extra dev
+uv run python -m bank_forecast_analytics
+```
+
+默认地址：`http://localhost:8001`。
+
+再启动后端并配置本地开发账号：
 
 ```bash
 cd ../backend
@@ -20,6 +32,8 @@ VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev
 
 默认地址：`http://localhost:5173`，前端使用 Hash 路由，例如 `http://localhost:5173/#/dashboard`。
 登录名：`finance01`，密码为启动后端时设置的 `DEV_ADMIN_PASSWORD`。如果 Vite 自动切换到 `5174` 或 `5175`，默认开发 CORS 配置同样支持这些端口。
+
+如果未启动 analytics，现金预测任务会按设计记录为失败，并提示“分析服务暂不可用，预测任务已记录为失败，可稍后重试”；启动 analytics 后可在现金预测页面重试失败任务。
 
 ## 当前功能
 

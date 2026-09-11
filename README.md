@@ -16,9 +16,11 @@
 
 ## 启动顺序
 
-1. `cd backend && JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_221.jdk/Contents/Home PATH="$JAVA_HOME/bin:$PATH" ./mvnw spring-boot:run`
-2. `cd analytics && uv sync && uv run python -m bank_forecast_analytics`
-3. `cd frontend && pnpm install && pnpm dev`
+1. `cd analytics && uv sync --extra dev && uv run python -m bank_forecast_analytics`
+2. `cd backend && JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_221.jdk/Contents/Home PATH="$JAVA_HOME/bin:$PATH" DEV_ADMIN_PASSWORD=123123 JWT_SECRET=local-development-jwt-secret-please-change ./mvnw spring-boot:run`
+3. `cd frontend && pnpm install && VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev`
+
+现金预测依赖第 1 步的 analytics 服务；若该服务未启动，预测任务会记录为失败，启动后可在前端重试。
 
 前端默认端口为 `5173`，若占用会自动切换到下一个可用端口。
 
