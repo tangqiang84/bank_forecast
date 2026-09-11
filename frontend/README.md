@@ -4,12 +4,22 @@ Vue 管理台。
 
 ## 启动
 
+先启动后端并配置本地开发账号：
+
+```bash
+cd ../backend
+DEV_ADMIN_PASSWORD=123123 JWT_SECRET=local-development-jwt-secret-please-change ./mvnw spring-boot:run
+```
+
+再启动前端：
+
 ```bash
 pnpm install
 VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev
 ```
 
 默认地址：`http://localhost:5173`，前端使用 Hash 路由，例如 `http://localhost:5173/#/dashboard`。
+登录名：`finance01`，密码为启动后端时设置的 `DEV_ADMIN_PASSWORD`。如果 Vite 自动切换到 `5174` 或 `5175`，默认开发 CORS 配置同样支持这些端口。
 
 ## 当前功能
 

@@ -10,7 +10,7 @@ export JWT_SECRET='<本地随机长字符串>'
 ./mvnw spring-boot:run
 ```
 
-默认地址：`http://localhost:8080`
+默认地址：`http://localhost:8080`。前端使用 `127.0.0.1:5173`、`127.0.0.1:5174`、`127.0.0.1:5175` 或对应的 `localhost` 端口时，默认开发 CORS 配置均已允许；其他端口请通过 `CORS_ALLOWED_ORIGINS` 配置。
 
 预测服务地址默认读取 `ANALYTICS_BASE_URL`（默认 `http://localhost:8001`）。连接和读取超时
 分别由 `ANALYTICS_CONNECT_TIMEOUT_MS`（默认 2000）和 `ANALYTICS_READ_TIMEOUT_MS`（默认 10000）控制。
