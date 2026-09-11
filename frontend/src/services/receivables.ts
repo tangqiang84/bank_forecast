@@ -103,6 +103,10 @@ export function loadMatchResultDetail(baseUrl: string, token: string, tenantId: 
   return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/matching/results/${id}`, { headers: authHeaders(token, tenantId) })
 }
 
+export function loadExceptionDetail(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/matching/exceptions/${id}`, { headers: authHeaders(token, tenantId) })
+}
+
 export function confirmMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number) {
   return fetchJson<ApiResponse<MatchResult>>(`${baseUrl}/api/v1/matching/results/${resultId}/confirm`, {
     method: 'POST',

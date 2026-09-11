@@ -27,6 +27,7 @@ export type DashboardOverview = {
     status: string
   }>
   recent_import_jobs: Array<{
+    job_id?: number
     name: string
     status: string
     total_rows: number
