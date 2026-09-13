@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from statistics import mean
 
-from .models import ForecastRequest, ForecastResponse
+from .models import ForecastRequest, ForecastResponse, MODEL_REGISTRY
 
 
 def forecast_cashflow(request: ForecastRequest) -> ForecastResponse:
     history = request.history
-    window = min(request.window_size, len(history))
+    window = request.window_size
     baseline = round(mean(history[-window:]), 2)
 
     if len(history) > 1:
@@ -22,7 +22,7 @@ def forecast_cashflow(request: ForecastRequest) -> ForecastResponse:
         values.append(current)
 
     return ForecastResponse(
-        method="moving-average-with-trend",
+        method=str(MODEL_REGISTRY[request.model_version]["model_name"]),
         model_version=request.model_version,
         baseline=baseline,
         trend_step=trend_step,

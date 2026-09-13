@@ -1,5 +1,5 @@
 import { authHeaders } from './auth'
-import { fetchJson, fetchMultipart } from './http'
+import { fetchBlob, fetchJson, fetchMultipart } from './http'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 
@@ -118,9 +118,7 @@ export function unlinkTransaction(baseUrl: string, token: string, tenantId: numb
 export async function exportTransactions(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
   const params = new URLSearchParams()
   Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  const response = await fetch(`${baseUrl}/api/v1/bank-transactions/export?${params.toString()}`, { headers: authHeaders(token, tenantId) })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.blob()
+  return fetchBlob(`${baseUrl}/api/v1/bank-transactions/export?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function importStatements(

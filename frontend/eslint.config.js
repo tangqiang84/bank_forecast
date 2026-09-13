@@ -5,16 +5,22 @@ import vue from 'eslint-plugin-vue'
 import vueParser from 'vue-eslint-parser'
 
 const browserGlobals = {
+  AbortController: 'readonly',
+  AbortSignal: 'readonly',
   Blob: 'readonly',
   CustomEvent: 'readonly',
+  DOMException: 'readonly',
   Event: 'readonly',
   File: 'readonly',
   FormData: 'readonly',
+  Headers: 'readonly',
   HTMLInputElement: 'readonly',
   RequestInit: 'readonly',
+  Response: 'readonly',
   URL: 'readonly',
   URLSearchParams: 'readonly',
   console: 'readonly',
+  crypto: 'readonly',
   document: 'readonly',
   fetch: 'readonly',
   localStorage: 'readonly',

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const isCI = process.env.CI === '1' || process.env.CI === 'true'
+
 export default defineConfig({
   testDir: './tests',
   timeout: 30_000,
@@ -12,14 +14,17 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      name: isCI ? 'chromium-ci' : 'chrome-local',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(isCI ? {} : { channel: 'chrome' }),
+      },
     },
   ],
   webServer: {
     command: 'pnpm exec vite --host 127.0.0.1 --port 5173 --strictPort',
     url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 60_000,
   },
 })

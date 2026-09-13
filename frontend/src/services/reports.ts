@@ -1,5 +1,5 @@
 import { authHeaders } from './auth'
-import { fetchJson } from './http'
+import { fetchBlob, fetchJson } from './http'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 export type ReportTask = {
@@ -56,7 +56,5 @@ export function loadReportAudits(baseUrl: string, token: string, tenantId: numbe
 }
 
 export async function downloadReport(baseUrl: string, token: string, tenantId: number, reportId: number) {
-  const response = await fetch(`${baseUrl}/api/v1/reports/${reportId}/download`, { headers: authHeaders(token, tenantId) })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.blob()
+  return fetchBlob(`${baseUrl}/api/v1/reports/${reportId}/download`, { headers: authHeaders(token, tenantId) })
 }

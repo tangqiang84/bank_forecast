@@ -3,6 +3,7 @@ package com.bankforecast.service;
 import com.bankforecast.audit.AuditService;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
+import com.bankforecast.common.TraceIdHolder;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.math.BigDecimal;
@@ -18,6 +19,9 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -163,8 +167,12 @@ public class ForecastJobService {
       request.put("horizon", horizon);
       request.put("window_size", windowSize);
       request.put("model_version", modelVersion);
+      HttpHeaders headers = new HttpHeaders();
+      headers.setContentType(MediaType.APPLICATION_JSON);
+      headers.set("X-Trace-Id", TraceIdHolder.next());
+      HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
       ResponseEntity<Map> response = analyticsRestTemplate.postForEntity(
-          analyticsBaseUrl + "/forecast/cashflow", request, Map.class);
+          analyticsBaseUrl + "/forecast/cashflow", entity, Map.class);
       Map<String, Object> body = response.getBody();
       Map<String, Object> analyticsData = body == null ? null : map(body.get("data"));
       if (body == null || number(body.get("code")).intValue() != 0 || analyticsData == null) {

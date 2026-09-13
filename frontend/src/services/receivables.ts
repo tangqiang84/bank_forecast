@@ -1,5 +1,5 @@
 import { authHeaders } from './auth'
-import { fetchJson, fetchMultipart } from './http'
+import { fetchBlob, fetchJson, fetchMultipart } from './http'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 export type Contract = {
@@ -163,4 +163,4 @@ export function uploadExceptionAttachment(baseUrl: string, token: string, tenant
 }
 export function batchExceptionAction(baseUrl: string, token: string, tenantId: number, exceptionIds: number[], action: string, text = '') { return fetchJson<ApiResponse<{ updated: number; action: string }>>(`${baseUrl}/api/v1/matching/exceptions/batch-action`, { method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ exception_ids: exceptionIds, action, text }) }) }
 export function deleteExceptionAttachment(baseUrl: string, token: string, tenantId: number, attachmentId: number) { return fetchJson<ApiResponse<{ deleted: boolean }>>(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}`, { method: 'DELETE', headers: authHeaders(token, tenantId) }) }
-export function previewExceptionAttachment(baseUrl: string, token: string, tenantId: number, attachmentId: number) { return fetch(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}/preview`, { headers: authHeaders(token, tenantId) }).then(async (response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.blob() }) }
+export function previewExceptionAttachment(baseUrl: string, token: string, tenantId: number, attachmentId: number) { return fetchBlob(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}/preview`, { headers: authHeaders(token, tenantId) }) }

@@ -32,13 +32,13 @@ describe('loadDashboardOverview', () => {
 
     const result = await loadDashboardOverview('http://localhost:8080', 'token-1', 1)
 
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8080/api/v1/dashboard/overview', {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer token-1',
-        'X-Tenant-Id': '1',
-      },
-    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = new Headers(request.headers)
+    expect(headers.get('Authorization')).toBe('Bearer token-1')
+    expect(headers.get('X-Tenant-Id')).toBe('1')
+    expect(headers.get('X-Trace-Id')).toBeTruthy()
+    expect(request.signal).toBeInstanceOf(AbortSignal)
     expect(result.data.total_balance).toBe('2865300.00')
     expect(result.trace_id).toBe('trace-1')
   })

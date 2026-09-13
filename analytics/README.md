@@ -2,6 +2,8 @@
 
 Python 数据分析与预测服务。
 
+所有接口统一返回 `code`、`message`、`data` 和 `trace_id` 字段，链路追踪字段不使用 `traceId`。
+
 ## 启动
 
 ```bash
@@ -10,6 +12,10 @@ uv run python -m bank_forecast_analytics
 ```
 
 默认地址：`http://localhost:8001`
+
+启动配置：`APP_ENV` 标识运行环境，`ANALYTICS_RELOAD` 控制开发自动重载。默认关闭自动重载；本地开发可设置 `APP_ENV=local ANALYTICS_RELOAD=true`，`APP_ENV=prod` 或 `APP_ENV=production` 时即使误设为 `true` 也会强制关闭。
+
+请求保护配置：`ANALYTICS_MAX_REQUEST_BODY_BYTES` 控制实际读取的请求体大小（包括分块传输请求），`ANALYTICS_HISTORY_MAX_LENGTH` 控制历史序列长度，`ANALYTICS_HISTORY_MAX_ABS_VALUE` 控制单个历史值绝对值，`ANALYTICS_REQUEST_TIMEOUT_SECONDS` 控制单请求处理超时，`ANALYTICS_MAX_CONCURRENT_REQUESTS` 控制并发请求上限。backend 调用时传入的 `X-Trace-Id` 会作为响应体 `trace_id` 返回。
 
 ## 接口契约
 

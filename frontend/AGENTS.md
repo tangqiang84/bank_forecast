@@ -1,30 +1,41 @@
 # frontend AGENTS.md — Vue 3 前端开发规则
 
-## 1. 范围与技术基线
+本文件继承仓库根目录 `AGENTS.md`，仅补充 Vue 3 前端专项规则。
 
-适用于 `bank_forecast/frontend`。当前技术栈为 Vue 3、TypeScript、Vite、Vue Router 4、Vitest、Playwright、ESLint 和 `vue-tsc`。包管理器统一使用 pnpm，必须提交 `pnpm-lock.yaml`，禁止混用 npm、yarn 或 bun。版本以 `package.json` 为准。
+## 1. 范围和技术基线
 
-## 2. 实际目录
+适用于 `bank_forecast/frontend`。
+
+当前技术栈：
+
+- Vue 3；
+- TypeScript；
+- Vite；
+- Vue Router 4；
+- Vitest；
+- Vue Test Utils；
+- Playwright；
+- ESLint；
+- `vue-tsc`。
+
+版本以 `package.json` 和 `pnpm-lock.yaml` 为准。
+
+主要目录：
 
 ```text
 src/components/    公共组件
 src/services/      API 和业务服务
 src/utils/         通用工具
 src/views/         页面级视图
-src/router/        路由配置
+src/router.ts      路由配置
 tests/             Playwright E2E
 ```
 
-使用 Vue Composition API、`<script setup lang="ts">` 和 composables。不得使用 React Hooks、函数组件、Zustand 或 Redux Toolkit 等不适用方案。
+使用 Composition API、`<script setup lang="ts">` 和 composables。不得使用 React Hooks、React 组件、Zustand 或 Redux Toolkit。
 
-## 3. 工作原则
+## 2. 包管理和命令
 
-- 需求清晰时先给简短计划并开工；有实质歧义时集中澄清。
-- 按设计、开发、验证、交付小步实施，禁止无关重构。
-- 长任务分阶段汇报，真实说明测试结果和剩余风险。
-- 禁止使用静态 mock 数据冒充真实业务能力。
-
-## 4. 常用命令和依赖
+统一使用 pnpm，禁止混用 npm、yarn、bun 或其他包管理器。
 
 ```bash
 pnpm install
@@ -37,69 +48,131 @@ pnpm build
 pnpm e2e
 ```
 
-建议脚本为：
+规则：
 
-```json
-{"lint":"eslint . --ext .vue,.js,.ts","lint:fix":"eslint . --ext .vue,.js,.ts --fix"}
+- 新增依赖必须使用 pnpm，并同步提交 `pnpm-lock.yaml`。
+- `pnpm lint` 只检查，不修改工作区。
+- `pnpm lint:fix` 仅在明确需要时使用，执行后必须复核 diff。
+- 依赖变更后执行 `pnpm audit`。
+- registry 网络失败时记录真实错误和风险结论。
+- 不得通过修改脚本、测试配置或 CI 配置绕过失败。
+
+## 3. TypeScript 和 Vue
+
+- TypeScript 使用 strict 模式。
+- 优先使用明确类型、接口和联合类型。
+- 禁止无理由使用 `any`、`@ts-ignore` 或 `@ts-expect-error`。
+- Vue 组件使用 `<script setup lang="ts">`。
+- 页面、组件、service、composable 和类型职责清晰。
+- API 响应必须使用明确类型，Promise 必须有错误处理。
+- 变量、函数和文件名必须清晰可读。
+- 错误提示必须是用户可理解的中文。
+- 不得把 Java、Python 堆栈或内部错误直接展示给用户。
+
+## 4. API、环境变量和安全
+
+API 规则：
+
+- frontend 只能调用 backend，不得直接调用 analytics。
+- 所有业务请求必须通过统一 HTTP 服务层或其适配层。
+- 业务 service 不得直接使用裸 `fetch`。
+- `src/services/http.ts` 内部可以使用原生 `fetch`。
+- Token、租户 Header 和 TraceID 必须由统一请求层传递。
+- 接口字段、错误码、分页、超时、重试和响应格式以 `docs/接口契约.md` 为准。
+
+环境变量规则：
+
+- 前端环境变量必须使用 `VITE_` 前缀。
+- backend 地址使用 `VITE_BACKEND_BASE_URL`。
+- 前端不得读取、保存或调用 analytics 地址。
+- `.env.example`、构建配置和发布产物不得包含 `VITE_ANALYTICS_BASE_URL`。
+- analytics 地址只能配置在 backend 的 `ANALYTICS_BASE_URL`。
+- `.env.example` 不得包含真实账号、密码、Token 或内部凭证。
+
+凭证和数据规则：
+
+- 当前访问令牌和当前用户信息按现有实现保存在 `localStorage`。
+- 不得在浏览器存储中保存密码、刷新 Token、API Key、数据库密码、服务间 Token 或私钥。
+- 不得在日志、错误提示、页面文本或测试输出中打印 Token。
+- 不得输出完整 API 响应、完整银行账号、客户隐私信息或原始导入文件内容。
+- 文件预览和下载必须使用 backend 返回的受控资源。
+- 前端权限控制不能替代 backend 鉴权。
+
+## 5. 路由和页面
+
+正式页面必须通过 Vue Router 访问。
+
+- 每个正式路由必须配置唯一的 `name`。
+- 编程式跳转优先使用命名路由。
+- 业务 ID 使用 `params`，筛选、排序和分页使用 `query`。
+- 需要登录的页面必须由路由守卫保护。
+- 未登录访问业务页面时跳转登录页。
+- 登录成功后返回原始目标页面。
+- 页面刷新后保持正确路由并恢复会话。
+- 会话失效时清理本地会话并跳转登录页。
+- `/` 或 `/#/` 必须可达。
+- 路由切换默认回到顶部，浏览器前进和后退恢复历史滚动位置。
+
+新增或修改路由时，应校验路由参数、逐步迁移硬编码路径并补充页面跳转 E2E。
+
+## 6. 页面质量和功能守恒
+
+页面、路由、组件或 service 重构时，不得无意删除、降级或隐藏已有业务能力。具体功能以 `docs/功能清单.md`、PRD 和 `docs/ui/` 为准。
+
+禁止用通用列表、原始 JSON、静态 mock、占位按钮或空白面板替代正式业务能力。
+
+正式页面必须处理加载、空数据、请求失败、成功、失败、可重试、无权限和数据不存在状态。
+
+涉及列表、详情或任务时，应根据业务需要提供筛选、服务端分页、业务字段、详情或抽屉、关联对象、时间轴、防重复提交、任务状态和明确反馈。
+
+## 7. 测试和 E2E
+
+- 页面改动必须补充或调整对应测试。
+- 测试覆盖与改动相关的成功、失败、空数据、权限、边界和重试场景。
+- 核心链路必须执行真实集成 E2E 或隔离 E2E，并明确测试边界。
+- 隔离 E2E 可以 mock backend，但不得证明真实服务可用。
+- 真实集成 E2E 使用独立数据库、测试租户和专用账号，不得使用生产凭证。
+- 测试不得依赖历史 Cookie、缓存、本机登录状态或执行顺序。
+
+Playwright 规则：
+
+- CI 使用 Playwright 自带 Chromium，不使用本机 Chrome channel。
+- 本地非 CI 模式可以使用已安装的 Chrome channel。
+- `CI=1` 或 `CI=true` 视为 CI 模式；`CI=0`、空值或未设置视为本地模式。
+- 不得使用 `Boolean(process.env.CI)` 判断 CI。
+- Playwright 版本、Chromium revision、安装步骤和远程 CI 准入以 `docs/发布检查清单.md` 为准。
+- 本地 `CI=1 pnpm e2e` 不等于远程 CI 已通过。
+
+## 8. 展示、样式和交付
+
+- 日期、金额和状态使用统一展示规则。
+- 前端不得使用浮点数执行资金业务计算，金额以 backend 返回结果为准。
+- 状态、风险等级和异常类型映射为中文展示。
+- 遵循现有样式约定，避免遮挡、溢出和布局跳动。
+- 表单、按钮、键盘操作、弹窗焦点和表格表头应满足基本可访问性要求。
+- 具体页面验收以 `docs/ui/` 和测试文档为准。
+
+根据任务影响范围执行：
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-新增依赖用 `pnpm add`，同步依赖用 `pnpm install`。依赖变更后运行 `pnpm audit`；registry 网络失败必须记录真实原因，不得写成审计通过。
+涉及页面、路由或核心交互时执行：
 
-## 5. TypeScript、API 和错误处理
+```bash
+pnpm e2e
+```
 
-- TypeScript 必须 strict；禁止无理由使用 `any`、`@ts-ignore` 或 `@ts-expect-error`。
-- API 调用集中在 `src/services`，统一处理 Base URL、Token、超时、结构化错误、分页和重试。
-- 页面不得直连数据库、analytics 或重复实现请求错误处理。
-- 加载、空数据、失败和重试状态必须明确；后端异常堆栈不得直接展示给用户。
-- 密钥、数据库凭证和生产 Token 不得进入前端；环境变量使用 `VITE_` 前缀并提供 `.env.example`。
+交付前确认：
 
-## 6. 路由和页面
-
-- 正式页面必须通过 Vue Router 访问，所有路由有唯一 `name`。
-- 编程式跳转必须使用命名路由，业务 ID 使用 `params`，筛选和分页使用 `query`。
-- `/` 或 `/#/` 必须可达；未登录访问业务页跳转登录，登录后返回原目标页。
-- 刷新、前进、后退和滚动行为必须正确。
-- 只有存在未保存导入配置、规则编辑或表单时才使用 `onBeforeRouteLeave` 防丢失。
-
-## 7. 功能守恒和业务交互
-
-重构前必须对比 PRD、当前/历史实现、API、权限、测试和 E2E。除非明确删除，不得删除或降级：
-
-- 银行账号导入和详情；
-- 合同应收导入；
-- 项目资金规则设置；
-- 匹配结果确认/拒绝；
-- 异常关闭/重开；
-- 财务对账和现金预测详情；
-- 导入/预测任务详情、失败重试；
-- 报表生成、预览和下载。
-
-禁止用通用列表替代业务工作台，禁止把匹配结果和异常处理做成同一页面，禁止以 JSON 或 `<pre>` 替代正式详情面板。正式页面应根据场景提供筛选、服务端分页、抽屉、时间轴、状态、操作记录、加载/空/失败状态和用户可理解反馈。
-
-导入流程至少包括文件校验、预览、确认、任务状态、成功结果、失败原因和重试/重新导入。
-
-## 8. 列表分页
-
-所有列表使用服务端分页，不得通过 `page_size=100` 一次性加载全量数据。请求参数为 `page`、`page_size`，响应包含 `items`、`page`、`page_size`、`total`；默认 20 条、最大 100 条。筛选变化时重置页码，并同步更新接口、测试和交互文档。
-
-## 9. 测试和 E2E
-
-单元测试使用 Vitest 和 Vue Test Utils，覆盖校验、service 转换、加载/空/失败、分页、路由守卫和核心业务动作。
-
-Playwright 配置为 `playwright.config.ts`，测试放在 `tests/*.spec.ts`。默认使用 Playwright Chromium，`webServer` 启动本地 Vite，不依赖本机浏览器状态或真实生产凭证。优先使用语义定位和稳定 `data-testid`，禁止脆弱 CSS 层级选择器。
-
-跳转测试必须依次断言：触发跳转、URL、目标页面核心骨架。核心 E2E 至少覆盖首页、登录成功/失败、两类导入、规则设置、匹配处理、异常闭环、报表生成/下载、详情抽屉/时间轴、预测失败提示和重试。
-
-## 10. UI 验证和交付
-
-涉及 UI 的改动必须实际启动并检查桌面/移动端、核心点击路径、刷新、前进后退、网络请求、控制台错误、Vue warning 和静态资源 404。
-
-交付前实际执行：
-
-- [ ] `pnpm lint`
-- [ ] `pnpm typecheck`
-- [ ] `pnpm test`
-- [ ] `pnpm build`
-- [ ] 涉及页面时执行 `pnpm e2e`
-- [ ] 相关接口、测试、E2E、PRD/交互文档已同步
-- [ ] 无敏感信息、调试代码和无关改动
+- 代码、接口、测试和相关文档已同步；
+- 已检查敏感信息、调试代码、死代码和无关变更；
+- 已执行 `git diff --check`；
+- 未执行的检查、配置限制和剩余风险已说明；
+- 未将隔离 E2E 描述为真实集成验证；
+- 未将本地 CI 模式描述为远程 CI 已通过；
+- 未将整改目标描述为当前已完成能力。

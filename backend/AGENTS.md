@@ -1,19 +1,23 @@
 # backend AGENTS.md — Java 后端开发规则
 
-## 1. 范围与技术基线
+本文件继承仓库根目录 `AGENTS.md`，仅补充 Java Spring Boot 后端专项规则。
 
-适用于 `bank_forecast/backend`。当前模块为 Java Spring Boot 后端：JDK 8、Spring Boot 2.7.18、Spring JDBC、Flyway、H2、Maven Wrapper。以 `pom.xml` 为最终版本依据。
+## 1. 范围和技术基线
 
-源码目录：`src/main/java`、`src/main/resources`；测试目录：`src/test/java`。
+适用于 `bank_forecast/backend`。
 
-## 2. 工作原则
+当前技术栈：
 
-- 需求不清时先集中澄清；清晰时给出计划并开工。
-- 按“设计 → 开发 → 验证 → 交付”小步实施，禁止无关重构。
-- 长任务分阶段汇报，真实报告命令和结果。
-- 禁止用 mock 结果冒充真实接口或业务完成状态。
+- JDK 8；
+- Spring Boot 2.7.18；
+- Spring JDBC；
+- Flyway；
+- H2；
+- Maven Wrapper。
 
-## 3. 常用命令
+版本以 `pom.xml` 为准。代码必须兼容 Java 8。
+
+常用命令：
 
 ```bash
 ./mvnw clean compile
@@ -22,59 +26,129 @@
 ./mvnw spring-boot:run
 ```
 
-统一使用 Maven Wrapper，不依赖全局 Maven。必须使用完整 JDK，不使用 JRE。代码必须兼容 Java 8，禁止使用 Java 9+ API。
+统一使用 Maven Wrapper。未配置的 Checkstyle、SpotBugs、Spotless、JaCoCo、Testcontainers 等工具，不得描述为已通过。
 
-当前 `pom.xml` 未配置的 Checkstyle、SpotBugs、Spotless、JaCoCo、Testcontainers 等工具，不得作为已完成的强制检查；接入时必须同时提交配置、依赖、文档和测试。
+## 2. 分层规则
 
-## 4. 分层与代码规范
+- Controller：路由、参数、认证上下文和响应转换。
+- DTO：请求和响应模型。
+- Service：业务规则、事务、任务状态、幂等和业务编排。
+- 各领域 Repository：数据库访问和复用查询。
+- Integration：外部服务客户端。
+- Security：认证、权限和租户上下文。
+- Audit：审计记录。
+- Exception：统一异常处理。
 
-建议按以下职责组织：`api/controller`、`dto`、`service`、`repository`、`security`、`integration`、`audit`、`config`、`exception`。
+规则：
 
-- Controller 负责 HTTP 参数、校验和响应，不直接访问数据库。
-- Service 负责业务规则、事务边界和幂等性。
-- Repository 只负责数据访问，不处理 HTTP 异常。
-- 对外使用 DTO，不直接暴露数据库实体。
-- 日志使用 SLF4J；禁止 `System.out.println`、`printStackTrace`、空 catch 和吞掉 `InterruptedException`。
-- 金额使用 `BigDecimal` 和数据库定点数，明确币种、小数位和舍入规则。
+- 新增 Controller 禁止直接依赖 `JdbcTemplate`、SQL、文件存储或外部 HTTP 客户端。
+- Controller 不承载业务规则和复杂数据库查询。
+- 复杂或复用查询应下沉到 Repository。
+- 存量 Controller 按任务范围逐步迁移到 Service 和 Repository。
+- 对外接口优先使用 DTO，不直接暴露数据库实体。
+- 不为满足分层要求重写无关接口。
 
-## 5. API、错误与安全
+## 3. API、金额和日期
 
-所有接口必须使用 DTO、Bean Validation 和统一错误结构：
+- 金额使用 `BigDecimal`，禁止用 `double` 或 `float` 执行业务计算。
+- 数据库金额字段使用定点数，并明确精度、舍入方式和币种。
+- 日期使用 `yyyy-MM-dd`。
+- 时间使用 ISO-8601 或项目约定格式。
+- 新接口必须使用明确的 HTTP 方法、资源路径、DTO 和 Bean Validation。
+- 接口统一返回结构化响应和错误。
+- 字段变化必须同步所有受影响的 frontend service、OpenAPI、接口契约、测试和变更记录。
+- 已发布接口不得无通知删除字段或改变字段含义。
+
+统一错误结构：
 
 ```json
-{"error_code":"BUSINESS_ERROR","message":"用户可理解的错误","trace_id":"trace-id"}
+{
+  "code": 40001,
+  "message": "参数校验失败",
+  "data": {
+    "error_code": "INVALID_PARAMETER",
+    "field": "horizon"
+  },
+  "trace_id": "trace-id"
+}
 ```
 
-不得返回堆栈、数据库错误或敏感内部信息。所有业务查询必须带租户条件并校验资源归属。登录失败不得泄露账号存在性；Token、密码、完整银行账号和隐私不得写日志。
+不得返回堆栈、SQL、服务器路径或敏感数据。
 
-导入、规则修改、匹配确认、异常关闭、报表生成等操作必须审计。
+## 4. 认证、租户和权限
 
-## 6. 数据库和 Flyway
+业务接口必须校验用户身份、当前租户、资源归属、功能权限和数据范围权限。
 
-- 结构变更只能新增迁移文件，已执行迁移禁止修改。
-- 非空字段必须提供默认值或分阶段迁移方案。
-- 数据转换必须有兼容策略、校验和恢复方案。
-- 迁移后必须验证旧数据、重复执行和失败恢复。
-- 数据库字段变更必须同步实体、DTO、查询、测试和文档。
+规则：
 
-## 7. 任务和 analytics 调用
+- 业务查询必须带租户条件。
+- 详情、下载、预览和导出必须校验租户和资源归属。
+- 不得只根据前端传入 ID 返回资源。
+- 租户 ID 以认证上下文为准。
+- 权限判断必须在 backend 执行。
+- 登录失败不得暴露账号是否存在。
+- Token、密码和认证信息不得写入日志。
+- 导入、规则修改、匹配确认、异常处理、报表生成和预测任务必须记录审计日志。
 
-导入、预测、报表等长任务必须有任务 ID、状态、失败原因、重试次数和幂等约束。调用 analytics 必须配置地址、连接/读取超时和有限重试，区分超时、网络失败、输入错误和算法错误。analytics 失败必须落库为失败任务，并向前端返回可理解的错误码；禁止无限重试或直接透传 Python 异常。
+## 5. 数据库、事务和任务
 
-## 8. 测试与交付
+- 数据库结构变更只能通过新增 Flyway 迁移。
+- 已执行迁移禁止修改、删除或重排。
+- 数据修复迁移必须说明前置条件、影响范围和校验方式。
+- 必须验证旧数据读取、新数据写入、失败恢复和接口兼容性。
+- 大表变更必须评估锁表、索引和执行时间。
+- 事务边界定义在 Service 层。
+- 单次事务不得覆盖长时间文件解析、外部 HTTP 或大批量计算。
+- 长任务使用可查询任务状态。
+- 批量任务设置上限并支持分批提交。
+- 导入、匹配、异常、规则、报表和预测重试必须具备幂等控制。
 
-至少覆盖 Controller 校验、Service 规则、Repository 查询、租户权限、统一异常、导入幂等、任务状态、数据库迁移和 analytics 成功/失败调用。
+## 6. analytics 调用
 
-交付前必须实际执行：
+- 地址从 `ANALYTICS_BASE_URL` 读取，不得硬编码。
+- 必须设置连接和读取超时。
+- 仅连接失败、连接超时和读取超时允许有限重试。
+- 默认最多自动重试 2 次并使用退避。
+- 用户手工重试必须具备幂等控制。
+- 必须传递 `X-Trace-Id`。
+- 必须区分成功、超时、连接失败、鉴权失败和业务错误。
+- 不得把 Python 堆栈原样返回前端。
+- analytics 失败时记录任务失败状态和原因。
+- 结果保存算法方法和模型版本。
 
-- [ ] `./mvnw test`
-- [ ] `./mvnw verify`
-- [ ] 涉及接口时完成真实 HTTP 验证
-- [ ] 涉及数据库时完成 Flyway 和数据验证
-- [ ] API 文档已同步
-- [ ] 无敏感日志、调试代码和未处理异常
-- [ ] 已检查 Git diff
+## 7. 日志、文件和配置安全
 
-## 9. 配置与依赖
+- 使用 SLF4J。
+- 禁止 `System.out.println`、`printStackTrace` 和空 catch。
+- 不得吞掉 `InterruptedException`。
+- 异常必须保留根因。
+- 日志应包含必要的 `trace_id`、服务名、环境、任务 ID 或业务主键。
+- 日志不得包含密码、Token、完整银行账号、原始文件内容或其他敏感数据。
+- 上传、预览、下载、导出和删除接口必须限制大小、行数、格式，校验租户和权限，并防止路径穿越。
+- 配置通过 `application*.yml` 和环境变量管理。
+- `.env`、密钥文件和证书不得提交。
+- 生产配置、CORS、Actuator、H2 Console、对象存储和服务间身份校验以发布检查清单为准。
 
-配置使用 `application*.yml` 和环境变量；密钥不得写入源码。新增 Maven 依赖必须说明理由、版本和安全影响，并提交 `pom.xml` 变更。依赖扫描工具未配置时如实记录，不得虚报通过。
+## 8. 后端测试和交付
+
+根据影响范围覆盖成功、失败、权限、租户越权、分页、脱敏、重复提交、状态转换、文件边界、金额精度、事务回滚、审计和 analytics 异常场景。
+
+接口任务至少提供一种可复现的接口验证方式：
+
+- MockMvc 或集成测试；
+- curl 或 Playwright APIRequest。
+
+交付前根据影响范围执行：
+
+```bash
+./mvnw test
+./mvnw verify
+```
+
+涉及编译或依赖时执行：
+
+```bash
+./mvnw clean compile
+```
+
+未执行的检查、限制和剩余风险必须如实说明。
