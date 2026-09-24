@@ -1,0 +1,36 @@
+name: Analytics CI
+
+on:
+  push:
+    paths:
+      - 'analytics/**'
+      - '.github/workflows/analytics-ci.yml'
+  pull_request:
+    paths:
+      - 'analytics/**'
+      - '.github/workflows/analytics-ci.yml'
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analytics
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.8'
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Unit tests
+        run: uv run --no-sync pytest
