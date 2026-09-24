@@ -24,11 +24,20 @@ public class ProjectService {
     this.auditService = auditService;
   }
 
-  public Map<String, Object> list(Long tenantId, int page, int pageSize, String projectNo, String customerName, String projectStatus) {
+  public Map<String, Object> list(Long tenantId, int page, int pageSize, String projectNo, String customerName, String projectStatus, List<Long> scopedProjectIds) {
     int safePage = Math.max(page, 1), safeSize = Math.min(Math.max(pageSize, 1), 100), offset = (safePage - 1) * safeSize;
     String filter = " where p.tenant_id = ? and p.deleted_at is null and (? is null or p.project_no = ?) and (? is null or p.customer_name like ?) and (? is null or p.project_status = ?)";
     String customerLike = blankToNull(customerName) == null ? null : "%" + customerName.trim() + "%";
     Object[] args = {tenantId, blankToNull(projectNo), blankToNull(projectNo), customerLike, customerLike, blankToNull(projectStatus), blankToNull(projectStatus)};
+    if (scopedProjectIds != null) {
+      if (scopedProjectIds.isEmpty()) {
+        filter += " and 1 = 0";
+      } else {
+        String placeholders = String.join(", ", Collections.nCopies(scopedProjectIds.size(), "?"));
+        filter += " and p.id in (" + placeholders + ")";
+        args = append(args, scopedProjectIds.toArray());
+      }
+    }
     List<Map<String, Object>> rows = jdbcTemplate.queryForList("select p.id, p.project_no, p.project_name, p.customer_name, p.project_manager, p.project_status, coalesce((select sum(c.contract_amount) from contract c where c.project_id = p.id and c.deleted_at is null), 0) as contract_amount, coalesce((select sum(r.plan_amount) from contract_receivable_plan r where r.project_id = p.id and r.deleted_at is null), 0) as receivable_amount, coalesce((select sum(r.paid_amount) from contract_receivable_plan r where r.project_id = p.id and r.deleted_at is null), 0) as paid_amount, coalesce((select sum(r.plan_amount - r.paid_amount) from contract_receivable_plan r where r.project_id = p.id and r.status <> 'paid' and r.due_date < current_date and r.deleted_at is null), 0) as overdue_amount, coalesce((select sum(case when bt2.direction = 'income' then a2.allocated_amount when bt2.direction = 'expense' then -a2.allocated_amount else 0 end) from match_result_allocation a2 join match_result mr2 on mr2.id = a2.match_result_id join bank_transaction bt2 on bt2.id = a2.bank_transaction_id where mr2.project_id = p.id and mr2.tenant_id = p.tenant_id and a2.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr2.deleted_at is null and a2.deleted_at is null), 0) as cashflow_amount, (select count(*) from contract c where c.project_id = p.id and c.deleted_at is null) as contract_count, (select count(*) from exception_case e where e.tenant_id = p.tenant_id and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = p.id) and e.status not in ('closed', 'false_positive') and e.deleted_at is null) as exception_count from project p" + filter + " order by p.id desc limit ? offset ?", append(args, safeSize, offset));
     for (Map<String, Object> row : rows) enrichRisk(row, tenantId);
     Map<String, Object> data = new LinkedHashMap<>(); data.put("items", rows); data.put("page", safePage); data.put("page_size", safeSize); data.put("total", jdbcTemplate.queryForObject("select count(*) from project p" + filter, args, Integer.class)); return data;
@@ -64,9 +73,9 @@ public class ProjectService {
     return Collections.<String, Object>singletonMap("updated", updated);
   }
 
-  public Map<String, Object> detail(Long tenantId, Long id) {
+  public Map<String, Object> detail(Long tenantId, Long id, List<Long> scopedProjectIds) {
     List<Map<String, Object>> projects = jdbcTemplate.queryForList("select id, project_no, project_name, customer_name, project_manager, project_status, created_at, updated_at from project where id = ? and tenant_id = ? and deleted_at is null", id, tenantId);
-    if (projects.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "项目不存在");
+    if (projects.isEmpty() || (scopedProjectIds != null && !scopedProjectIds.contains(id))) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "项目不存在");
     Map<String, Object> project = projects.get(0);
     Map<String, Object> metrics = jdbcTemplate.queryForMap("select coalesce((select sum(c.contract_amount) from contract c where c.project_id = ? and c.tenant_id = ? and c.deleted_at is null), 0) as contract_amount, coalesce((select sum(r.plan_amount) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as receivable_amount, coalesce((select sum(r.paid_amount) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as paid_amount, coalesce((select sum(case when r.status <> 'paid' and r.due_date < current_date then r.plan_amount - r.paid_amount else 0 end) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as overdue_amount", id, tenantId, id, tenantId, id, tenantId, id, tenantId);
     Integer exceptions = jdbcTemplate.queryForObject("select count(*) from exception_case e where e.tenant_id = ? and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = ?) and e.status not in ('closed', 'false_positive') and e.deleted_at is null", Integer.class, tenantId, id);

@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
@@ -17,6 +18,7 @@ public class DashboardController {
   private final DashboardService dashboardService;
   public DashboardController(DashboardService dashboardService) { this.dashboardService = dashboardService; }
 
+  @RequirePermission("dashboard:view")
   @GetMapping("/overview")
   public ApiResponse<Map<String, Object>> overview() { return ApiResponse.ok(dashboardService.overview(requireAuth().getTenantId())); }
 

@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.api.dto.ExceptionActionRequest;
 import com.bankforecast.api.dto.RejectMatchResultRequest;
@@ -23,9 +24,11 @@ public class MatchingController {
 
   public MatchingController(MatchingService matchingService) { this.matchingService = matchingService; }
 
+  @RequirePermission("matching:run")
   @PostMapping("/receivables/run")
   public ApiResponse<Map<String, Object>> run() { return ApiResponse.ok(matchingService.runReceivableMatching()); }
 
+  @RequirePermission("matching:view")
   @GetMapping("/results")
   public ApiResponse<Map<String, Object>> results(
       @RequestParam(defaultValue = "1") int page,
@@ -38,16 +41,19 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.listResults(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
   }
 
+  @RequirePermission("matching:view")
   @GetMapping("/results/{id}")
   public ApiResponse<Map<String, Object>> resultDetail(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.resultDetail(id));
   }
 
+  @RequirePermission("matching:view")
   @GetMapping("/results/{id}/allocations")
   public ApiResponse<List<Map<String, Object>>> resultAllocations(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.resultAllocations(id));
   }
 
+  @RequirePermission("exception:view")
   @GetMapping("/exceptions")
   public ApiResponse<Map<String, Object>> exceptions(
       @RequestParam(defaultValue = "1") int page,
@@ -61,57 +67,67 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly));
   }
 
+  @RequirePermission("exception:view")
   @GetMapping("/exceptions/{id}")
   public ApiResponse<Map<String, Object>> exceptionDetail(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.exceptionDetail(id));
   }
 
+  @RequirePermission("matching:confirm")
   @PostMapping("/results/{id}/confirm")
   public ApiResponse<Map<String, Object>> confirm(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.confirmResult(id));
   }
 
+  @RequirePermission("matching:confirm")
   @PostMapping("/results/{id}/reject")
   public ApiResponse<Map<String, Object>> reject(@PathVariable Long id,
       @Valid @RequestBody(required = false) RejectMatchResultRequest request) {
     return ApiResponse.ok(matchingService.rejectResult(id, request == null ? null : request.getReason()));
   }
 
+  @RequirePermission("exception:assign")
   @PostMapping("/exceptions/{id}/assign")
   public ApiResponse<Map<String, Object>> assignException(@PathVariable Long id,
       @Valid @RequestBody(required = false) ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.assignException(id, request == null ? null : request.getOwnerUserId()));
   }
 
+  @RequirePermission("exception:handle")
   @PostMapping("/exceptions/{id}/comment")
   public ApiResponse<Map<String, Object>> commentException(@PathVariable Long id,
       @Valid @RequestBody ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.commentException(id, request == null ? null : request.getText()));
   }
 
+  @RequirePermission("exception:handle")
   @PostMapping("/exceptions/{id}/resolve")
   public ApiResponse<Map<String, Object>> resolveException(@PathVariable Long id,
       @Valid @RequestBody(required = false) ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.resolveException(id, request == null ? null : request.getText()));
   }
 
+  @RequirePermission("exception:handle")
   @PostMapping("/exceptions/{id}/close")
   public ApiResponse<Map<String, Object>> closeException(@PathVariable Long id,
       @Valid @RequestBody(required = false) ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.closeException(id, request == null ? null : request.getText()));
   }
 
+  @RequirePermission("exception:handle")
   @PostMapping("/exceptions/{id}/false-positive")
   public ApiResponse<Map<String, Object>> falsePositive(@PathVariable Long id,
       @Valid @RequestBody ExceptionActionRequest request) {
     return ApiResponse.ok(matchingService.markFalsePositive(id, request == null ? null : request.getText()));
   }
 
+  @RequirePermission("exception:handle")
   @PostMapping("/exceptions/batch-action")
   public ApiResponse<Map<String, Object>> batchAction(@Valid @RequestBody Map<String, Object> request) {
     return ApiResponse.ok(matchingService.batchExceptionAction(request));
   }
 
+  @RequirePermission("exception:view")
   @GetMapping("/exceptions/{id}/logs")
   public ApiResponse<List<Map<String, Object>>> exceptionLogs(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.listExceptionLogs(id));

@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.finance.FinanceReconciliationService;
 import java.time.LocalDate;
@@ -19,6 +20,7 @@ public class ReconciliationController {
 
   public ReconciliationController(FinanceReconciliationService service) { this.service = service; }
 
+  @RequirePermission("reconciliation:run")
   @PostMapping("/run")
   public ApiResponse<Map<String, Object>> run(
       @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
@@ -26,6 +28,7 @@ public class ReconciliationController {
     return ApiResponse.ok(service.run(dateFrom, dateTo));
   }
 
+  @RequirePermission("reconciliation:view")
   @GetMapping("/results")
   public ApiResponse<Map<String, Object>> results(
       @RequestParam(name = "job_id", required = false) Long jobId,

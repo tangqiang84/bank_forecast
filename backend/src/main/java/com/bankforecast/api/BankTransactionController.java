@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.bank.BankTransactionService;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.api.dto.TransactionClassifyRequest;
@@ -25,6 +26,7 @@ public class BankTransactionController {
     this.bankTransactionService = bankTransactionService;
   }
 
+  @RequirePermission("transaction:view")
   @GetMapping
   public ApiResponse<Map<String, Object>> list(
       @RequestParam(defaultValue = "1") int page,
@@ -38,6 +40,7 @@ public class BankTransactionController {
     return ApiResponse.ok(bankTransactionService.list(page, pageSize, bankAccountId, contractNo, projectNo, dateFrom, dateTo, status));
   }
 
+  @RequirePermission("transaction:view")
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@org.springframework.web.bind.annotation.PathVariable Long id) {
     return ApiResponse.ok(bankTransactionService.detail(id));
@@ -55,6 +58,7 @@ public class BankTransactionController {
     return ApiResponse.ok(bankTransactionService.unlink(id, request.getReason()));
   }
 
+  @RequirePermission("transaction:export")
   @GetMapping(value = "/export", produces = "text/csv")
   public ResponseEntity<String> export(@RequestParam(name = "bank_account_id", required = false) Long bankAccountId,
       @RequestParam(name = "date_from", required = false) LocalDate dateFrom,

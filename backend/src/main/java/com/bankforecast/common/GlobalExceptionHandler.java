@@ -65,7 +65,14 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(BusinessException.class)
   public ResponseEntity<ApiResponse<Object>> handleBusiness(BusinessException ex) {
-    HttpStatus status = ex.getCode() >= 50000 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.BAD_REQUEST;
+    HttpStatus status;
+    if (ex.getCode() >= 50000) {
+      status = HttpStatus.INTERNAL_SERVER_ERROR;
+    } else if (ex.getCode() == ErrorCode.PERMISSION_DENIED) {
+      status = HttpStatus.FORBIDDEN;
+    } else {
+      status = HttpStatus.BAD_REQUEST;
+    }
     return ResponseEntity.status(status).body(ApiResponse.fail(ex.getCode(), ex.getMessage(), ex.getData()));
   }
 

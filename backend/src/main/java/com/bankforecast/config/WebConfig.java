@@ -1,6 +1,7 @@
 package com.bankforecast.config;
 
 import com.bankforecast.security.AuthInterceptor;
+import com.bankforecast.security.PermissionInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -14,9 +15,11 @@ public class WebConfig implements WebMvcConfigurer {
   private String allowedOrigins;
 
   private final AuthInterceptor authInterceptor;
+  private final PermissionInterceptor permissionInterceptor;
 
-  public WebConfig(AuthInterceptor authInterceptor) {
+  public WebConfig(AuthInterceptor authInterceptor, PermissionInterceptor permissionInterceptor) {
     this.authInterceptor = authInterceptor;
+    this.permissionInterceptor = permissionInterceptor;
   }
 
   @Override
@@ -31,6 +34,7 @@ public class WebConfig implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    registry.addInterceptor(authInterceptor).addPathPatterns("/api/v1/**");
+    registry.addInterceptor(authInterceptor).addPathPatterns("/api/v1/**").order(1);
+    registry.addInterceptor(permissionInterceptor).addPathPatterns("/api/v1/**").order(2);
   }
 }

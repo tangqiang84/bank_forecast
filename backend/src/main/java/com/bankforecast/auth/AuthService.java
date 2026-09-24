@@ -5,7 +5,9 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import com.bankforecast.security.PasswordHashService;
+import com.bankforecast.security.PermissionRepository;
 import com.bankforecast.security.TokenService;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,12 +19,15 @@ public class AuthService {
   private final UserAccountRepository userAccountRepository;
   private final PasswordHashService passwordHashService;
   private final TokenService tokenService;
+  private final PermissionRepository permissionRepository;
 
   public AuthService(UserAccountRepository userAccountRepository,
-      PasswordHashService passwordHashService, TokenService tokenService) {
+      PasswordHashService passwordHashService, TokenService tokenService,
+      PermissionRepository permissionRepository) {
     this.userAccountRepository = userAccountRepository;
     this.passwordHashService = passwordHashService;
     this.tokenService = tokenService;
+    this.permissionRepository = permissionRepository;
   }
 
   public Map<String, Object> login(LoginRequest request) {
@@ -60,7 +65,7 @@ public class AuthService {
     data.put("login_name", principal.getLoginName());
     data.put("display_name", principal.getDisplayName());
     data.put("roles", principal.getRoles());
-    data.put("permissions", permissions(principal.getRoles()));
+    data.put("permissions", permissions(principal.getTenantId(), principal.getRoles()));
     return data;
   }
 
@@ -72,14 +77,11 @@ public class AuthService {
     data.put("display_name", user.getDisplayName());
     data.put("status", user.getStatus());
     data.put("roles", roles);
-    data.put("permissions", permissions(roles));
+    data.put("permissions", permissions(user.getTenantId(), roles));
     return data;
   }
 
-  private List<String> permissions(List<String> roles) {
-    if (roles.contains("ADMIN") || roles.contains("CFO")) {
-      return java.util.Arrays.asList("DASHBOARD_VIEW", "IMPORT_MANAGE", "BANK_VIEW", "EXCEPTION_MANAGE");
-    }
-    return java.util.Arrays.asList("DASHBOARD_VIEW");
+  private List<String> permissions(Long tenantId, List<String> roles) {
+    return new ArrayList<>(permissionRepository.findPermissionCodes(tenantId, roles));
   }
 }

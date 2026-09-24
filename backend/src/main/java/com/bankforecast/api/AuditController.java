@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
@@ -19,6 +20,7 @@ public class AuditController {
 
   public AuditController(AuditLogService auditLogService) { this.auditLogService = auditLogService; }
 
+  @RequirePermission("audit:view")
   @GetMapping
   public ApiResponse<Map<String, Object>> list(
       @RequestParam(defaultValue = "1") int page,

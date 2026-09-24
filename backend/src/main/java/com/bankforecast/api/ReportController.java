@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.report.ReportService;
 import java.util.Map;
@@ -21,12 +22,14 @@ public class ReportController {
 
   public ReportController(ReportService reportService) { this.reportService = reportService; }
 
+  @RequirePermission("report:generate")
   @PostMapping
   public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> request) {
     return ApiResponse.ok(reportService.create(request == null ? null : String.valueOf(request.get("report_type")),
         request == null ? null : castParams(request.get("params_json"))));
   }
 
+  @RequirePermission("report:view")
   @GetMapping
   public ApiResponse<Map<String, Object>> list(@RequestParam(defaultValue = "1") int page,
       @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
@@ -35,9 +38,11 @@ public class ReportController {
     return ApiResponse.ok(reportService.list(reportType, status, page, pageSize));
   }
 
+  @RequirePermission("report:view")
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) { return ApiResponse.ok(reportService.detail(id)); }
 
+  @RequirePermission("report:download")
   @GetMapping(value = "/{id}/download", produces = "text/csv")
   public ResponseEntity<String> download(@PathVariable Long id) {
     return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report-" + id + ".csv")

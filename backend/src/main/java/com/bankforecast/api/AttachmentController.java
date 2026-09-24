@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.attachment.AttachmentService;
 import com.bankforecast.common.ApiResponse;
 import java.util.List;
@@ -21,18 +22,22 @@ public class AttachmentController {
   private final AttachmentService attachmentService;
   public AttachmentController(AttachmentService attachmentService) { this.attachmentService = attachmentService; }
 
+  @RequirePermission("attachment:manage")
   @PostMapping("/{exceptionId}/attachments")
   public ApiResponse<Map<String, Object>> upload(@PathVariable Long exceptionId, @RequestParam("file") MultipartFile file) { return ApiResponse.ok(attachmentService.upload(exceptionId, file)); }
 
+  @RequirePermission("attachment:view")
   @GetMapping("/{exceptionId}/attachments")
   public ApiResponse<List<Map<String, Object>>> list(@PathVariable Long exceptionId) { return ApiResponse.ok(attachmentService.list(exceptionId)); }
 
+  @RequirePermission("attachment:view")
   @GetMapping("/attachments/{attachmentId}/download")
   public ResponseEntity<byte[]> download(@PathVariable Long attachmentId) {
     Map<String, Object> row = attachmentService.download(attachmentId);
     return response(row, "attachment");
   }
 
+  @RequirePermission("attachment:view")
   @GetMapping("/attachments/{attachmentId}/preview")
   public ResponseEntity<byte[]> preview(@PathVariable Long attachmentId) {
     return response(attachmentService.download(attachmentId), "inline");

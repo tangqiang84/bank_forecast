@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.bank.BankAccountRepository;
 import com.bankforecast.audit.AuditService;
 import com.bankforecast.common.ApiResponse;
@@ -30,6 +31,7 @@ public class BankAccountController {
     this.auditService = auditService;
   }
 
+  @RequirePermission("account:view")
   @GetMapping
   public ApiResponse<Map<String, Object>> list(
       @RequestParam(defaultValue = "1") int page,
@@ -38,12 +40,14 @@ public class BankAccountController {
     return ApiResponse.ok(bankAccountRepository.listByTenant(principal.getTenantId(), page, pageSize));
   }
 
+  @RequirePermission("account:view")
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
     AuthPrincipal principal = requireAuth();
     return ApiResponse.ok(bankAccountRepository.findById(principal.getTenantId(), id));
   }
 
+  @RequirePermission("account:manage")
   @PostMapping
   public ApiResponse<Map<String, Object>> create(@Valid @RequestBody BankAccountRequest request) {
     AuthPrincipal principal = requireAuth();
@@ -52,6 +56,7 @@ public class BankAccountController {
     return ApiResponse.ok(result);
   }
 
+  @RequirePermission("account:manage")
   @PutMapping("/{id}")
   public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Valid @RequestBody BankAccountRequest request) {
     AuthPrincipal principal = requireAuth();
@@ -60,6 +65,7 @@ public class BankAccountController {
     return ApiResponse.ok(result);
   }
 
+  @RequirePermission("account:manage")
   @PostMapping("/{id}/close")
   public ApiResponse<Map<String, Object>> close(@PathVariable Long id) {
     AuthPrincipal principal = requireAuth();
@@ -68,6 +74,7 @@ public class BankAccountController {
     return ApiResponse.ok(result);
   }
 
+  @RequirePermission("account:scan")
   @PostMapping("/idle-scan")
   public ApiResponse<Map<String, Object>> idleScan() {
     AuthPrincipal principal = requireAuth();

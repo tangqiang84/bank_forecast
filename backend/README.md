@@ -23,9 +23,16 @@ export JWT_SECRET='<本地随机长字符串>'
 
 ## 开发账号
 
-- 登录名：`finance01`
 - 密码：开发环境启动前通过 `DEV_ADMIN_PASSWORD` 环境变量设置，例如 `DEV_ADMIN_PASSWORD=123123`；已有本地数据库也会在启动时同步该开发密码
 - 租户：演示企业
+- 演示账号（同一开发密码，仅用于本地验证）：`finance01`（CFO 财务负责人）、`admin01`（ADMIN 系统管理员）、`ceo01`（CEO 企业负责人）、`cashier01`（CASHIER 出纳）、`biz01`（BUSINESS 业务负责人）
+
+## 权限模型
+
+- 业务接口通过 `@RequirePermission("模块:动作")` 注解逐一鉴权，未授权返回 HTTP 403 和 `code=40301`。
+- 权限模型由 `permission`、`role_permission`、`user_role` 表驱动；`AuthService` 登录和 `/auth/me` 返回数据库查询得到的权限点列表。
+- 内置角色权限映射见 `DefaultDataInitializer`；角色和权限定义见 `docs/architecture/银行资金智能连接器角色权限矩阵_v1.0.md`。
+- 项目数据范围：仅有 `BUSINESS` 角色的用户按 `user_project_scope` 过滤项目列表和详情，无范围记录时不可见项目。
 
 ## 银行账户管理
 

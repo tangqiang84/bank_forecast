@@ -1,5 +1,6 @@
 package com.bankforecast.api;
 
+import com.bankforecast.security.RequirePermission;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
@@ -20,16 +21,19 @@ public class ContractController {
   private final ContractService contractService;
   public ContractController(ContractService contractService) { this.contractService = contractService; }
 
+  @RequirePermission("contract:view")
   @GetMapping
   public ApiResponse<Map<String, Object>> list(@RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "20") int pageSize, @RequestParam(name = "contract_no", required = false) String contractNo, @RequestParam(name = "project_no", required = false) String projectNo, @RequestParam(required = false) String status) {
     return ApiResponse.ok(contractService.list(requireAuth().getTenantId(), page, pageSize, contractNo, projectNo, status));
   }
 
+  @RequirePermission("contract:view")
   @GetMapping("/receivables")
   public ApiResponse<Map<String, Object>> receivables(@RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "20") int pageSize, @RequestParam(name = "contract_no", required = false) String contractNo, @RequestParam(name = "project_no", required = false) String projectNo, @RequestParam(name = "date_from", required = false) LocalDate dateFrom, @RequestParam(name = "date_to", required = false) LocalDate dateTo, @RequestParam(required = false) String status) {
     return ApiResponse.ok(contractService.receivables(requireAuth().getTenantId(), page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
   }
 
+  @RequirePermission("contract:view")
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) { return ApiResponse.ok(contractService.detail(requireAuth().getTenantId(), id)); }
 
