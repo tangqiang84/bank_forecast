@@ -22,7 +22,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm exec vite --host 127.0.0.1 --port 5173 --strictPort',
+    command: 'node_modules/.bin/vite --host 127.0.0.1 --port 5173 --strictPort',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !isCI,
     timeout: 60_000,
