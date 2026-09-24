@@ -26,7 +26,10 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: LoginView, meta: { guest: true } },
     {
-      path: '/', name: 'workspace', component: WorkspaceLayout, meta: { requiresAuth: true },
+      path: '/',
+      name: 'workspace',
+      component: WorkspaceLayout,
+      meta: { requiresAuth: true },
       children: [
         { path: '', name: 'workspace-root', redirect: { name: 'dashboard' } },
         { path: 'dashboard', name: 'dashboard', component: DashboardView },
@@ -38,17 +41,56 @@ const router = createRouter({
         { path: 'matching', name: 'matching', component: MatchingView },
         { path: 'exceptions', name: 'exceptions', component: ExceptionsView },
         { path: 'reconciliation', name: 'reconciliation', component: ReconciliationView },
-        { path: 'reconciliation/jobs/:jobId', name: 'reconciliation-job', component: ReconciliationView },
+        {
+          path: 'reconciliation/jobs/:jobId',
+          name: 'reconciliation-job',
+          component: ReconciliationView,
+        },
         { path: 'reports', name: 'reports', component: ReportsView },
         { path: 'forecast', name: 'forecast', component: ForecastView },
         { path: 'forecast/jobs/:jobId', name: 'forecast-job', component: ForecastView },
-        { path: 'accounts/:id', name: 'account-detail', component: EntityDetailView, props: { kind: 'account' } },
-        { path: 'transactions/:id', name: 'transaction-detail', component: EntityDetailView, props: { kind: 'transaction' } },
-        { path: 'contracts/:id', name: 'contract-detail', component: EntityDetailView, props: { kind: 'contract' } },
-        { path: 'projects/:id', name: 'project-detail', component: EntityDetailView, props: { kind: 'project' } },
-        { path: 'matching/:id', name: 'matching-detail', component: EntityDetailView, props: { kind: 'match' } },
-        { path: 'exceptions/:id', name: 'exception-detail', component: EntityDetailView, props: { kind: 'exception' } },
-        { path: 'reports/:id', name: 'report-detail', component: EntityDetailView, props: { kind: 'report' } },
+        {
+          path: 'accounts/:id',
+          name: 'account-detail',
+          component: EntityDetailView,
+          props: { kind: 'account' },
+        },
+        {
+          path: 'transactions/:id',
+          name: 'transaction-detail',
+          component: EntityDetailView,
+          props: { kind: 'transaction' },
+        },
+        {
+          path: 'contracts/:id',
+          name: 'contract-detail',
+          component: EntityDetailView,
+          props: { kind: 'contract' },
+        },
+        {
+          path: 'projects/:id',
+          name: 'project-detail',
+          component: EntityDetailView,
+          props: { kind: 'project' },
+        },
+        {
+          path: 'matching/:id',
+          name: 'matching-detail',
+          component: EntityDetailView,
+          props: { kind: 'match' },
+        },
+        {
+          path: 'exceptions/:id',
+          name: 'exception-detail',
+          component: EntityDetailView,
+          props: { kind: 'exception' },
+        },
+        {
+          path: 'reports/:id',
+          name: 'report-detail',
+          component: EntityDetailView,
+          props: { kind: 'report' },
+        },
       ],
     },
   ],
@@ -57,7 +99,11 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const session = useSession()
   if (!session.user.value && session.token.value) {
-    try { session.user.value = await loadCurrentUser(apiBase(), session.token.value) } catch { session.signOut() }
+    try {
+      session.user.value = await loadCurrentUser(apiBase(), session.token.value)
+    } catch {
+      session.signOut()
+    }
   }
   if (to.meta.requiresAuth && !session.loggedIn.value) return '/login'
   if (to.meta.guest && session.loggedIn.value) return '/dashboard'

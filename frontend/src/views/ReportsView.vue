@@ -1,16 +1,319 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { createReport, downloadReport, loadReportAudits, loadReportDetail, loadReports, type ReportAuditLog, type ReportTask } from '../services/reports'
+import {
+  createReport,
+  downloadReport,
+  loadReportAudits,
+  loadReportDetail,
+  loadReports,
+  type ReportAuditLog,
+  type ReportTask,
+} from '../services/reports'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const session = useSession(); const base = apiBase(); const rows = ref<ReportTask[]>([]); const selected = ref<ReportTask | null>(null); const audits = ref<ReportAuditLog[]>([]); const page = ref(1); const pageSize = ref(20); const total = ref(0); const reportType = ref('monthly'); const reportMonth = ref(new Date().toISOString().slice(0, 7)); const reportDate = ref(new Date().toISOString().slice(0, 10)); const loading = ref(false); const detailLoading = ref(false); const message = ref(''); const error = ref('')
-async function load() { if (!session.user.value || !session.token.value) return; loading.value = true; try { const result = await loadReports(base, session.token.value, session.user.value.tenant_id, page.value, pageSize.value); rows.value = result.data.items; total.value = result.data.total; if (selected.value) { const current = rows.value.find((item) => item.id === selected.value?.id); if (current) await select(current) } } catch (cause) { error.value = cause instanceof Error ? cause.message : '报表任务加载失败' } finally { loading.value = false } }
-async function select(report: ReportTask) { if (!session.user.value || !session.token.value) return; selected.value = report; detailLoading.value = true; try { const [detail, audit] = await Promise.all([loadReportDetail(base, session.token.value, session.user.value.tenant_id, report.id), loadReportAudits(base, session.token.value, session.user.value.tenant_id, report.id)]); selected.value = detail.data; audits.value = audit.data.items } catch (cause) { message.value = cause instanceof Error ? cause.message : '报表详情加载失败' } finally { detailLoading.value = false } }
-async function generate() { if (!session.user.value || !session.token.value) return; loading.value = true; try { const params = reportType.value === 'monthly' ? { month: reportMonth.value } : reportType.value === 'daily' ? { date_from: reportDate.value, date_to: reportDate.value } : {}; await createReport(base, session.token.value, session.user.value.tenant_id, reportType.value, params); message.value = '报表已生成。'; await load() } catch (cause) { message.value = cause instanceof Error ? cause.message : '报表生成失败' } finally { loading.value = false } }
-async function download(report: ReportTask) { if (!session.user.value || !session.token.value) return; try { const blob = await downloadReport(base, session.token.value, session.user.value.tenant_id, report.id); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = report.file_name || `report-${report.id}.csv`; link.click(); URL.revokeObjectURL(link.href); message.value = '报表 CSV 已导出。' } catch (cause) { message.value = cause instanceof Error ? cause.message : '报表导出失败' } }
-function changeSize() { page.value = 1; load() }
-onMounted(() => { load(); window.addEventListener('workspace-refresh', load) })
+const session = useSession()
+const base = apiBase()
+const rows = ref<ReportTask[]>([])
+const selected = ref<ReportTask | null>(null)
+const audits = ref<ReportAuditLog[]>([])
+const page = ref(1)
+
+function prevPage() {
+  page.value--
+  load()
+}
+
+function nextPage() {
+  page.value++
+  load()
+}
+const pageSize = ref(20)
+const total = ref(0)
+const reportType = ref('monthly')
+const reportMonth = ref(new Date().toISOString().slice(0, 7))
+const reportDate = ref(new Date().toISOString().slice(0, 10))
+const loading = ref(false)
+const detailLoading = ref(false)
+const message = ref('')
+const error = ref('')
+async function load() {
+  if (!session.user.value || !session.token.value) return
+  loading.value = true
+  try {
+    const result = await loadReports(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      page.value,
+      pageSize.value,
+    )
+    rows.value = result.data.items
+    total.value = result.data.total
+    if (selected.value) {
+      const current = rows.value.find((item) => item.id === selected.value?.id)
+      if (current) await select(current)
+    }
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '报表任务加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+async function select(report: ReportTask) {
+  if (!session.user.value || !session.token.value) return
+  selected.value = report
+  detailLoading.value = true
+  try {
+    const [detail, audit] = await Promise.all([
+      loadReportDetail(base, session.token.value, session.user.value.tenant_id, report.id),
+      loadReportAudits(base, session.token.value, session.user.value.tenant_id, report.id),
+    ])
+    selected.value = detail.data
+    audits.value = audit.data.items
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '报表详情加载失败'
+  } finally {
+    detailLoading.value = false
+  }
+}
+async function generate() {
+  if (!session.user.value || !session.token.value) return
+  loading.value = true
+  try {
+    const params =
+      reportType.value === 'monthly'
+        ? { month: reportMonth.value }
+        : reportType.value === 'daily'
+          ? { date_from: reportDate.value, date_to: reportDate.value }
+          : {}
+    await createReport(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      reportType.value,
+      params,
+    )
+    message.value = '报表已生成。'
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '报表生成失败'
+  } finally {
+    loading.value = false
+  }
+}
+async function download(report: ReportTask) {
+  if (!session.user.value || !session.token.value) return
+  try {
+    const blob = await downloadReport(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      report.id,
+    )
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = report.file_name || `report-${report.id}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    message.value = '报表 CSV 已导出。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '报表导出失败'
+  }
+}
+function changeSize() {
+  page.value = 1
+  load()
+}
+onMounted(() => {
+  load()
+  window.addEventListener('workspace-refresh', load)
+})
 </script>
 
-<template><section class="page-shell"><header class="hero-band"><div><p class="eyebrow">报告中心</p><h2>资金经营报告</h2><p class="lead">按 PRD 生成日报、月报和资金体检报告，查看经营指标、风险项、审计记录并导出结果。</p></div><span class="meta">共 {{ total }} 个报表任务</span></header><p v-if="error" class="error-banner">{{ error }}</p><p v-if="message" class="feedback-text">{{ message }}</p><section class="grid reconciliation-layout"><article class="panel workflow-panel"><h3>生成报告</h3><label>报告类型<select v-model="reportType"><option value="daily">日报</option><option value="monthly">月报</option><option value="health">资金体检报告</option></select></label><label v-if="reportType === 'monthly'">统计月份<input v-model="reportMonth" type="month" /></label><label v-if="reportType === 'daily'">统计日期<input v-model="reportDate" type="date" /></label><button class="primary-button" :disabled="loading" type="button" @click="generate">{{ loading ? '生成中...' : '生成报表' }}</button><p class="meta import-hint">日报展示余额变化、收支和新增异常；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。</p></article><article class="panel table-panel"><div class="section-heading"><div><h3>报表任务</h3><span class="meta">服务端分页</span></div><button class="ghost-button" type="button" @click="load">刷新</button></div><div v-if="rows.length" class="table-scroll"><table><thead><tr><th>报表类型</th><th>统计范围</th><th>状态</th><th>生成时间</th><th>操作</th></tr></thead><tbody><tr v-for="report in rows" :key="report.id" :class="{ 'selected-row': selected?.id === report.id }"><td>{{ report.report_type === 'health' ? '资金体检' : report.report_type === 'monthly' ? '月报' : '日报' }}</td><td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td><td><span class="pill">{{ report.status }}</span></td><td>{{ report.created_at }}</td><td><div class="action-group"><button class="text-button" type="button" @click="select(report)">查看详情</button><button v-if="report.status === 'success'" class="text-button" type="button" @click="download(report)">下载 CSV</button></div></td></tr></tbody></table></div><p v-else class="empty-state">暂无报表任务，请先生成报表。</p><div class="pagination-controls"><span>第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共 {{ total }} 条</span><label>每页<select v-model.number="pageSize" @change="changeSize"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>条</label><button class="ghost-button" :disabled="page <= 1" type="button" @click="page--; load()">上一页</button><button class="ghost-button" :disabled="page >= Math.ceil(total / pageSize)" type="button" @click="page++; load()">下一页</button></div></article></section><section class="grid report-detail-grid"><article class="panel report-preview"><div class="section-heading"><div><h3>报表详情与预览</h3><span class="meta">{{ selected ? `任务 #${selected.id}` : '请选择报表任务' }}</span></div><span v-if="detailLoading" class="meta">加载中...</span></div><template v-if="selected?.result"><div class="report-kpi-grid"><div><span class="label">报表名称</span><strong>{{ selected.result.report_name || '-' }}</strong></div><div><span class="label">净现金流</span><strong>{{ formatCurrency(String(selected.result.net_cashflow ?? '0')) }}</strong></div><div v-if="selected.report_type === 'health'"><span class="label">健康评分</span><strong class="health-score">{{ selected.result.health_score ?? '-' }}</strong></div><div v-if="selected.report_type === 'health'"><span class="label">健康等级</span><strong>{{ selected.result.health_level ?? '-' }}</strong></div></div><div v-if="selected.report_type === 'health'" class="risk-list"><h3>风险项</h3><div v-for="risk in selected.result.risk_items as Array<Record<string, unknown>>" v-if="Array.isArray(selected.result.risk_items) && selected.result.risk_items.length" :key="String(risk.title)" class="list-row"><span>{{ risk.title }}：{{ risk.description }}</span><span class="pill">{{ risk.count }}</span></div><p v-else class="empty-state">当前未发现风险项。</p></div><div v-else class="report-summary-grid"><span>收入 {{ formatCurrency(String(selected.result.income_total ?? '0')) }}</span><span>支出 {{ formatCurrency(String(selected.result.expense_total ?? '0')) }}</span><span>交易 {{ selected.result.transaction_count ?? 0 }} 笔</span><span>匹配率 {{ (Number(selected.result.match_rate ?? 0) * 100).toFixed(1) }}%</span></div></template><p v-else class="empty-state">请选择一条已生成的报表查看详情。</p></article><article class="panel"><div class="section-heading"><div><h3>报表审计记录</h3><span class="meta">{{ audits.length }} 条</span></div></div><div v-if="audits.length" class="audit-list"><div v-for="audit in audits" :key="audit.id" class="audit-row"><div><strong>{{ audit.action }}</strong><p class="meta">{{ audit.detail || '-' }}</p></div><span class="meta">{{ audit.created_at }}</span></div></div><p v-else class="empty-state">请选择报表任务查看审计记录。</p></article></section></section></template>
+<template>
+  <section class="page-shell">
+    <header class="hero-band">
+      <div>
+        <p class="eyebrow">报告中心</p>
+        <h2>资金经营报告</h2>
+        <p class="lead">
+          按 PRD 生成日报、月报和资金体检报告，查看经营指标、风险项、审计记录并导出结果。
+        </p>
+      </div>
+      <span class="meta">共 {{ total }} 个报表任务</span>
+    </header>
+    <p v-if="error" class="error-banner">{{ error }}</p>
+    <p v-if="message" class="feedback-text">{{ message }}</p>
+    <section class="grid reconciliation-layout">
+      <article class="panel workflow-panel">
+        <h3>生成报告</h3>
+        <label
+          >报告类型<select v-model="reportType">
+            <option value="daily">日报</option>
+            <option value="monthly">月报</option>
+            <option value="health">资金体检报告</option>
+          </select></label
+        ><label v-if="reportType === 'monthly'"
+          >统计月份<input v-model="reportMonth" type="month" /></label
+        ><label v-if="reportType === 'daily'"
+          >统计日期<input v-model="reportDate" type="date" /></label
+        ><button class="primary-button" :disabled="loading" type="button" @click="generate">
+          {{ loading ? '生成中...' : '生成报表' }}
+        </button>
+        <p class="meta import-hint">
+          日报展示余额变化、收支和新增异常；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。
+        </p>
+      </article>
+      <article class="panel table-panel">
+        <div class="section-heading">
+          <div>
+            <h3>报表任务</h3>
+            <span class="meta">服务端分页</span>
+          </div>
+          <button class="ghost-button" type="button" @click="load">刷新</button>
+        </div>
+        <div v-if="rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>报表类型</th>
+                <th>统计范围</th>
+                <th>状态</th>
+                <th>生成时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="report in rows"
+                :key="report.id"
+                :class="{ 'selected-row': selected?.id === report.id }"
+              >
+                <td>
+                  {{
+                    report.report_type === 'health'
+                      ? '资金体检'
+                      : report.report_type === 'monthly'
+                        ? '月报'
+                        : '日报'
+                  }}
+                </td>
+                <td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td>
+                <td>
+                  <span class="pill">{{ report.status }}</span>
+                </td>
+                <td>{{ report.created_at }}</td>
+                <td>
+                  <div class="action-group">
+                    <button class="text-button" type="button" @click="select(report)">
+                      查看详情</button
+                    ><button
+                      v-if="report.status === 'success'"
+                      class="text-button"
+                      type="button"
+                      @click="download(report)"
+                    >
+                      下载 CSV
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">暂无报表任务，请先生成报表。</p>
+        <div class="pagination-controls">
+          <span
+            >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
+            {{ total }} 条</span
+          ><label
+            >每页<select v-model.number="pageSize" @change="changeSize">
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option></select
+            >条</label
+          ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+            上一页</button
+          ><button
+            class="ghost-button"
+            :disabled="page >= Math.ceil(total / pageSize)"
+            type="button"
+            @click="nextPage"
+          >
+            下一页
+          </button>
+        </div>
+      </article>
+    </section>
+    <section class="grid report-detail-grid">
+      <article class="panel report-preview">
+        <div class="section-heading">
+          <div>
+            <h3>报表详情与预览</h3>
+            <span class="meta">{{ selected ? `任务 #${selected.id}` : '请选择报表任务' }}</span>
+          </div>
+          <span v-if="detailLoading" class="meta">加载中...</span>
+        </div>
+        <template v-if="selected?.result"
+          ><div class="report-kpi-grid">
+            <div>
+              <span class="label">报表名称</span
+              ><strong>{{ selected.result.report_name || '-' }}</strong>
+            </div>
+            <div>
+              <span class="label">净现金流</span
+              ><strong>{{ formatCurrency(String(selected.result.net_cashflow ?? '0')) }}</strong>
+            </div>
+            <div v-if="selected.report_type === 'health'">
+              <span class="label">健康评分</span
+              ><strong class="health-score">{{ selected.result.health_score ?? '-' }}</strong>
+            </div>
+            <div v-if="selected.report_type === 'health'">
+              <span class="label">健康等级</span
+              ><strong>{{ selected.result.health_level ?? '-' }}</strong>
+            </div>
+          </div>
+          <div v-if="selected.report_type === 'health'" class="risk-list">
+            <h3>风险项</h3>
+            <div
+              v-for="risk in selected.result.risk_items as Array<Record<string, unknown>>"
+              v-if="Array.isArray(selected.result.risk_items) && selected.result.risk_items.length"
+              :key="String(risk.title)"
+              class="list-row"
+            >
+              <span>{{ risk.title }}：{{ risk.description }}</span
+              ><span class="pill">{{ risk.count }}</span>
+            </div>
+            <p v-else class="empty-state">当前未发现风险项。</p>
+          </div>
+          <div v-else class="report-summary-grid">
+            <span>收入 {{ formatCurrency(String(selected.result.income_total ?? '0')) }}</span
+            ><span>支出 {{ formatCurrency(String(selected.result.expense_total ?? '0')) }}</span
+            ><span>交易 {{ selected.result.transaction_count ?? 0 }} 笔</span
+            ><span>匹配率 {{ (Number(selected.result.match_rate ?? 0) * 100).toFixed(1) }}%</span>
+          </div></template
+        >
+        <p v-else class="empty-state">请选择一条已生成的报表查看详情。</p>
+      </article>
+      <article class="panel">
+        <div class="section-heading">
+          <div>
+            <h3>报表审计记录</h3>
+            <span class="meta">{{ audits.length }} 条</span>
+          </div>
+        </div>
+        <div v-if="audits.length" class="audit-list">
+          <div v-for="audit in audits" :key="audit.id" class="audit-row">
+            <div>
+              <strong>{{ audit.action }}</strong>
+              <p class="meta">{{ audit.detail || '-' }}</p>
+            </div>
+            <span class="meta">{{ audit.created_at }}</span>
+          </div>
+        </div>
+        <p v-else class="empty-state">请选择报表任务查看审计记录。</p>
+      </article>
+    </section>
+  </section>
+</template>

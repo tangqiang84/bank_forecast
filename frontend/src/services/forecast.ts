@@ -31,9 +31,27 @@ export type ForecastPoint = {
   risk_message: string
 }
 
-export type ForecastEvaluation = { evaluated_points: number; mae: string; rmse: string; mean_deviation: string }
-export type ForecastDetail = { job: ForecastJob | null; results: ForecastPoint[]; evaluation: ForecastEvaluation }
-export type ForecastModel = { id: number; version: string; model_name: string; status: string; config_json: string | null; metrics_json: string | null; activated_at: string | null; created_at: string }
+export type ForecastEvaluation = {
+  evaluated_points: number
+  mae: string
+  rmse: string
+  mean_deviation: string
+}
+export type ForecastDetail = {
+  job: ForecastJob | null
+  results: ForecastPoint[]
+  evaluation: ForecastEvaluation
+}
+export type ForecastModel = {
+  id: number
+  version: string
+  model_name: string
+  status: string
+  config_json: string | null
+  metrics_json: string | null
+  activated_at: string | null
+  created_at: string
+}
 
 export function loadLatestForecast(baseUrl: string, token: string, tenantId: number) {
   return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/latest`, {
@@ -41,32 +59,60 @@ export function loadLatestForecast(baseUrl: string, token: string, tenantId: num
   })
 }
 
-export function loadForecastDetail(baseUrl: string, token: string, tenantId: number, jobId: number) {
-  return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}`, {
-    headers: authHeaders(token, tenantId),
-  })
+export function loadForecastDetail(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  jobId: number,
+) {
+  return fetchJson<ApiResponse<ForecastDetail>>(
+    `${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}`,
+    {
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
-export function runForecast(baseUrl: string, token: string, tenantId: number, horizon: number, windowSize: number) {
+export function runForecast(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  horizon: number,
+  windowSize: number,
+) {
   const params = new URLSearchParams({ horizon: String(horizon), window_size: String(windowSize) })
-  return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs?${params.toString()}`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+  return fetchJson<ApiResponse<ForecastDetail>>(
+    `${baseUrl}/api/v1/forecast/cashflow/jobs?${params.toString()}`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
 export function retryForecast(baseUrl: string, token: string, tenantId: number, jobId: number) {
-  return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}/retry`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+  return fetchJson<ApiResponse<ForecastDetail>>(
+    `${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}/retry`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
-export function backfillForecastActuals(baseUrl: string, token: string, tenantId: number, jobId: number) {
-  return fetchJson<ApiResponse<ForecastDetail>>(`${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}/actuals`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+export function backfillForecastActuals(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  jobId: number,
+) {
+  return fetchJson<ApiResponse<ForecastDetail>>(
+    `${baseUrl}/api/v1/forecast/cashflow/jobs/${jobId}/actuals`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
 export function loadForecastModels(baseUrl: string, token: string, tenantId: number) {
@@ -75,9 +121,17 @@ export function loadForecastModels(baseUrl: string, token: string, tenantId: num
   })
 }
 
-export function activateForecastModel(baseUrl: string, token: string, tenantId: number, version: string) {
-  return fetchJson<ApiResponse<ForecastModel>>(`${baseUrl}/api/v1/forecast/models/${encodeURIComponent(version)}/activate`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+export function activateForecastModel(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  version: string,
+) {
+  return fetchJson<ApiResponse<ForecastModel>>(
+    `${baseUrl}/api/v1/forecast/models/${encodeURIComponent(version)}/activate`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }

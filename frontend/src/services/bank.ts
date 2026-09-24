@@ -32,13 +32,32 @@ export type BankTransaction = {
   match_status: string
 }
 
-export type TransactionPage = { items: BankTransaction[]; page: number; page_size: number; total: number }
-export type BankAccountPage = { items: BankAccount[]; page: number; page_size: number; total: number }
+export type TransactionPage = {
+  items: BankTransaction[]
+  page: number
+  page_size: number
+  total: number
+}
+export type BankAccountPage = {
+  items: BankAccount[]
+  page: number
+  page_size: number
+  total: number
+}
 
-export async function loadAccounts(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
-  const response = await fetchJson<ApiResponse<BankAccountPage | BankAccount[]>>(`${baseUrl}/api/v1/bank-accounts?page=${page}&page_size=${pageSize}`, {
-    headers: authHeaders(token, tenantId),
-  })
+export async function loadAccounts(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+) {
+  const response = await fetchJson<ApiResponse<BankAccountPage | BankAccount[]>>(
+    `${baseUrl}/api/v1/bank-accounts?page=${page}&page_size=${pageSize}`,
+    {
+      headers: authHeaders(token, tenantId),
+    },
+  )
   if (Array.isArray(response.data)) {
     return {
       ...response,
@@ -49,7 +68,10 @@ export async function loadAccounts(baseUrl: string, token: string, tenantId: num
 }
 
 export function loadAccountDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  return fetchJson<ApiResponse<BankAccount & Record<string, unknown>>>(`${baseUrl}/api/v1/bank-accounts/${id}`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<BankAccount & Record<string, unknown>>>(
+    `${baseUrl}/api/v1/bank-accounts/${id}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
 export type BankAccountInput = {
@@ -61,7 +83,12 @@ export type BankAccountInput = {
   currentBalance: string
 }
 
-export function createBankAccount(baseUrl: string, token: string, tenantId: number, input: BankAccountInput) {
+export function createBankAccount(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  input: BankAccountInput,
+) {
   return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts`, {
     method: 'POST',
     headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
@@ -69,7 +96,13 @@ export function createBankAccount(baseUrl: string, token: string, tenantId: numb
   })
 }
 
-export function updateBankAccount(baseUrl: string, token: string, tenantId: number, id: number, input: BankAccountInput) {
+export function updateBankAccount(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  input: BankAccountInput,
+) {
   return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts/${id}`, {
     method: 'PUT',
     headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
@@ -85,40 +118,95 @@ export function closeBankAccount(baseUrl: string, token: string, tenantId: numbe
 }
 
 export function scanIdleAccounts(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<{ updated_accounts: number; accounts: BankAccount[] }>>(`${baseUrl}/api/v1/bank-accounts/idle-scan`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+  return fetchJson<ApiResponse<{ updated_accounts: number; accounts: BankAccount[] }>>(
+    `${baseUrl}/api/v1/bank-accounts/idle-scan`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
-export function loadTransactions(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+export function loadTransactions(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+  filters: Record<string, string> = {},
+) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  return fetchJson<ApiResponse<TransactionPage>>(`${baseUrl}/api/v1/bank-transactions?${params.toString()}`, {
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<TransactionPage>>(
+    `${baseUrl}/api/v1/bank-transactions?${params.toString()}`,
+    {
+      headers: authHeaders(token, tenantId),
+    },
+  )
+}
+
+export function loadTransactionDetail(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/bank-transactions/${id}`,
+    { headers: authHeaders(token, tenantId) },
+  )
+}
+
+export function classifyTransaction(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  category: string,
+  purpose: string,
+  remark: string,
+) {
+  return fetchJson<ApiResponse<BankTransaction>>(
+    `${baseUrl}/api/v1/bank-transactions/${id}/manual-classify`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, purpose, remark }),
+    },
+  )
+}
+
+export function unlinkTransaction(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  reason: string,
+) {
+  return fetchJson<
+    ApiResponse<BankTransaction & { unlinked_groups: number; rolled_back_plans: number }>
+  >(`${baseUrl}/api/v1/bank-transactions/${id}/unlink`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export async function exportTransactions(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  filters: Record<string, string> = {},
+) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchBlob(`${baseUrl}/api/v1/bank-transactions/export?${params.toString()}`, {
     headers: authHeaders(token, tenantId),
   })
-}
-
-export function loadTransactionDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/bank-transactions/${id}`, { headers: authHeaders(token, tenantId) })
-}
-
-export function classifyTransaction(baseUrl: string, token: string, tenantId: number, id: number, category: string, purpose: string, remark: string) {
-  return fetchJson<ApiResponse<BankTransaction>>(`${baseUrl}/api/v1/bank-transactions/${id}/manual-classify`, {
-    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ category, purpose, remark }),
-  })
-}
-
-export function unlinkTransaction(baseUrl: string, token: string, tenantId: number, id: number, reason: string) {
-  return fetchJson<ApiResponse<BankTransaction & { unlinked_groups: number; rolled_back_plans: number }>>(`${baseUrl}/api/v1/bank-transactions/${id}/unlink`, {
-    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
-  })
-}
-
-export async function exportTransactions(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
-  const params = new URLSearchParams()
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  return fetchBlob(`${baseUrl}/api/v1/bank-transactions/export?${params.toString()}`, { headers: authHeaders(token, tenantId) })
 }
 
 export function importStatements(
@@ -161,26 +249,60 @@ export type ImportPreview = Record<string, unknown> & {
   failed_rows: number
   skipped_rows: number
   preview_rows: ImportPreviewRow[]
-  recognized_templates?: Array<{ sheet_name: string; bank_name?: string; status: string; message: string }>
+  recognized_templates?: Array<{
+    sheet_name: string
+    bank_name?: string
+    status: string
+    message: string
+  }>
 }
 
-export function previewStatements(baseUrl: string, token: string, tenantId: number, accountId: number, file: File) {
+export function previewStatements(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  accountId: number,
+  file: File,
+) {
   const formData = new FormData()
   formData.append('bank_account_id', String(accountId))
   formData.append('file', file)
-  return fetchMultipart<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/bank-statements/preview`, formData, token, tenantId)
+  return fetchMultipart<ApiResponse<ImportPreview>>(
+    `${baseUrl}/api/v1/imports/bank-statements/preview`,
+    formData,
+    token,
+    tenantId,
+  )
 }
 
 export function loadImportPreview(baseUrl: string, token: string, tenantId: number, jobId: number) {
-  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/preview`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/preview`, {
+    headers: authHeaders(token, tenantId),
+  })
 }
 
-export function confirmImportPreview(baseUrl: string, token: string, tenantId: number, jobId: number) {
-  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/confirm`, { method: 'POST', headers: authHeaders(token, tenantId) })
+export function confirmImportPreview(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  jobId: number,
+) {
+  return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/confirm`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+  })
 }
 
-export function retryImportErrors(baseUrl: string, token: string, tenantId: number, jobId: number, rows: Array<Record<string, unknown>>) {
+export function retryImportErrors(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  jobId: number,
+  rows: Array<Record<string, unknown>>,
+) {
   return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/retry-errors`, {
-    method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }),
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
   })
 }

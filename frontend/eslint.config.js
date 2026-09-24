@@ -3,6 +3,7 @@ import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import vue from 'eslint-plugin-vue'
 import vueParser from 'vue-eslint-parser'
+import prettier from 'eslint-config-prettier'
 
 const browserGlobals = {
   AbortController: 'readonly',
@@ -52,4 +53,5 @@ export default [
       'vue/no-use-v-if-with-v-for': 'off',
     },
   },
+  prettier,
 ]

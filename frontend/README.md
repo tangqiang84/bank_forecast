@@ -65,7 +65,7 @@ VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev
 
 - 账户详情已改为请求后端单条详情接口，返回脱敏账户、最近流水、流水数量和审计记录。
 - 复杂多对多对账、跨月调节、预测趋势图和模型训练仍待增强。
-- 前端已配置 ESLint 和基础 Playwright E2E；Prettier 和按钮级权限控制仍待补齐。
+- 前端已配置 ESLint、Prettier 和基础 Playwright E2E；按钮级权限控制仍待补齐。
 - 所有正式路由已配置唯一名称，路由切换默认回到顶部，浏览器前进/后退恢复滚动位置，锚点链接定位到目标元素。
 
 ## 代码检查与 E2E
@@ -73,6 +73,8 @@ VITE_BACKEND_BASE_URL=http://localhost:8080 pnpm dev
 ```bash
 pnpm lint
 pnpm lint:fix
+pnpm format
+pnpm format:check
 pnpm typecheck
 pnpm test
 pnpm build
@@ -82,6 +84,8 @@ CI=1 pnpm e2e
 ```
 
 `pnpm lint` 只执行 ESLint 检查，不修改工作区文件；需要自动修复时使用 `pnpm lint:fix`，执行后必须复核完整 diff。
+
+`pnpm format` 使用 Prettier 格式化整个工作区；`pnpm format:check` 只检查不修改，可用于 CI。Prettier 配置在 `.prettierrc.json`（2 空格缩进、单引号、无分号、行宽 100），与 ESLint 的冲突由 `eslint-config-prettier` 消解。Vue 模板中不得使用 `page--; load()` 这类多语句内联事件处理器，应改为方法引用，否则 `semi: false` 下格式化会产生非法表达式。
 
 Playwright 配置位于 `playwright.config.ts`，会自动启动 `127.0.0.1:5173` 的 Vite 服务。非 CI 本地运行使用已安装的 Chrome channel；`CI=1` 时使用 Playwright `1.63.0` 自带的 Chromium 1243，不依赖本机 Chrome。CI 或本地 CI 模式首次运行前，执行 `pnpm exec playwright install chromium` 下载对应浏览器依赖。`CI=1 pnpm e2e` 仅用于本地模拟 CI 配置，不等同于远程 CI 流水线验证。
 

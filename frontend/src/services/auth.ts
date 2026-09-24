@@ -36,7 +36,7 @@ export async function login(baseUrl: string, loginName: string, password: string
 
 export async function loadCurrentUser(baseUrl: string, token: string): Promise<User> {
   const cachedUser = localStorage.getItem(USER_KEY)
-  const cached = cachedUser ? JSON.parse(cachedUser) as User : null
+  const cached = cachedUser ? (JSON.parse(cachedUser) as User) : null
   if (!cached) {
     throw new Error('登录信息缺失')
   }

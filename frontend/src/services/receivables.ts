@@ -36,7 +36,15 @@ export type ExceptionCase = {
   owner_user_id: number | null
   closed_at?: string | null
 }
-export type ExceptionAttachment = { id: number; exception_case_id: number; file_name: string; content_type: string; file_size: number; uploaded_by: number | null; created_at: string }
+export type ExceptionAttachment = {
+  id: number
+  exception_case_id: number
+  file_name: string
+  content_type: string
+  file_size: number
+  uploaded_by: number | null
+  created_at: string
+}
 export type MatchResult = {
   id: number
   match_group_id: string
@@ -65,102 +73,275 @@ export type Paged<T> = { items: T[]; page: number; page_size: number; total: num
 export function importContracts(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return fetchMultipart<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/imports/contracts`, formData, token, tenantId)
+  return fetchMultipart<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/imports/contracts`,
+    formData,
+    token,
+    tenantId,
+  )
 }
 
-export function loadContracts(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
+export function loadContracts(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  filters: Record<string, string> = {},
+) {
   const params = new URLSearchParams({ page: '1', page_size: '100' })
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  return fetchJson<ApiResponse<{ items: Contract[]; total: number }>>(`${baseUrl}/api/v1/contracts?${params.toString()}`, { headers: authHeaders(token, tenantId) })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<{ items: Contract[]; total: number }>>(
+    `${baseUrl}/api/v1/contracts?${params.toString()}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
-export function loadReceivables(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+export function loadReceivables(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+  filters: Record<string, string> = {},
+) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  return fetchJson<ApiResponse<Paged<Receivable>>>(`${baseUrl}/api/v1/contracts/receivables?${params.toString()}`, { headers: authHeaders(token, tenantId) })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<Paged<Receivable>>>(
+    `${baseUrl}/api/v1/contracts/receivables?${params.toString()}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
 export function runMatching(baseUrl: string, token: string, tenantId: number) {
-  return fetchJson<ApiResponse<Record<string, number | string>>>(`${baseUrl}/api/v1/matching/receivables/run`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
+  return fetchJson<ApiResponse<Record<string, number | string>>>(
+    `${baseUrl}/api/v1/matching/receivables/run`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
 }
 
-export function loadExceptions(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
-  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(`${baseUrl}/api/v1/matching/exceptions?page=${page}&page_size=${pageSize}&active_only=true`, { headers: authHeaders(token, tenantId) })
+export function loadExceptions(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+) {
+  return fetchJson<ApiResponse<Paged<ExceptionCase>>>(
+    `${baseUrl}/api/v1/matching/exceptions?page=${page}&page_size=${pageSize}&active_only=true`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
-export function loadMatchResults(baseUrl: string, token: string, tenantId: number, page = 1, pageSize = 20) {
-  return fetchJson<ApiResponse<Paged<MatchResult>>>(`${baseUrl}/api/v1/matching/results?page=${page}&page_size=${pageSize}`, { headers: authHeaders(token, tenantId) })
+export function loadMatchResults(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+) {
+  return fetchJson<ApiResponse<Paged<MatchResult>>>(
+    `${baseUrl}/api/v1/matching/results?page=${page}&page_size=${pageSize}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
 export function loadContractDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/contracts/${id}`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/contracts/${id}`, {
+    headers: authHeaders(token, tenantId),
+  })
 }
 
-export function loadMatchResultDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/matching/results/${id}`, { headers: authHeaders(token, tenantId) })
+export function loadMatchResultDetail(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/matching/results/${id}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
 export function loadExceptionDetail(baseUrl: string, token: string, tenantId: number, id: number) {
-  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/matching/exceptions/${id}`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/matching/exceptions/${id}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
-export function confirmMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number) {
-  return fetchJson<ApiResponse<MatchResult>>(`${baseUrl}/api/v1/matching/results/${resultId}/confirm`, {
-    method: 'POST',
+export function confirmMatchResult(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  resultId: number,
+) {
+  return fetchJson<ApiResponse<MatchResult>>(
+    `${baseUrl}/api/v1/matching/results/${resultId}/confirm`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
+}
+
+export function rejectMatchResult(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  resultId: number,
+  reason: string,
+) {
+  return fetchJson<ApiResponse<MatchResult>>(
+    `${baseUrl}/api/v1/matching/results/${resultId}/reject`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+      body: JSON.stringify({ reason }),
+    },
+  )
+}
+
+export function assignException(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+) {
+  return fetchJson<ApiResponse<ExceptionCase>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/assign`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
+}
+
+export function commentException(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+  text: string,
+) {
+  return fetchJson<ApiResponse<ExceptionCase>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/comment`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+      body: JSON.stringify({ text }),
+    },
+  )
+}
+
+export function resolveException(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+  text: string,
+) {
+  return fetchJson<ApiResponse<ExceptionCase>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/resolve`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+      body: JSON.stringify({ text }),
+    },
+  )
+}
+
+export function closeException(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+  text: string,
+) {
+  return fetchJson<ApiResponse<ExceptionCase>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/close`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+      body: JSON.stringify({ text }),
+    },
+  )
+}
+
+export function markFalsePositive(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+  text: string,
+) {
+  return fetchJson<ApiResponse<ExceptionCase>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/false-positive`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    },
+  )
+}
+
+export function uploadExceptionAttachment(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionId: number,
+  file: File,
+) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<ExceptionAttachment>>(
+    `${baseUrl}/api/v1/matching/exceptions/${exceptionId}/attachments`,
+    formData,
+    token,
+    tenantId,
+  )
+}
+export function batchExceptionAction(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  exceptionIds: number[],
+  action: string,
+  text = '',
+) {
+  return fetchJson<ApiResponse<{ updated: number; action: string }>>(
+    `${baseUrl}/api/v1/matching/exceptions/batch-action`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exception_ids: exceptionIds, action, text }),
+    },
+  )
+}
+export function deleteExceptionAttachment(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  attachmentId: number,
+) {
+  return fetchJson<ApiResponse<{ deleted: boolean }>>(
+    `${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}`,
+    { method: 'DELETE', headers: authHeaders(token, tenantId) },
+  )
+}
+export function previewExceptionAttachment(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  attachmentId: number,
+) {
+  return fetchBlob(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}/preview`, {
     headers: authHeaders(token, tenantId),
   })
 }
-
-export function rejectMatchResult(baseUrl: string, token: string, tenantId: number, resultId: number, reason: string) {
-  return fetchJson<ApiResponse<MatchResult>>(`${baseUrl}/api/v1/matching/results/${resultId}/reject`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ reason }),
-  })
-}
-
-export function assignException(baseUrl: string, token: string, tenantId: number, exceptionId: number) {
-  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/assign`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-  })
-}
-
-export function commentException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
-  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/comment`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ text }),
-  })
-}
-
-export function resolveException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
-  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/resolve`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ text }),
-  })
-}
-
-export function closeException(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
-  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/close`, {
-    method: 'POST',
-    headers: authHeaders(token, tenantId),
-    body: JSON.stringify({ text }),
-  })
-}
-
-export function markFalsePositive(baseUrl: string, token: string, tenantId: number, exceptionId: number, text: string) {
-  return fetchJson<ApiResponse<ExceptionCase>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/false-positive`, { method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
-}
-
-export function uploadExceptionAttachment(baseUrl: string, token: string, tenantId: number, exceptionId: number, file: File) {
-  const formData = new FormData(); formData.append('file', file)
-  return fetchMultipart<ApiResponse<ExceptionAttachment>>(`${baseUrl}/api/v1/matching/exceptions/${exceptionId}/attachments`, formData, token, tenantId)
-}
-export function batchExceptionAction(baseUrl: string, token: string, tenantId: number, exceptionIds: number[], action: string, text = '') { return fetchJson<ApiResponse<{ updated: number; action: string }>>(`${baseUrl}/api/v1/matching/exceptions/batch-action`, { method: 'POST', headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }, body: JSON.stringify({ exception_ids: exceptionIds, action, text }) }) }
-export function deleteExceptionAttachment(baseUrl: string, token: string, tenantId: number, attachmentId: number) { return fetchJson<ApiResponse<{ deleted: boolean }>>(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}`, { method: 'DELETE', headers: authHeaders(token, tenantId) }) }
-export function previewExceptionAttachment(baseUrl: string, token: string, tenantId: number, attachmentId: number) { return fetchBlob(`${baseUrl}/api/v1/matching/exceptions/attachments/${attachmentId}/preview`, { headers: authHeaders(token, tenantId) }) }

@@ -28,23 +28,55 @@ export type ReconciliationResult = {
   record_date: string | null
   finance_amount: string | null
 }
-export type ReconciliationPage = { items: ReconciliationResult[]; page: number; page_size: number; total: number; job?: Record<string, unknown> }
+export type ReconciliationPage = {
+  items: ReconciliationResult[]
+  page: number
+  page_size: number
+  total: number
+  job?: Record<string, unknown>
+}
 
 export function importFinanceRecords(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return fetchMultipart<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/imports/finance-records`, formData, token, tenantId)
+  return fetchMultipart<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/imports/finance-records`,
+    formData,
+    token,
+    tenantId,
+  )
 }
 
-export function runReconciliation(baseUrl: string, token: string, tenantId: number, filters: Record<string, string> = {}) {
+export function runReconciliation(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  filters: Record<string, string> = {},
+) {
   const params = new URLSearchParams()
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
-  return fetchJson<ApiResponse<ReconciliationSummary>>(`${baseUrl}/api/v1/reconciliation/run?${params.toString()}`, { method: 'POST', headers: authHeaders(token, tenantId) })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<ReconciliationSummary>>(
+    `${baseUrl}/api/v1/reconciliation/run?${params.toString()}`,
+    { method: 'POST', headers: authHeaders(token, tenantId) },
+  )
 }
 
-export function loadReconciliationResults(baseUrl: string, token: string, tenantId: number, jobId?: number, page = 1, pageSize = 20, differenceType = '') {
+export function loadReconciliationResults(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  jobId?: number,
+  page = 1,
+  pageSize = 20,
+  differenceType = '',
+) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   if (jobId) params.set('job_id', String(jobId))
   if (differenceType) params.set('difference_type', differenceType)
-  return fetchJson<ApiResponse<ReconciliationPage>>(`${baseUrl}/api/v1/reconciliation/results?${params.toString()}`, { headers: authHeaders(token, tenantId) })
+  return fetchJson<ApiResponse<ReconciliationPage>>(
+    `${baseUrl}/api/v1/reconciliation/results?${params.toString()}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }

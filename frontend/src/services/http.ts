@@ -1,4 +1,5 @@
-export type HttpErrorKind = 'timeout' | 'network' | 'unauthorized' | 'api' | 'http' | 'aborted' | 'parse'
+export type HttpErrorKind =
+  'timeout' | 'network' | 'unauthorized' | 'api' | 'http' | 'aborted' | 'parse'
 
 export type HttpRequestInit = RequestInit & {
   retryDelayMs?: number
@@ -28,7 +29,10 @@ export class HttpError extends Error {
     this.kind = options.kind
     this.status = options.status
     this.traceId = options.traceId
-    this.retryable = options.kind === 'timeout' || options.kind === 'network' || (options.status !== undefined && options.status >= 500)
+    this.retryable =
+      options.kind === 'timeout' ||
+      options.kind === 'network' ||
+      (options.status !== undefined && options.status >= 500)
     if (options.cause !== undefined) this.cause = options.cause
   }
 }
@@ -44,7 +48,8 @@ const DEFAULT_RETRIES = 2
 const DEFAULT_RETRY_DELAY_MS = 200
 
 function createTraceId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID().replaceAll('-', '')
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    return crypto.randomUUID().replaceAll('-', '')
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
@@ -73,7 +78,11 @@ async function readResponseBody(response: Response, preferJson = false): Promise
   if (typeof response.text !== 'function') return null
   const text = await response.text()
   if (!text) return null
-  try { return JSON.parse(text) as unknown } catch { return text }
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
 }
 
 function messageFromBody(body: unknown, fallback: string): string {
@@ -96,8 +105,19 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 }
 
-async function request<T>(url: string, init: HttpRequestInit, parse: (response: Response, body: unknown) => Promise<T>, expectJson = false): Promise<T> {
-  const { retryDelayMs = DEFAULT_RETRY_DELAY_MS, retries = DEFAULT_RETRIES, timeoutMs = DEFAULT_TIMEOUT_MS, signal: externalSignal, ...requestInit } = init
+async function request<T>(
+  url: string,
+  init: HttpRequestInit,
+  parse: (response: Response, body: unknown) => Promise<T>,
+  expectJson = false,
+): Promise<T> {
+  const {
+    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+    retries = DEFAULT_RETRIES,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal: externalSignal,
+    ...requestInit
+  } = init
   const method = (requestInit.method ?? 'GET').toUpperCase()
   const traceId = new Headers(requestInit.headers).get('X-Trace-Id') ?? createTraceId()
   const maxAttempts = isRetryableMethod(method) ? Math.max(0, retries) + 1 : 1
@@ -120,12 +140,17 @@ async function request<T>(url: string, init: HttpRequestInit, parse: (response: 
       })
       const body = !response.ok || expectJson ? await readResponseBody(response, expectJson) : null
       const responseTraceId = traceIdFrom(response, body, traceId)
-      const envelope = isRecord(body) ? body as ApiEnvelope : null
+      const envelope = isRecord(body) ? (body as ApiEnvelope) : null
       const code = typeof envelope?.code === 'number' ? envelope.code : undefined
 
       if (response.status === 401) {
         notifyUnauthorized(responseTraceId)
-        throw new HttpError('登录状态已失效，请重新登录', { code, kind: 'unauthorized', status: 401, traceId: responseTraceId })
+        throw new HttpError('登录状态已失效，请重新登录', {
+          code,
+          kind: 'unauthorized',
+          status: 401,
+          traceId: responseTraceId,
+        })
       }
       if (!response.ok) {
         throw new HttpError(messageFromBody(body, `请求失败（HTTP ${response.status}）`), {
@@ -136,7 +161,12 @@ async function request<T>(url: string, init: HttpRequestInit, parse: (response: 
         })
       }
       if (code !== undefined && code !== 0) {
-        throw new HttpError(messageFromBody(body, '业务请求失败'), { code, kind: 'api', status: response.status, traceId: responseTraceId })
+        throw new HttpError(messageFromBody(body, '业务请求失败'), {
+          code,
+          kind: 'api',
+          status: response.status,
+          traceId: responseTraceId,
+        })
       }
       return await parse(response, body)
     } catch (cause) {
@@ -149,8 +179,24 @@ async function request<T>(url: string, init: HttpRequestInit, parse: (response: 
       }
       const parseError = cause instanceof SyntaxError
       const error = new HttpError(
-        timedOut ? '请求超时，请稍后重试' : externalSignal?.aborted ? '请求已取消' : parseError ? '服务响应格式错误' : '网络连接失败，请检查网络后重试',
-        { cause, kind: timedOut ? 'timeout' : externalSignal?.aborted ? 'aborted' : parseError ? 'parse' : 'network', traceId },
+        timedOut
+          ? '请求超时，请稍后重试'
+          : externalSignal?.aborted
+            ? '请求已取消'
+            : parseError
+              ? '服务响应格式错误'
+              : '网络连接失败，请检查网络后重试',
+        {
+          cause,
+          kind: timedOut
+            ? 'timeout'
+            : externalSignal?.aborted
+              ? 'aborted'
+              : parseError
+                ? 'parse'
+                : 'network',
+          traceId,
+        },
       )
       if (error.retryable && attempt < maxAttempts - 1) {
         await delay(retryDelayMs * 2 ** attempt)
@@ -167,13 +213,23 @@ async function request<T>(url: string, init: HttpRequestInit, parse: (response: 
 }
 
 export function fetchJson<T>(url: string, init: HttpRequestInit = {}): Promise<T> {
-  return request(url, init, async (_response, body) => {
-    if (body === null) throw new HttpError('响应内容为空', { kind: 'parse' })
-    return body as T
-  }, true)
+  return request(
+    url,
+    init,
+    async (_response, body) => {
+      if (body === null) throw new HttpError('响应内容为空', { kind: 'parse' })
+      return body as T
+    },
+    true,
+  )
 }
 
-export function fetchMultipart<T>(url: string, formData: FormData, token: string, tenantId: number): Promise<T> {
+export function fetchMultipart<T>(
+  url: string,
+  formData: FormData,
+  token: string,
+  tenantId: number,
+): Promise<T> {
   return fetchJson<T>(url, {
     method: 'POST',
     headers: {

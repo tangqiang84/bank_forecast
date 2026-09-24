@@ -16,6 +16,7 @@
 - Vue Test Utils；
 - Playwright；
 - ESLint；
+- Prettier；
 - `vue-tsc`。
 
 版本以 `package.json` 和 `pnpm-lock.yaml` 为准。
@@ -42,6 +43,8 @@ pnpm install
 pnpm dev
 pnpm lint
 pnpm lint:fix
+pnpm format
+pnpm format:check
 pnpm typecheck
 pnpm test
 pnpm build
@@ -53,6 +56,8 @@ pnpm e2e
 - 新增依赖必须使用 pnpm，并同步提交 `pnpm-lock.yaml`。
 - `pnpm lint` 只检查，不修改工作区。
 - `pnpm lint:fix` 仅在明确需要时使用，执行后必须复核 diff。
+- `pnpm format` 使用 Prettier 写入格式化；`pnpm format:check` 只检查不修改，供 CI 使用。
+- Vue 模板不得使用多语句内联事件处理器（如 `@click="page--; load()"`），应提取为方法引用。
 - 依赖变更后执行 `pnpm audit`。
 - registry 网络失败时记录真实错误和风险结论。
 - 不得通过修改脚本、测试配置或 CI 配置绕过失败。
@@ -156,6 +161,7 @@ Playwright 规则：
 
 ```bash
 pnpm lint
+pnpm format:check
 pnpm typecheck
 pnpm test
 pnpm build

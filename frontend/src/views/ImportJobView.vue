@@ -1,12 +1,163 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { confirmImportPreview, loadImportPreview, retryImportErrors, type ImportPreview } from '../services/bank'
+import {
+  confirmImportPreview,
+  loadImportPreview,
+  retryImportErrors,
+  type ImportPreview,
+} from '../services/bank'
 import { apiBase, useSession } from '../session'
-const route = useRoute(); const session = useSession(); const job = ref<ImportPreview | null>(null); const retryJson = ref(''); const loading = ref(false); const message = ref(''); const error = ref('')
-async function load() { if (!session.user.value || !session.token.value) return; loading.value = true; try { job.value = (await loadImportPreview(apiBase(), session.token.value, session.user.value.tenant_id, Number(route.params.jobId))).data } catch (cause) { error.value = cause instanceof Error ? cause.message : '导入任务加载失败' } finally { loading.value = false } }
-async function confirm() { if (!session.user.value || !session.token.value || !job.value) return; loading.value = true; try { job.value = (await confirmImportPreview(apiBase(), session.token.value, session.user.value.tenant_id, job.value.job_id)).data; message.value = '任务已确认入账。' } catch (cause) { message.value = cause instanceof Error ? cause.message : '确认失败' } finally { loading.value = false } }
-async function retry() { if (!session.user.value || !session.token.value || !job.value) return; try { job.value = (await retryImportErrors(apiBase(), session.token.value, session.user.value.tenant_id, job.value.job_id, JSON.parse(retryJson.value))).data; retryJson.value = ''; message.value = '失败行重试完成。' } catch (cause) { message.value = cause instanceof Error ? cause.message : '失败行 JSON 不正确' } }
+const route = useRoute()
+const session = useSession()
+const job = ref<ImportPreview | null>(null)
+const retryJson = ref('')
+const loading = ref(false)
+const message = ref('')
+const error = ref('')
+async function load() {
+  if (!session.user.value || !session.token.value) return
+  loading.value = true
+  try {
+    job.value = (
+      await loadImportPreview(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        Number(route.params.jobId),
+      )
+    ).data
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '导入任务加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+async function confirm() {
+  if (!session.user.value || !session.token.value || !job.value) return
+  loading.value = true
+  try {
+    job.value = (
+      await confirmImportPreview(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        job.value.job_id,
+      )
+    ).data
+    message.value = '任务已确认入账。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '确认失败'
+  } finally {
+    loading.value = false
+  }
+}
+async function retry() {
+  if (!session.user.value || !session.token.value || !job.value) return
+  try {
+    job.value = (
+      await retryImportErrors(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        job.value.job_id,
+        JSON.parse(retryJson.value),
+      )
+    ).data
+    retryJson.value = ''
+    message.value = '失败行重试完成。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '失败行 JSON 不正确'
+  }
+}
 onMounted(load)
 </script>
-<template><section class="page-shell"><header class="hero-band"><div><p class="eyebrow">导入任务</p><h2>任务 #{{ route.params.jobId }}</h2><p class="lead">查看模板识别、行级校验、确认入账和重试结果。</p></div><RouterLink class="ghost-button" to="/transactions">返回流水列表</RouterLink></header><p v-if="error" class="error-banner">{{ error }}</p><article v-if="job" class="panel"><div class="import-summary"><strong>{{ job.status }}</strong><span>总行数 {{ job.total_rows }}</span><span>有效 {{ job.success_rows }}</span><span>失败 {{ job.failed_rows }}</span><span>跳过 {{ job.skipped_rows }}</span></div><p v-if="message" class="feedback-text">{{ message }}</p><section v-if="job.recognized_templates?.length" class="detail-section"><h3>模板识别</h3><div class="mini-list"><div v-for="template in job.recognized_templates" :key="template.sheet_name" class="mini-row"><span>{{ template.sheet_name }} · {{ template.bank_name || '未识别' }}</span><span class="pill">{{ template.status }}</span></div></div></section><section class="detail-section"><h3>预览行</h3><div class="table-scroll"><table><thead><tr><th>行号</th><th>流水号</th><th>日期</th><th>方向</th><th>金额</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in job.preview_rows" :key="row.id"><td>{{ row.row_no }}</td><td>{{ row.transaction_no || '-' }}</td><td>{{ row.transaction_date || '-' }}</td><td>{{ row.direction || '-' }}</td><td>{{ row.amount || '-' }}</td><td><span class="pill">{{ row.status }}</span></td><td>{{ row.error_message || '-' }}</td></tr></tbody></table></div></section><section v-if="job.failed_rows" class="detail-section"><h3>失败行重试</h3><textarea v-model="retryJson" rows="6" placeholder="请输入 JSON 数组" /><button class="ghost-button" type="button" @click="retry">重新校验</button></section><div class="action-group"><button v-if="['preview_pending', 'preview_failed'].includes(job.status)" class="primary-button" :disabled="loading || job.success_rows === 0" type="button" @click="confirm">确认入账</button><span v-if="loading" class="meta">处理中...</span></div></article><p v-else-if="loading" class="empty-state">加载中...</p></section></template>
+<template>
+  <section class="page-shell">
+    <header class="hero-band">
+      <div>
+        <p class="eyebrow">导入任务</p>
+        <h2>任务 #{{ route.params.jobId }}</h2>
+        <p class="lead">查看模板识别、行级校验、确认入账和重试结果。</p>
+      </div>
+      <RouterLink class="ghost-button" to="/transactions">返回流水列表</RouterLink>
+    </header>
+    <p v-if="error" class="error-banner">{{ error }}</p>
+    <article v-if="job" class="panel">
+      <div class="import-summary">
+        <strong>{{ job.status }}</strong
+        ><span>总行数 {{ job.total_rows }}</span
+        ><span>有效 {{ job.success_rows }}</span
+        ><span>失败 {{ job.failed_rows }}</span
+        ><span>跳过 {{ job.skipped_rows }}</span>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <section v-if="job.recognized_templates?.length" class="detail-section">
+        <h3>模板识别</h3>
+        <div class="mini-list">
+          <div
+            v-for="template in job.recognized_templates"
+            :key="template.sheet_name"
+            class="mini-row"
+          >
+            <span>{{ template.sheet_name }} · {{ template.bank_name || '未识别' }}</span
+            ><span class="pill">{{ template.status }}</span>
+          </div>
+        </div>
+      </section>
+      <section class="detail-section">
+        <h3>预览行</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>行号</th>
+                <th>流水号</th>
+                <th>日期</th>
+                <th>方向</th>
+                <th>金额</th>
+                <th>状态</th>
+                <th>错误</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in job.preview_rows" :key="row.id">
+                <td>{{ row.row_no }}</td>
+                <td>{{ row.transaction_no || '-' }}</td>
+                <td>{{ row.transaction_date || '-' }}</td>
+                <td>{{ row.direction || '-' }}</td>
+                <td>{{ row.amount || '-' }}</td>
+                <td>
+                  <span class="pill">{{ row.status }}</span>
+                </td>
+                <td>{{ row.error_message || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section v-if="job.failed_rows" class="detail-section">
+        <h3>失败行重试</h3>
+        <textarea v-model="retryJson" rows="6" placeholder="请输入 JSON 数组" /><button
+          class="ghost-button"
+          type="button"
+          @click="retry"
+        >
+          重新校验
+        </button>
+      </section>
+      <div class="action-group">
+        <button
+          v-if="['preview_pending', 'preview_failed'].includes(job.status)"
+          class="primary-button"
+          :disabled="loading || job.success_rows === 0"
+          type="button"
+          @click="confirm"
+        >
+          确认入账</button
+        ><span v-if="loading" class="meta">处理中...</span>
+      </div>
+    </article>
+    <p v-else-if="loading" class="empty-state">加载中...</p>
+  </section>
+</template>

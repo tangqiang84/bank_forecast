@@ -4,9 +4,103 @@ import { loadDashboardOverview, type DashboardOverview } from '../services/dashb
 import { loadAccounts, type BankAccount } from '../services/bank'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
-const session = useSession(); const overview = ref<DashboardOverview | null>(null); const accounts = ref<BankAccount[]>([]); const error = ref(''); const loading = ref(false)
-const cards = () => overview.value ? [{ label: '全账户余额', value: formatCurrency(overview.value.total_balance) }, { label: '昨日净流入', value: formatCurrency(overview.value.yesterday_net_inflow) }, { label: '应收总额', value: formatCurrency(overview.value.receivable_amount ?? '0') }, { label: '逾期未收', value: formatCurrency(overview.value.overdue_receivable_amount ?? '0') }, { label: '异常事项', value: String(overview.value.exception_count ?? 0) }] : []
-async function load() { if (!session.user.value || !session.token.value) return; loading.value = true; try { const [dash, account] = await Promise.all([loadDashboardOverview(apiBase(), session.token.value, session.user.value.tenant_id), loadAccounts(apiBase(), session.token.value, session.user.value.tenant_id)]); overview.value = dash.data; accounts.value = account.data.items } catch (cause) { error.value = cause instanceof Error ? cause.message : '驾驶舱加载失败' } finally { loading.value = false } }
-onMounted(() => { load(); window.addEventListener('workspace-refresh', load) })
+const session = useSession()
+const overview = ref<DashboardOverview | null>(null)
+const accounts = ref<BankAccount[]>([])
+const error = ref('')
+const loading = ref(false)
+const cards = () =>
+  overview.value
+    ? [
+        { label: '全账户余额', value: formatCurrency(overview.value.total_balance) },
+        { label: '昨日净流入', value: formatCurrency(overview.value.yesterday_net_inflow) },
+        { label: '应收总额', value: formatCurrency(overview.value.receivable_amount ?? '0') },
+        {
+          label: '逾期未收',
+          value: formatCurrency(overview.value.overdue_receivable_amount ?? '0'),
+        },
+        { label: '异常事项', value: String(overview.value.exception_count ?? 0) },
+      ]
+    : []
+async function load() {
+  if (!session.user.value || !session.token.value) return
+  loading.value = true
+  try {
+    const [dash, account] = await Promise.all([
+      loadDashboardOverview(apiBase(), session.token.value, session.user.value.tenant_id),
+      loadAccounts(apiBase(), session.token.value, session.user.value.tenant_id),
+    ])
+    overview.value = dash.data
+    accounts.value = account.data.items
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '驾驶舱加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(() => {
+  load()
+  window.addEventListener('workspace-refresh', load)
+})
 </script>
-<template><section class="page-shell"><header class="hero-band"><div><p class="eyebrow">管理层概览</p><h2>今天的资金状态</h2><p class="lead">从总余额、应收和异常开始处理。</p></div><span v-if="loading" class="meta">刷新中...</span></header><p v-if="error" class="error-banner">{{ error }}</p><section class="grid stat-grid"><article v-for="card in cards()" :key="card.label" class="panel stat-card"><span class="label">{{ card.label }}</span><strong class="stat-value">{{ card.value }}</strong></article></section><section class="grid two-up"><article class="panel"><h3>关键风险</h3><div v-if="overview?.key_risks?.length" class="list-stack"><div v-for="risk in overview.key_risks" :key="risk.title" class="list-row"><span>{{ risk.title }}</span><span class="pill risk-medium">{{ risk.count }}</span></div></div><p v-else class="empty-state">当前没有已识别风险。</p></article><article class="panel"><h3>最近导入任务</h3><div v-if="overview?.recent_import_jobs?.length" class="list-stack"><RouterLink v-for="job in overview.recent_import_jobs" :key="`${job.name}-${job.status}`" class="list-row link-row" :to="job.job_id ? `/imports/${job.job_id}` : '/transactions'"><span><strong>{{ job.name }}</strong><small class="meta">{{ job.message || '查看导入任务' }}</small></span><span class="pill">{{ job.status }}</span></RouterLink></div><p v-else class="empty-state">暂无导入任务。</p></article></section><article class="panel"><div class="section-heading"><h3>账户概览</h3><RouterLink class="text-button" to="/accounts">查看全部</RouterLink></div><div class="account-grid"><div v-for="account in accounts" :key="account.id" class="account-row"><span>{{ account.bank_name }} · {{ account.account_name }}<small class="meta">后四位 {{ account.account_no_last4 }}</small></span><strong>{{ formatCurrency(account.current_balance) }}</strong></div></div></article></section></template>
+<template>
+  <section class="page-shell">
+    <header class="hero-band">
+      <div>
+        <p class="eyebrow">管理层概览</p>
+        <h2>今天的资金状态</h2>
+        <p class="lead">从总余额、应收和异常开始处理。</p>
+      </div>
+      <span v-if="loading" class="meta">刷新中...</span>
+    </header>
+    <p v-if="error" class="error-banner">{{ error }}</p>
+    <section class="grid stat-grid">
+      <article v-for="card in cards()" :key="card.label" class="panel stat-card">
+        <span class="label">{{ card.label }}</span
+        ><strong class="stat-value">{{ card.value }}</strong>
+      </article>
+    </section>
+    <section class="grid two-up">
+      <article class="panel">
+        <h3>关键风险</h3>
+        <div v-if="overview?.key_risks?.length" class="list-stack">
+          <div v-for="risk in overview.key_risks" :key="risk.title" class="list-row">
+            <span>{{ risk.title }}</span
+            ><span class="pill risk-medium">{{ risk.count }}</span>
+          </div>
+        </div>
+        <p v-else class="empty-state">当前没有已识别风险。</p>
+      </article>
+      <article class="panel">
+        <h3>最近导入任务</h3>
+        <div v-if="overview?.recent_import_jobs?.length" class="list-stack">
+          <RouterLink
+            v-for="job in overview.recent_import_jobs"
+            :key="`${job.name}-${job.status}`"
+            class="list-row link-row"
+            :to="job.job_id ? `/imports/${job.job_id}` : '/transactions'"
+            ><span
+              ><strong>{{ job.name }}</strong
+              ><small class="meta">{{ job.message || '查看导入任务' }}</small></span
+            ><span class="pill">{{ job.status }}</span></RouterLink
+          >
+        </div>
+        <p v-else class="empty-state">暂无导入任务。</p>
+      </article>
+    </section>
+    <article class="panel">
+      <div class="section-heading">
+        <h3>账户概览</h3>
+        <RouterLink class="text-button" to="/accounts">查看全部</RouterLink>
+      </div>
+      <div class="account-grid">
+        <div v-for="account in accounts" :key="account.id" class="account-row">
+          <span
+            >{{ account.bank_name }} · {{ account.account_name
+            }}<small class="meta">后四位 {{ account.account_no_last4 }}</small></span
+          ><strong>{{ formatCurrency(account.current_balance) }}</strong>
+        </div>
+      </div>
+    </article>
+  </section>
+</template>

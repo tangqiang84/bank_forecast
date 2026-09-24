@@ -1,18 +1,269 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { batchUpdateProjectStatus, loadProjectRiskRules, loadProjects, type Project, type ProjectRiskRule, updateProject, updateProjectRiskRule } from '../services/projects'
+import {
+  batchUpdateProjectStatus,
+  loadProjectRiskRules,
+  loadProjects,
+  type Project,
+  type ProjectRiskRule,
+  updateProject,
+  updateProjectRiskRule,
+} from '../services/projects'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter(); const session = useSession(); const base = apiBase(); const rows = ref<Project[]>([]); const rules = ref<ProjectRiskRule[]>([]); const selected = ref<number[]>([]); const page = ref(1); const pageSize = ref(20); const total = ref(0); const error = ref(''); const message = ref(''); const edit = ref<Project | null>(null)
-async function load() { if (!session.user.value || !session.token.value) return; try { const [projects, riskRules] = await Promise.all([loadProjects(base, session.token.value, session.user.value.tenant_id, page.value, pageSize.value), loadProjectRiskRules(base, session.token.value, session.user.value.tenant_id)]); rows.value = projects.data.items; total.value = projects.data.total; rules.value = riskRules.data } catch (cause) { error.value = cause instanceof Error ? cause.message : '项目数据加载失败' } }
-function begin(item: Project) { edit.value = { ...item } }
-async function saveEdit() { if (!session.user.value || !session.token.value || !edit.value) return; try { await updateProject(base, session.token.value, session.user.value.tenant_id, edit.value.id, { project_name: edit.value.project_name, customer_name: edit.value.customer_name, project_manager: edit.value.project_manager, project_status: edit.value.project_status }); message.value = '项目已更新。'; edit.value = null; await load() } catch (cause) { message.value = cause instanceof Error ? cause.message : '项目更新失败' } }
-async function batch(status: string) { if (!session.user.value || !session.token.value || !selected.value.length) return; try { const result = await batchUpdateProjectStatus(base, session.token.value, session.user.value.tenant_id, selected.value, status); message.value = `已批量更新 ${result.data.updated} 个项目。`; selected.value = []; await load() } catch (cause) { message.value = cause instanceof Error ? cause.message : '项目批量更新失败' } }
-async function saveRule(rule: ProjectRiskRule) { if (!session.user.value || !session.token.value) return; try { await updateProjectRiskRule(base, session.token.value, session.user.value.tenant_id, rule.rule_code, { threshold: rule.threshold, penalty: rule.penalty, max_penalty: rule.max_penalty, enabled: rule.enabled }); message.value = `风险规则 ${rule.rule_code} 已保存。`; await load() } catch (cause) { message.value = cause instanceof Error ? cause.message : '风险规则保存失败' } }
-function changeSize() { page.value = 1; load() }
-onMounted(() => { load(); window.addEventListener('workspace-refresh', load) })
+const router = useRouter()
+const session = useSession()
+const base = apiBase()
+const rows = ref<Project[]>([])
+const rules = ref<ProjectRiskRule[]>([])
+const selected = ref<number[]>([])
+const page = ref(1)
+
+function prevPage() {
+  page.value--
+  load()
+}
+
+function nextPage() {
+  page.value++
+  load()
+}
+const pageSize = ref(20)
+const total = ref(0)
+const error = ref('')
+const message = ref('')
+const edit = ref<Project | null>(null)
+async function load() {
+  if (!session.user.value || !session.token.value) return
+  try {
+    const [projects, riskRules] = await Promise.all([
+      loadProjects(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        page.value,
+        pageSize.value,
+      ),
+      loadProjectRiskRules(base, session.token.value, session.user.value.tenant_id),
+    ])
+    rows.value = projects.data.items
+    total.value = projects.data.total
+    rules.value = riskRules.data
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '项目数据加载失败'
+  }
+}
+function begin(item: Project) {
+  edit.value = { ...item }
+}
+async function saveEdit() {
+  if (!session.user.value || !session.token.value || !edit.value) return
+  try {
+    await updateProject(base, session.token.value, session.user.value.tenant_id, edit.value.id, {
+      project_name: edit.value.project_name,
+      customer_name: edit.value.customer_name,
+      project_manager: edit.value.project_manager,
+      project_status: edit.value.project_status,
+    })
+    message.value = '项目已更新。'
+    edit.value = null
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '项目更新失败'
+  }
+}
+async function batch(status: string) {
+  if (!session.user.value || !session.token.value || !selected.value.length) return
+  try {
+    const result = await batchUpdateProjectStatus(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      selected.value,
+      status,
+    )
+    message.value = `已批量更新 ${result.data.updated} 个项目。`
+    selected.value = []
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '项目批量更新失败'
+  }
+}
+async function saveRule(rule: ProjectRiskRule) {
+  if (!session.user.value || !session.token.value) return
+  try {
+    await updateProjectRiskRule(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      rule.rule_code,
+      {
+        threshold: rule.threshold,
+        penalty: rule.penalty,
+        max_penalty: rule.max_penalty,
+        enabled: rule.enabled,
+      },
+    )
+    message.value = `风险规则 ${rule.rule_code} 已保存。`
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '风险规则保存失败'
+  }
+}
+function changeSize() {
+  page.value = 1
+  load()
+}
+onMounted(() => {
+  load()
+  window.addEventListener('workspace-refresh', load)
+})
 </script>
 
-<template><section class="page-shell"><header class="hero-band"><div><p class="eyebrow">项目资金</p><h2>项目资金与风险</h2><p class="lead">查看项目回款健康度，编辑项目责任信息，并维护风险规则阈值。</p></div><span class="meta">共 {{ total }} 个项目</span></header><p v-if="error" class="error-banner">{{ error }}</p><p v-if="message" class="feedback-text">{{ message }}</p><article v-if="edit" class="panel inline-edit-form"><h3>编辑项目</h3><label>项目名称<input v-model.trim="edit.project_name" /></label><label>客户名称<input v-model.trim="edit.customer_name" /></label><label>负责人<input v-model.trim="edit.project_manager" /></label><label>状态<select v-model="edit.project_status"><option value="active">active</option><option value="paused">paused</option><option value="completed">completed</option><option value="cancelled">cancelled</option></select></label><div class="action-group"><button class="primary-button" type="button" @click="saveEdit">保存项目</button><button class="ghost-button" type="button" @click="edit = null">取消</button></div></article><article class="panel table-panel"><div class="section-heading"><div><h3>项目清单</h3><span class="meta">批量状态更新和详情追溯</span></div><div class="action-group"><button class="small-primary-button" :disabled="!selected.length" type="button" @click="batch('active')">批量启用</button><button class="small-primary-button" :disabled="!selected.length" type="button" @click="batch('completed')">批量完成</button></div></div><div v-if="rows.length" class="table-scroll"><table><thead><tr><th>选择</th><th>项目</th><th>客户/负责人</th><th>合同金额</th><th>应收/已收</th><th>回款率</th><th>风险</th><th>操作</th></tr></thead><tbody><tr v-for="item in rows" :key="item.id"><td><input v-model="selected" type="checkbox" :value="item.id" /></td><td>{{ item.project_no }}<br />{{ item.project_name }}</td><td>{{ item.customer_name || '-' }}<br /><span class="meta">{{ item.project_manager || '未分派负责人' }}</span></td><td>{{ formatCurrency(item.contract_amount) }}</td><td>{{ formatCurrency(item.receivable_amount) }}<br />{{ formatCurrency(item.paid_amount) }}</td><td>{{ (Number(item.paid_rate) * 100).toFixed(1) }}%</td><td><span class="pill">{{ item.risk_level }} · {{ item.risk_score }}</span><br /><span class="meta">{{ item.risk_items.join('；') || '暂无风险项' }}</span></td><td><div class="action-group"><button class="text-button" type="button" @click="begin(item)">编辑</button><button class="text-button" type="button" @click="router.push(`/projects/${item.id}`)">详情</button></div></td></tr></tbody></table></div><p v-else class="empty-state">暂无项目数据，请先导入合同主数据。</p><div class="pagination-controls"><span>第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共 {{ total }} 条</span><label>每页<select v-model.number="pageSize" @change="changeSize"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>条</label><button class="ghost-button" :disabled="page <= 1" type="button" @click="page--; load()">上一页</button><button class="ghost-button" :disabled="page >= Math.ceil(total / pageSize)" type="button" @click="page++; load()">下一页</button></div></article><article class="panel risk-rule-editor"><div class="section-heading"><div><h3>项目风险规则</h3><span class="meta">规则引擎计算项目健康度，保存后作用于后续项目汇总</span></div></div><div v-for="rule in rules" v-if="rules.length" :key="rule.rule_code" class="rule-row"><strong>{{ rule.rule_code }}</strong><label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label><label>扣分<input v-model="rule.penalty" type="number" step="1" /></label><label class="checkbox-label"><input v-model="rule.enabled" type="checkbox" />启用</label><button class="text-button" type="button" @click="saveRule(rule)">保存</button></div><p v-else class="empty-state">暂无风险规则。</p></article></section></template>
+<template>
+  <section class="page-shell">
+    <header class="hero-band">
+      <div>
+        <p class="eyebrow">项目资金</p>
+        <h2>项目资金与风险</h2>
+        <p class="lead">查看项目回款健康度，编辑项目责任信息，并维护风险规则阈值。</p>
+      </div>
+      <span class="meta">共 {{ total }} 个项目</span>
+    </header>
+    <p v-if="error" class="error-banner">{{ error }}</p>
+    <p v-if="message" class="feedback-text">{{ message }}</p>
+    <article v-if="edit" class="panel inline-edit-form">
+      <h3>编辑项目</h3>
+      <label>项目名称<input v-model.trim="edit.project_name" /></label
+      ><label>客户名称<input v-model.trim="edit.customer_name" /></label
+      ><label>负责人<input v-model.trim="edit.project_manager" /></label
+      ><label
+        >状态<select v-model="edit.project_status">
+          <option value="active">active</option>
+          <option value="paused">paused</option>
+          <option value="completed">completed</option>
+          <option value="cancelled">cancelled</option>
+        </select></label
+      >
+      <div class="action-group">
+        <button class="primary-button" type="button" @click="saveEdit">保存项目</button
+        ><button class="ghost-button" type="button" @click="edit = null">取消</button>
+      </div>
+    </article>
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>项目清单</h3>
+          <span class="meta">批量状态更新和详情追溯</span>
+        </div>
+        <div class="action-group">
+          <button
+            class="small-primary-button"
+            :disabled="!selected.length"
+            type="button"
+            @click="batch('active')"
+          >
+            批量启用</button
+          ><button
+            class="small-primary-button"
+            :disabled="!selected.length"
+            type="button"
+            @click="batch('completed')"
+          >
+            批量完成
+          </button>
+        </div>
+      </div>
+      <div v-if="rows.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>选择</th>
+              <th>项目</th>
+              <th>客户/负责人</th>
+              <th>合同金额</th>
+              <th>应收/已收</th>
+              <th>回款率</th>
+              <th>风险</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in rows" :key="item.id">
+              <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
+              <td>{{ item.project_no }}<br />{{ item.project_name }}</td>
+              <td>
+                {{ item.customer_name || '-' }}<br /><span class="meta">{{
+                  item.project_manager || '未分派负责人'
+                }}</span>
+              </td>
+              <td>{{ formatCurrency(item.contract_amount) }}</td>
+              <td>
+                {{ formatCurrency(item.receivable_amount) }}<br />{{
+                  formatCurrency(item.paid_amount)
+                }}
+              </td>
+              <td>{{ (Number(item.paid_rate) * 100).toFixed(1) }}%</td>
+              <td>
+                <span class="pill">{{ item.risk_level }} · {{ item.risk_score }}</span
+                ><br /><span class="meta">{{ item.risk_items.join('；') || '暂无风险项' }}</span>
+              </td>
+              <td>
+                <div class="action-group">
+                  <button class="text-button" type="button" @click="begin(item)">编辑</button
+                  ><button
+                    class="text-button"
+                    type="button"
+                    @click="router.push(`/projects/${item.id}`)"
+                  >
+                    详情
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无项目数据，请先导入合同主数据。</p>
+      <div class="pagination-controls">
+        <span
+          >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
+          {{ total }} 条</span
+        ><label
+          >每页<select v-model.number="pageSize" @change="changeSize">
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option></select
+          >条</label
+        ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+          上一页</button
+        ><button
+          class="ghost-button"
+          :disabled="page >= Math.ceil(total / pageSize)"
+          type="button"
+          @click="nextPage"
+        >
+          下一页
+        </button>
+      </div>
+    </article>
+    <article class="panel risk-rule-editor">
+      <div class="section-heading">
+        <div>
+          <h3>项目风险规则</h3>
+          <span class="meta">规则引擎计算项目健康度，保存后作用于后续项目汇总</span>
+        </div>
+      </div>
+      <div v-for="rule in rules" v-if="rules.length" :key="rule.rule_code" class="rule-row">
+        <strong>{{ rule.rule_code }}</strong
+        ><label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label
+        ><label>扣分<input v-model="rule.penalty" type="number" step="1" /></label
+        ><label class="checkbox-label"><input v-model="rule.enabled" type="checkbox" />启用</label
+        ><button class="text-button" type="button" @click="saveRule(rule)">保存</button>
+      </div>
+      <p v-else class="empty-state">暂无风险规则。</p>
+    </article>
+  </section>
+</template>

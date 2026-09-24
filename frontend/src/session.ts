@@ -10,7 +10,11 @@ export function useSession() {
 
   async function restore() {
     if (token.value && !user.value) {
-      try { user.value = await loadCurrentUser(apiBase(), token.value) } catch { signOut() }
+      try {
+        user.value = await loadCurrentUser(apiBase(), token.value)
+      } catch {
+        signOut()
+      }
     }
     ready.value = true
   }

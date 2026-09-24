@@ -1,6 +1,12 @@
 :root {
   color-scheme: light;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   background: #f3f6fa;
   color: #102033;
 }
@@ -505,8 +511,13 @@ th {
   font-size: 13px;
 }
 
-.detail-grid dt { color: #6d7f92; }
-.detail-grid dd { color: #19324d; word-break: break-word; }
+.detail-grid dt {
+  color: #6d7f92;
+}
+.detail-grid dd {
+  color: #19324d;
+  word-break: break-word;
+}
 
 .mini-list {
   display: grid;
@@ -941,8 +952,32 @@ code {
     padding-top: 3px;
   }
 }
-.inline-edit-form,.risk-rule-editor,.attachment-list{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:12px 0;padding:12px;border:1px solid var(--line);background:var(--surface-muted)}
-.inline-edit-form label,.risk-rule-editor label{min-width:140px}
-.rule-row{display:flex;gap:10px;align-items:center;width:100%;flex-wrap:wrap}
-.attachment-list{display:block}
-.attachment-list .list-row{margin-top:8px}
+.inline-edit-form,
+.risk-rule-editor,
+.attachment-list {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+.inline-edit-form label,
+.risk-rule-editor label {
+  min-width: 140px;
+}
+.rule-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.attachment-list {
+  display: block;
+}
+.attachment-list .list-row {
+  margin-top: 8px;
+}

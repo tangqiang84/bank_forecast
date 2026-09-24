@@ -16,7 +16,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe('fetchJson', () => {
   it('adds JSON content type and trace header', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ code: 0, message: 'ok', data: {}, trace_id: 'trace-1' }))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ code: 0, message: 'ok', data: {}, trace_id: 'trace-1' }))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchJson('http://localhost:8080/api/v1/matching/exceptions/1/comment', {
@@ -35,7 +37,14 @@ describe('fetchJson', () => {
   })
 
   it('throws a structured error when business code is non-zero', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ code: 41002, message: '无权访问', data: null, trace_id: 'trace-api' })))
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ code: 41002, message: '无权访问', data: null, trace_id: 'trace-api' }),
+        ),
+    )
 
     let error: unknown
     try {
@@ -53,9 +62,21 @@ describe('fetchJson', () => {
   it('classifies 401 and emits an unauthorized event', async () => {
     const listener = vi.fn()
     window.addEventListener('auth:unauthorized', listener)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ code: 41001, message: '登录已过期', data: null, trace_id: 'trace-auth' }, 401)))
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { code: 41001, message: '登录已过期', data: null, trace_id: 'trace-auth' },
+            401,
+          ),
+        ),
+    )
 
-    await expect(fetchJson('http://localhost:8080/api/v1/auth/me', { retries: 0 })).rejects.toMatchObject({
+    await expect(
+      fetchJson('http://localhost:8080/api/v1/auth/me', { retries: 0 }),
+    ).rejects.toMatchObject({
       kind: 'unauthorized',
       code: 41001,
       status: 401,
@@ -66,9 +87,12 @@ describe('fetchJson', () => {
   })
 
   it('classifies network errors and retries safe requests', async () => {
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, message: 'ok', data: {}, trace_id: 'trace-2' }))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: 'ok', data: {}, trace_id: 'trace-2' }),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchJson('http://localhost:8080/api/v1/dashboard/overview', { retryDelayMs: 0 })
@@ -80,18 +104,33 @@ describe('fetchJson', () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(fetchJson('http://localhost:8080/api/v1/imports', { method: 'POST', body: '{}', retryDelayMs: 0 })).rejects.toMatchObject({ kind: 'network' })
+    await expect(
+      fetchJson('http://localhost:8080/api/v1/imports', {
+        method: 'POST',
+        body: '{}',
+        retryDelayMs: 0,
+      }),
+    ).rejects.toMatchObject({ kind: 'network' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('classifies AbortController timeout', async () => {
     vi.useFakeTimers()
-    const fetchMock = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
-    }))
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          )
+        }),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
-    const pending = expect(fetchJson('http://localhost:8080/api/v1/slow', { timeoutMs: 10, retries: 0 })).rejects.toMatchObject({ kind: 'timeout' })
+    const pending = expect(
+      fetchJson('http://localhost:8080/api/v1/slow', { timeoutMs: 10, retries: 0 }),
+    ).rejects.toMatchObject({ kind: 'timeout' })
     await vi.advanceTimersByTimeAsync(10)
 
     await pending
@@ -122,9 +161,18 @@ describe('fetchBlob', () => {
   })
 
   it('uses the structured error message when a blob request fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ code: 41002, message: '无权下载文件', trace_id: 'trace-blob' }, 403)))
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ code: 41002, message: '无权下载文件', trace_id: 'trace-blob' }, 403),
+        ),
+    )
 
-    await expect(fetchBlob('http://localhost:8080/api/v1/reports/1/download', { retries: 0 })).rejects.toMatchObject({
+    await expect(
+      fetchBlob('http://localhost:8080/api/v1/reports/1/download', { retries: 0 }),
+    ).rejects.toMatchObject({
       kind: 'http',
       message: '无权下载文件',
       traceId: 'trace-blob',

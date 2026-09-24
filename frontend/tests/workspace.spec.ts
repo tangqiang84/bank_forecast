@@ -1,22 +1,163 @@
 import { expect, test, type Page } from '@playwright/test'
 
 async function mockWorkspaceApi(page: Page) {
-  await page.route('**/api/v1/auth/login', async (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ code: 0, message: 'ok', data: { access_token: 'e2e-token', user: { id: 1, tenant_id: 1, login_name: 'finance01', display_name: '财务负责人', roles: ['CFO'], permissions: [] } }, trace_id: 'e2e' }),
-  }))
-  await page.route('**/api/v1/dashboard/overview', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { total_balance: '100.00', yesterday_net_flow: '10.00', receivable_total: '80.00', overdue_receivable: '20.00', open_exception_count: 0, match_rate: '1.00', key_risks: [], recent_import_jobs: [] }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/bank-accounts?**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/contracts/receivables**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/projects/risk-rules', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/projects?**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/matching/results?**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/matching/exceptions?**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/reports?**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/reconciliation/results**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { items: [], page: 1, page_size: 20, total: 0 }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/forecast/cashflow/latest', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: { job: null, results: [], evaluation: { evaluated_points: 0, mae: '0', rmse: '0', mean_deviation: '0' } }, trace_id: 'e2e' }) }))
-  await page.route('**/api/v1/forecast/models', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }) }))
+  await page.route('**/api/v1/auth/login', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          access_token: 'e2e-token',
+          user: {
+            id: 1,
+            tenant_id: 1,
+            login_name: 'finance01',
+            display_name: '财务负责人',
+            roles: ['CFO'],
+            permissions: [],
+          },
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/dashboard/overview', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          total_balance: '100.00',
+          yesterday_net_flow: '10.00',
+          receivable_total: '80.00',
+          overdue_receivable: '20.00',
+          open_exception_count: 0,
+          match_rate: '1.00',
+          key_risks: [],
+          recent_import_jobs: [],
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/contracts/receivables**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/projects/risk-rules', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+    }),
+  )
+  await page.route('**/api/v1/projects?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/matching/results?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/matching/exceptions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/reports?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/reconciliation/results**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/forecast/cashflow/latest', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          job: null,
+          results: [],
+          evaluation: { evaluated_points: 0, mae: '0', rmse: '0', mean_deviation: '0' },
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/forecast/models', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+    }),
+  )
 }
 
 async function login(page: Page) {
