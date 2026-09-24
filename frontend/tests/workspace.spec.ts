@@ -1,5 +1,38 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const ALL_PERMISSIONS = [
+  'dashboard:view',
+  'account:view',
+  'account:manage',
+  'account:scan',
+  'transaction:view',
+  'transaction:import',
+  'transaction:export',
+  'import:view',
+  'contract:view',
+  'contract:import',
+  'project:view',
+  'project:manage',
+  'project:rule',
+  'matching:view',
+  'matching:run',
+  'matching:confirm',
+  'exception:view',
+  'exception:assign',
+  'exception:handle',
+  'attachment:view',
+  'attachment:manage',
+  'reconciliation:view',
+  'reconciliation:run',
+  'report:view',
+  'report:generate',
+  'report:download',
+  'forecast:view',
+  'forecast:run',
+  'forecast:model',
+  'audit:view',
+]
+
 async function mockWorkspaceApi(page: Page) {
   await page.route('**/api/v1/auth/login', async (route) =>
     route.fulfill({
@@ -16,7 +49,7 @@ async function mockWorkspaceApi(page: Page) {
             login_name: 'finance01',
             display_name: '财务负责人',
             roles: ['CFO'],
-            permissions: [],
+            permissions: ALL_PERMISSIONS,
           },
         },
         trace_id: 'e2e',

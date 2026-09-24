@@ -40,10 +40,11 @@ export async function loadCurrentUser(baseUrl: string, token: string): Promise<U
   if (!cached) {
     throw new Error('登录信息缺失')
   }
-  await fetchJson<ApiResponse<User>>(`${baseUrl}/api/v1/auth/me`, {
+  const response = await fetchJson<ApiResponse<User>>(`${baseUrl}/api/v1/auth/me`, {
     headers: authHeaders(token, cached.tenant_id),
   })
-  return cached
+  localStorage.setItem(USER_KEY, JSON.stringify(response.data))
+  return response.data
 }
 
 export function getToken(): string {

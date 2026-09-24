@@ -153,10 +153,17 @@ onMounted(load)
         <h3>生成预测</h3>
         <label>预测天数<input v-model.number="horizon" min="1" max="90" type="number" /></label
         ><label>历史窗口<input v-model.number="windowSize" min="1" max="30" type="number" /></label
-        ><button class="primary-button" :disabled="loading" type="button" @click="run">
+        ><button
+          v-permission="'forecast:run'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="run"
+        >
           {{ loading ? '处理中...' : '生成预测' }}</button
         ><button
           v-if="forecast.job?.status === 'failed'"
+          v-permission="'forecast:run'"
           class="ghost-button"
           :disabled="loading"
           type="button"
@@ -165,6 +172,7 @@ onMounted(load)
           重试失败任务</button
         ><button
           v-if="forecast.job?.status === 'success'"
+          v-permission="'forecast:run'"
           class="ghost-button"
           :disabled="loading"
           type="button"
@@ -179,6 +187,7 @@ onMounted(load)
               ><strong>{{ model.version }}</strong> · {{ model.model_name }}</span
             ><button
               v-if="model.status !== 'active'"
+              v-permission="'forecast:model'"
               class="text-button"
               type="button"
               @click="activate(model.version)"

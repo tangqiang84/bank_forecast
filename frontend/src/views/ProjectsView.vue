@@ -148,7 +148,13 @@ onMounted(() => {
         </select></label
       >
       <div class="action-group">
-        <button class="primary-button" type="button" @click="saveEdit">保存项目</button
+        <button
+          v-permission="'project:manage'"
+          class="primary-button"
+          type="button"
+          @click="saveEdit"
+        >
+          保存项目</button
         ><button class="ghost-button" type="button" @click="edit = null">取消</button>
       </div>
     </article>
@@ -160,6 +166,7 @@ onMounted(() => {
         </div>
         <div class="action-group">
           <button
+            v-permission="'project:manage'"
             class="small-primary-button"
             :disabled="!selected.length"
             type="button"
@@ -167,6 +174,7 @@ onMounted(() => {
           >
             批量启用</button
           ><button
+            v-permission="'project:manage'"
             class="small-primary-button"
             :disabled="!selected.length"
             type="button"
@@ -212,7 +220,13 @@ onMounted(() => {
               </td>
               <td>
                 <div class="action-group">
-                  <button class="text-button" type="button" @click="begin(item)">编辑</button
+                  <button
+                    v-permission="'project:manage'"
+                    class="text-button"
+                    type="button"
+                    @click="begin(item)"
+                  >
+                    编辑</button
                   ><button
                     class="text-button"
                     type="button"
@@ -261,7 +275,14 @@ onMounted(() => {
         ><label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label
         ><label>扣分<input v-model="rule.penalty" type="number" step="1" /></label
         ><label class="checkbox-label"><input v-model="rule.enabled" type="checkbox" />启用</label
-        ><button class="text-button" type="button" @click="saveRule(rule)">保存</button>
+        ><button
+          v-permission="'project:rule'"
+          class="text-button"
+          type="button"
+          @click="saveRule(rule)"
+        >
+          保存
+        </button>
       </div>
       <p v-else class="empty-state">暂无风险规则。</p>
     </article>

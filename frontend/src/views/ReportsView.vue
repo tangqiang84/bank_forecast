@@ -158,7 +158,13 @@ onMounted(() => {
           >统计月份<input v-model="reportMonth" type="month" /></label
         ><label v-if="reportType === 'daily'"
           >统计日期<input v-model="reportDate" type="date" /></label
-        ><button class="primary-button" :disabled="loading" type="button" @click="generate">
+        ><button
+          v-permission="'report:generate'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="generate"
+        >
           {{ loading ? '生成中...' : '生成报表' }}
         </button>
         <p class="meta import-hint">
@@ -210,6 +216,7 @@ onMounted(() => {
                       查看详情</button
                     ><button
                       v-if="report.status === 'success'"
+                      v-permission="'report:download'"
                       class="text-button"
                       type="button"
                       @click="download(report)"

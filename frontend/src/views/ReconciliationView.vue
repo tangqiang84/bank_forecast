@@ -163,6 +163,7 @@ onMounted(loadResults)
         <h3>对账准备</h3>
         <label>财务记录 CSV<input type="file" accept=".csv,text/csv" @change="chooseFile" /></label>
         <button
+          v-permission="'reconciliation:run'"
           class="primary-button"
           :disabled="importLoading"
           type="button"
@@ -174,7 +175,13 @@ onMounted(loadResults)
           <h3>运行范围</h3>
           <label>开始日期<input v-model="dateFrom" type="date" /></label>
           <label>结束日期<input v-model="dateTo" type="date" /></label>
-          <button class="primary-button" :disabled="loading" type="button" @click="run">
+          <button
+            v-permission="'reconciliation:run'"
+            class="primary-button"
+            :disabled="loading"
+            type="button"
+            @click="run"
+          >
             {{ loading ? '对账中...' : '运行对账' }}
           </button>
         </div>

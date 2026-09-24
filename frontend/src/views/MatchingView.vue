@@ -115,7 +115,13 @@ onMounted(() => {
           查看自动匹配依据、拆分/合并分配明细，并对中低置信度结果进行人工确认或拒绝。
         </p>
       </div>
-      <button class="primary-button" :disabled="loading" type="button" @click="run">
+      <button
+        v-permission="'matching:run'"
+        class="primary-button"
+        :disabled="loading"
+        type="button"
+        @click="run"
+      >
         运行回款匹配
       </button>
     </header>
@@ -179,6 +185,7 @@ onMounted(() => {
                     详情</button
                   ><button
                     v-if="item.match_status === 'suggested'"
+                    v-permission="'matching:confirm'"
                     class="small-primary-button"
                     :disabled="actionId !== null"
                     type="button"
@@ -187,6 +194,7 @@ onMounted(() => {
                     确认组</button
                   ><button
                     v-if="item.match_status === 'suggested'"
+                    v-permission="'matching:confirm'"
                     class="small-danger-button"
                     :disabled="actionId !== null"
                     type="button"

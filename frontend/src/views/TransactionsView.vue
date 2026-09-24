@@ -176,7 +176,13 @@ onMounted(() => {
         <p v-if="selectedAccount" class="meta">
           当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
         </p>
-        <button class="primary-button" :disabled="loading" type="button" @click="startPreview">
+        <button
+          v-permission="'transaction:import'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="startPreview"
+        >
           {{ loading ? '处理中...' : '预览导入' }}
         </button>
         <p v-if="message" class="feedback-text">{{ message }}</p>
@@ -196,11 +202,17 @@ onMounted(() => {
               rows="5"
               :placeholder="payload(preview.preview_rows)"
             /></label
-          ><button class="ghost-button" type="button" @click="retry">
+          ><button
+            v-permission="'transaction:import'"
+            class="ghost-button"
+            type="button"
+            @click="retry"
+          >
             重新校验失败行
           </button></template
         ><button
           v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
+          v-permission="'transaction:import'"
           class="primary-button"
           :disabled="loading || preview.success_rows === 0"
           type="button"

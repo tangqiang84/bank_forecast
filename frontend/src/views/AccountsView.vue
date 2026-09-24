@@ -276,6 +276,7 @@ onMounted(() => {
           当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
         </p>
         <button
+          v-permission="'transaction:import'"
           class="primary-button"
           :disabled="importLoading"
           type="button"
@@ -297,11 +298,17 @@ onMounted(() => {
               rows="5"
               :placeholder="retryPayload(preview.preview_rows)"
             /></label
-          ><button class="ghost-button" type="button" @click="retry">
+          ><button
+            v-permission="'transaction:import'"
+            class="ghost-button"
+            type="button"
+            @click="retry"
+          >
             重新校验失败行
           </button></template
         ><button
           v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
+          v-permission="'transaction:import'"
           class="primary-button"
           :disabled="importLoading || preview.success_rows === 0"
           type="button"
@@ -325,7 +332,7 @@ onMounted(() => {
         ><label>币种<input v-model.trim="accountForm.currency" /></label
         ><label
           >当前余额<input v-model="accountForm.currentBalance" type="number" step="0.01" /></label
-        ><button class="primary-button" type="button" @click="save">
+        ><button v-permission="'account:manage'" class="primary-button" type="button" @click="save">
           {{ editingId ? '保存账户' : '新增账户' }}
         </button>
         <p class="meta import-hint">账号只在保存时提交，页面仅显示后四位。</p>
@@ -337,7 +344,14 @@ onMounted(() => {
           <h3>账户盘点</h3>
           <span class="meta">服务端分页</span>
         </div>
-        <button class="primary-button" type="button" @click="idleScan">盘点闲置账户</button>
+        <button
+          v-permission="'account:scan'"
+          class="primary-button"
+          type="button"
+          @click="idleScan"
+        >
+          盘点闲置账户
+        </button>
       </div>
       <div v-if="accounts.length" class="table-scroll">
         <table>
@@ -372,9 +386,16 @@ onMounted(() => {
                     @click="router.push(`/accounts/${account.id}`)"
                   >
                     详情</button
-                  ><button class="text-button" type="button" @click="edit(account)">编辑</button
+                  ><button
+                    v-permission="'account:manage'"
+                    class="text-button"
+                    type="button"
+                    @click="edit(account)"
+                  >
+                    编辑</button
                   ><button
                     v-if="account.status !== 'closed'"
+                    v-permission="'account:manage'"
                     class="small-danger-button"
                     type="button"
                     @click="close(account)"

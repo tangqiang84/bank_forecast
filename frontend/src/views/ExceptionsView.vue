@@ -175,9 +175,16 @@ onMounted(() => {
         </p>
       </div>
       <div class="action-group">
-        <button class="primary-button" :disabled="loading" type="button" @click="matching">
+        <button
+          v-permission="'matching:run'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="matching"
+        >
           运行回款匹配</button
         ><button
+          v-permission="'exception:handle'"
           class="small-danger-button"
           :disabled="!selected.length"
           type="button"
@@ -185,6 +192,7 @@ onMounted(() => {
         >
           批量标记误报</button
         ><button
+          v-permission="'exception:assign'"
           class="small-primary-button"
           :disabled="!selected.length"
           type="button"
@@ -234,6 +242,7 @@ onMounted(() => {
                   item.status !== 'closed' &&
                   item.status !== 'false_positive'
                 "
+                v-permission="'exception:assign'"
                 class="small-primary-button"
                 type="button"
                 @click="action(item, 'assign')"
@@ -241,6 +250,7 @@ onMounted(() => {
                 分派给我</button
               ><button
                 v-if="item.status !== 'closed' && item.status !== 'false_positive'"
+                v-permission="'exception:handle'"
                 class="text-button"
                 type="button"
                 @click="action(item, 'comment')"
@@ -248,6 +258,7 @@ onMounted(() => {
                 备注</button
               ><button
                 v-if="['new', 'in_progress'].includes(item.status)"
+                v-permission="'exception:handle'"
                 class="small-primary-button"
                 type="button"
                 @click="action(item, 'resolve')"
@@ -255,6 +266,7 @@ onMounted(() => {
                 处理完成</button
               ><button
                 v-if="item.status === 'resolved'"
+                v-permission="'exception:handle'"
                 class="small-danger-button"
                 type="button"
                 @click="action(item, 'close')"
@@ -262,6 +274,7 @@ onMounted(() => {
                 关闭</button
               ><button
                 v-if="item.status !== 'closed' && item.status !== 'false_positive'"
+                v-permission="'exception:handle'"
                 class="small-danger-button"
                 type="button"
                 @click="action(item, 'false_positive')"
@@ -269,6 +282,7 @@ onMounted(() => {
                 标记误报</button
               ><label
                 v-if="item.status !== 'closed' && item.status !== 'false_positive'"
+                v-permission="'attachment:manage'"
                 class="attachment-button"
                 >上传附件<input type="file" @change="upload(item, $event)"
               /></label>

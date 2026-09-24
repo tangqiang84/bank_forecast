@@ -16,6 +16,7 @@ const browserGlobals = {
   FormData: 'readonly',
   Headers: 'readonly',
   HTMLInputElement: 'readonly',
+  HTMLElement: 'readonly',
   RequestInit: 'readonly',
   Response: 'readonly',
   URL: 'readonly',

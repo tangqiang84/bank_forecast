@@ -109,13 +109,21 @@ onMounted(() => {
         <h3>导入合同 / 应收计划</h3>
         <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
         <p v-if="file" class="meta">已选择：{{ file.name }}</p>
-        <button class="primary-button" :disabled="loading" type="button" @click="importFile">
+        <button
+          v-permission="'contract:import'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="importFile"
+        >
           导入合同应收
         </button>
         <p class="meta import-hint">
           支持合同主数据、合同应收计划和独立应收计划模板；导入结果会返回成功、失败、跳过数量。
         </p>
-        <button class="ghost-button" type="button" @click="matching">运行回款匹配</button>
+        <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
+          运行回款匹配
+        </button>
       </article>
       <article class="panel">
         <h3>业务口径</h3>

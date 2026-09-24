@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import './styles.css'
 import router from './router'
+import { vPermission } from './directives/permission'
 import { useSession } from './session'
 
 const session = useSession()
@@ -13,4 +14,4 @@ window.addEventListener('auth:unauthorized', () => {
   }
 })
 
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).directive('permission', vPermission).mount('#app')
