@@ -13,6 +13,7 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -54,5 +55,7 @@ jobs:
 
       - name: E2E tests with CI browser configuration
         run: pnpm e2e
+        timeout-minutes: 15
         env:
           CI: '1'
+          DEBUG: 'pw:browser,pw:webserver'
