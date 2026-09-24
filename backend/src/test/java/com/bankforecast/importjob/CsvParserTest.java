@@ -9,8 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import org.junit.jupiter.api.Test;
 
 class CsvParserTest {
@@ -103,9 +101,8 @@ class CsvParserTest {
 
   @Test
   void recognizesSixBankSheetsAndMapsDebitCreditColumns() throws Exception {
-    String sample = "../../docs/sample/六家银行企业网银交易明细流水格式与样本.xlsx";
     ExcelBankStatementParser.ExcelParseResult result = new ExcelBankStatementParser(objectMapper)
-        .parse(Files.newInputStream(Paths.get(sample)), 100);
+        .parse(getClass().getResourceAsStream("/sample/六家银行企业网银交易明细流水格式与样本.xlsx"), 100);
 
     assertEquals(6, result.getTemplates().size());
     assertTrue(result.getTemplates().stream().allMatch(item -> "recognized".equals(item.get("status"))));

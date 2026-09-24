@@ -6,10 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Collections;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.util.StreamUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -167,7 +167,10 @@ class ImportControllerTest {
     String token = loginToken();
     Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account", Long.class);
     Long tenantId = jdbcTemplate.queryForObject("select tenant_id from bank_account where id = ?", Long.class, accountId);
-    byte[] workbook = Files.readAllBytes(Paths.get("../../docs/sample/六家银行企业网银交易明细流水格式与样本.xlsx"));
+    byte[] workbook;
+    try (InputStream in = getClass().getResourceAsStream("/sample/六家银行企业网银交易明细流水格式与样本.xlsx")) {
+      workbook = StreamUtils.copyToByteArray(in);
+    }
 
     MvcResult result = mockMvc.perform(multipart("/api/v1/imports/bank-statements/preview")
             .file(new MockMultipartFile("file", "six-banks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbook))
