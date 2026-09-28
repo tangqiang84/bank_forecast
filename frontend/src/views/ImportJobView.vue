@@ -42,6 +42,16 @@ const BUSINESS_COLUMNS: Record<string, PreviewColumn[]> = {
     { key: 'counterparty_name', label: '对手方' },
     { key: 'amount', label: '金额' },
   ],
+  project: [
+    { key: 'project_no', label: '项目编号' },
+    { key: 'project_name', label: '项目名称' },
+    { key: 'customer_name', label: '客户' },
+    { key: 'project_manager', label: '负责人' },
+    { key: 'project_status', label: '状态' },
+    { key: 'start_date', label: '开始日期' },
+    { key: 'delivery_date', label: '交付日期' },
+    { key: 'acceptance_date', label: '验收日期' },
+  ],
 }
 const businessColumns = computed<PreviewColumn[]>(
   () => BUSINESS_COLUMNS[job.value?.job_type ?? ''] ?? [],

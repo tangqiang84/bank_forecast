@@ -7,6 +7,7 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.contract.ContractImportService;
 import com.bankforecast.importjob.ImportJobService;
 import com.bankforecast.finance.FinanceRecordImportService;
+import com.bankforecast.project.ProjectImportService;
 import java.util.Map;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -28,12 +29,14 @@ public class ImportController {
   private final ImportJobService importJobService;
   private final ContractImportService contractImportService;
   private final FinanceRecordImportService financeRecordImportService;
+  private final ProjectImportService projectImportService;
 
   public ImportController(ImportJobService importJobService, ContractImportService contractImportService,
-      FinanceRecordImportService financeRecordImportService) {
+      FinanceRecordImportService financeRecordImportService, ProjectImportService projectImportService) {
     this.importJobService = importJobService;
     this.contractImportService = contractImportService;
     this.financeRecordImportService = financeRecordImportService;
+    this.projectImportService = projectImportService;
   }
 
   @RequirePermission("contract:import")
@@ -74,10 +77,13 @@ public class ImportController {
     if ("finance_record".equals(jobType)) {
       return ApiResponse.ok(financeRecordImportService.getPreview(jobId));
     }
+    if ("project".equals(jobType)) {
+      return ApiResponse.ok(projectImportService.getPreview(jobId));
+    }
     return ApiResponse.ok(importJobService.getPreview(jobId));
   }
 
-  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run"})
+  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import"})
   @PostMapping("/{jobId}/confirm")
   public ApiResponse<Map<String, Object>> confirm(@PathVariable Long jobId) {
     String jobType = importJobService.getJobType(jobId);
@@ -87,13 +93,16 @@ public class ImportController {
     if ("finance_record".equals(jobType)) {
       return ApiResponse.ok(financeRecordImportService.confirmPreview(jobId));
     }
+    if ("project".equals(jobType)) {
+      return ApiResponse.ok(projectImportService.confirmPreview(jobId));
+    }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.confirmPreview(jobId));
     }
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "该导入任务类型不支持确认");
   }
 
-  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run"})
+  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import"})
   @PostMapping("/{jobId}/retry-errors")
   public ApiResponse<Map<String, Object>> retryErrors(@PathVariable Long jobId, @RequestBody Map<String, Object> request) {
     String jobType = importJobService.getJobType(jobId);
@@ -103,10 +112,25 @@ public class ImportController {
     if ("finance_record".equals(jobType)) {
       return ApiResponse.ok(financeRecordImportService.retryPreviewErrors(jobId, request));
     }
+    if ("project".equals(jobType)) {
+      return ApiResponse.ok(projectImportService.retryPreviewErrors(jobId, request));
+    }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.retryPreviewErrors(jobId, request));
     }
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "该导入任务类型不支持失败行重试");
+  }
+
+  @RequirePermission("project:import")
+  @PostMapping("/projects")
+  public ApiResponse<Map<String, Object>> importProjects(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(projectImportService.importProjects(file));
+  }
+
+  @RequirePermission("project:import")
+  @PostMapping("/projects/preview")
+  public ApiResponse<Map<String, Object>> previewProjects(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(projectImportService.previewProjects(file));
   }
 
   @RequirePermission("reconciliation:run")

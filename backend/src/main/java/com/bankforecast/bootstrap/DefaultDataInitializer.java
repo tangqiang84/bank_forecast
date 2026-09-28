@@ -25,7 +25,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
       "transaction:view", "transaction:import", "transaction:export",
       "import:view",
       "contract:view", "contract:import",
-      "project:view", "project:manage", "project:rule",
+      "project:view", "project:manage", "project:rule", "project:import",
       "matching:view", "matching:run", "matching:confirm",
       "exception:view", "exception:assign", "exception:handle",
       "attachment:view", "attachment:manage",

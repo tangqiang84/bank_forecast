@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -226,6 +227,117 @@ class GenericImportPreviewTest {
     Assertions.assertEquals(1, countPlans(previewContractNo));
   }
 
+  @Test
+  void projectPreviewConfirmWithSkippedRow() throws Exception {
+    String token = loginToken("finance01");
+    String projectNo = "PJ-PRE-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "project_no,project_name,customer_name,project_manager,project_status,start_date,delivery_date,acceptance_date,remark\n"
+        + projectNo + ",预览项目甲,客户甲,李四,active,2026-09-01,2026-11-15,2026-11-30,重点项目\n"
+        + projectNo + ",预览项目甲,客户甲,李四,active,2026-09-01,2026-11-15,2026-11-30,重点项目\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/projects/preview")
+            .file(new MockMultipartFile("file", "projects-preview.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.job_type").value("project"))
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.success_rows").value(2))
+        .andExpect(jsonPath("$.data.preview_rows[0].status").value("valid"))
+        .andExpect(jsonPath("$.data.preview_rows[0].payload.project_no").value(projectNo))
+        .andReturn();
+    Assertions.assertEquals(0, countProjects(projectNo));
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.success_rows").value(1))
+        .andExpect(jsonPath("$.data.skipped_rows").value(1));
+    Assertions.assertEquals(1, countProjects(projectNo));
+    Map<String, Object> project = jdbcTemplate.queryForMap(
+        "select project_manager, project_status, start_date, delivery_date, acceptance_date, remark from project where project_no = ?", projectNo);
+    Assertions.assertEquals("李四", project.get("project_manager"));
+    Assertions.assertEquals("2026-09-01", String.valueOf(project.get("start_date")));
+    Assertions.assertEquals("重点项目", project.get("remark"));
+  }
+
+  @Test
+  void projectPreviewRetryThenConfirm() throws Exception {
+    String token = loginToken("finance01");
+    String projectNo = "PJ-RETRY-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "project_no,project_name,project_status,start_date\n"
+        + projectNo + "-A,重试项目甲,active,2026-09-01\n"
+        + projectNo + "-B,重试项目乙,unknown,2026-09-01\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/projects/preview")
+            .file(new MockMultipartFile("file", "projects-retry.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.failed_rows").value(1))
+        .andExpect(jsonPath("$.data.preview_rows[1].status").value("failed"))
+        .andReturn();
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    String retry = "{\"rows\":[{\"row_no\":3,\"project_status\":\"paused\"}]}";
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/retry-errors")
+            .contentType(MediaType.APPLICATION_JSON).content(retry)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.failed_rows").value(0))
+        .andExpect(jsonPath("$.data.preview_rows[1].status").value("retry_success"));
+
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.success_rows").value(2));
+    Assertions.assertEquals(1, countProjects(projectNo + "-B"));
+  }
+
+  @Test
+  void projectDirectImportAndPermissionDenied() throws Exception {
+    String token = loginToken("finance01");
+    String projectNo = "PJ-DIRECT-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "项目编号,项目名称,客户名称,项目负责人\n"
+        + projectNo + ",直导项目,客户丙,王五\n";
+    mockMvc.perform(multipart("/api/v1/imports/projects")
+            .file(new MockMultipartFile("file", "projects-direct.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.success_rows").value(1));
+    Assertions.assertEquals(1, countProjects(projectNo));
+
+    String cashierToken = loginToken("cashier01");
+    mockMvc.perform(multipart("/api/v1/imports/projects/preview")
+            .file(new MockMultipartFile("file", "projects-auth.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + cashierToken).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(40301));
+  }
+
+  @Test
+  void cashierCannotConfirmProjectPreviewJob() throws Exception {
+    String financeToken = loginToken("finance01");
+    String projectNo = "PJ-AUTH-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "project_no,project_name\n" + projectNo + ",越权项目\n";
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/projects/preview")
+            .file(new MockMultipartFile("file", "projects-confirm-auth.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + financeToken).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andReturn();
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    String cashierToken = loginToken("cashier01");
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + cashierToken).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(40301));
+  }
+
   private int countPlans(String contractNo) {
     return jdbcTemplate.queryForObject(
         "select count(*) from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ?",
@@ -235,6 +347,11 @@ class GenericImportPreviewTest {
   private int countFinanceRecords(String recordNo) {
     return jdbcTemplate.queryForObject(
         "select count(*) from finance_record where record_no = ?", Integer.class, recordNo);
+  }
+
+  private int countProjects(String projectNo) {
+    return jdbcTemplate.queryForObject(
+        "select count(*) from project where project_no = ?", Integer.class, projectNo);
   }
 
   private String extractJobId(String body) {

@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   batchUpdateProjectStatus,
   loadProjectRiskRules,
   loadProjects,
+  previewProjects,
   type Project,
+  type ProjectImportPayload,
   type ProjectRiskRule,
   updateProject,
   updateProjectRiskRule,
 } from '../services/projects'
+import {
+  confirmImportJob,
+  retryImportJobErrors,
+  type GenericImportPreview,
+  type GenericImportRow,
+} from '../services/imports'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
@@ -19,6 +27,10 @@ const base = apiBase()
 const rows = ref<Project[]>([])
 const rules = ref<ProjectRiskRule[]>([])
 const selected = ref<number[]>([])
+const file = ref<File | null>(null)
+const preview = ref<GenericImportPreview<ProjectImportPayload> | null>(null)
+const retryJson = ref('')
+const importLoading = ref(false)
 const page = ref(1)
 
 function prevPage() {
@@ -58,6 +70,94 @@ async function load() {
 function begin(item: Project) {
   edit.value = { ...item }
 }
+function choose(event: Event) {
+  file.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  message.value = ''
+  preview.value = null
+  retryJson.value = ''
+}
+const previewActionable = computed(
+  () =>
+    preview.value !== null && ['preview_pending', 'preview_failed'].includes(preview.value.status),
+)
+async function startPreview() {
+  if (!session.user.value || !session.token.value || !file.value) {
+    message.value = '请选择项目 CSV 文件'
+    return
+  }
+  importLoading.value = true
+  try {
+    preview.value = (
+      await previewProjects(base, session.token.value, session.user.value.tenant_id, file.value)
+    ).data
+    message.value =
+      preview.value.status === 'preview_failed'
+        ? '预览校验失败，请修正失败行后重新校验。'
+        : '预览完成，请核对后确认导入。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '项目导入预览失败'
+  } finally {
+    importLoading.value = false
+  }
+}
+async function confirmPreview() {
+  if (!session.user.value || !session.token.value || !preview.value) return
+  importLoading.value = true
+  try {
+    preview.value = (
+      await confirmImportJob<ProjectImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        preview.value.job_id,
+      )
+    ).data
+    message.value = '导入已确认，项目清单已更新。'
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '确认导入失败'
+  } finally {
+    importLoading.value = false
+  }
+}
+async function retryErrors() {
+  if (!session.user.value || !session.token.value || !preview.value) return
+  try {
+    preview.value = (
+      await retryImportJobErrors<ProjectImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        preview.value.job_id,
+        JSON.parse(retryJson.value),
+      )
+    ).data
+    retryJson.value = ''
+    message.value = '失败行已重新校验。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '失败行格式不正确'
+  }
+}
+function retryPlaceholder(rows: Array<GenericImportRow<ProjectImportPayload>>) {
+  return JSON.stringify(
+    rows
+      .filter((row) => row.status === 'failed')
+      .map((row) => ({
+        row_no: row.row_no,
+        project_no: row.payload?.project_no ?? '',
+        project_name: row.payload?.project_name ?? '',
+        customer_name: row.payload?.customer_name ?? '',
+        project_manager: row.payload?.project_manager ?? '',
+        project_status: row.payload?.project_status ?? '',
+        start_date: row.payload?.start_date ?? '',
+        delivery_date: row.payload?.delivery_date ?? '',
+        acceptance_date: row.payload?.acceptance_date ?? '',
+        remark: row.payload?.remark ?? '',
+      })),
+    null,
+    2,
+  )
+}
 async function saveEdit() {
   if (!session.user.value || !session.token.value || !edit.value) return
   try {
@@ -66,6 +166,10 @@ async function saveEdit() {
       customer_name: edit.value.customer_name,
       project_manager: edit.value.project_manager,
       project_status: edit.value.project_status,
+      start_date: edit.value.start_date,
+      delivery_date: edit.value.delivery_date,
+      acceptance_date: edit.value.acceptance_date,
+      remark: edit.value.remark,
     })
     message.value = '项目已更新。'
     edit.value = null
@@ -134,6 +238,100 @@ onMounted(() => {
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>
+    <article class="panel workflow-panel">
+      <h3>导入项目</h3>
+      <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
+      <p v-if="file" class="meta">已选择：{{ file.name }}</p>
+      <button
+        v-permission="'project:import'"
+        class="primary-button"
+        :disabled="importLoading"
+        type="button"
+        @click="startPreview"
+      >
+        {{ importLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <div v-if="preview" class="import-summary">
+        <strong>任务 #{{ preview.job_id }}</strong
+        ><span>有效 {{ preview.success_rows }}</span
+        ><span>失败 {{ preview.failed_rows }}</span
+        ><span>跳过 {{ preview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
+          >打开任务详情</RouterLink
+        >
+      </div>
+      <template v-if="preview && previewActionable && preview.failed_rows">
+        <label
+          >失败行修正 JSON<textarea
+            v-model="retryJson"
+            rows="5"
+            :placeholder="retryPlaceholder(preview.preview_rows)"
+          />
+        </label>
+        <button
+          v-permission="'project:import'"
+          class="ghost-button"
+          type="button"
+          @click="retryErrors"
+        >
+          重新校验失败行
+        </button>
+      </template>
+      <button
+        v-if="preview && previewActionable"
+        v-permission="'project:import'"
+        class="primary-button"
+        :disabled="importLoading || preview.success_rows === 0"
+        type="button"
+        @click="confirmPreview"
+      >
+        确认导入
+      </button>
+      <p class="meta import-hint">
+        模板字段：项目编号、项目名称、客户名称、项目负责人、项目状态、开始/交付/验收日期、备注；同一项目编号重复导入时自动跳过。
+      </p>
+    </article>
+    <article v-if="preview" class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>导入预览行</h3>
+          <span class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</span>
+        </div>
+      </div>
+      <div v-if="preview.preview_rows.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>行号</th>
+              <th>项目编号</th>
+              <th>项目名称</th>
+              <th>客户</th>
+              <th>负责人</th>
+              <th>状态</th>
+              <th>开始日期</th>
+              <th>行状态</th>
+              <th>错误原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in preview.preview_rows" :key="row.id">
+              <td>{{ row.row_no }}</td>
+              <td>{{ row.payload?.project_no || '-' }}</td>
+              <td>{{ row.payload?.project_name || '-' }}</td>
+              <td>{{ row.payload?.customer_name || '-' }}</td>
+              <td>{{ row.payload?.project_manager || '-' }}</td>
+              <td>{{ row.payload?.project_status || '-' }}</td>
+              <td>{{ row.payload?.start_date || '-' }}</td>
+              <td>
+                <span class="pill">{{ row.status }}</span>
+              </td>
+              <td>{{ row.error_message || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">本次预览没有可展示的行。</p>
+    </article>
     <article v-if="edit" class="panel inline-edit-form">
       <h3>编辑项目</h3>
       <label>项目名称<input v-model.trim="edit.project_name" /></label
@@ -146,7 +344,10 @@ onMounted(() => {
           <option value="completed">completed</option>
           <option value="cancelled">cancelled</option>
         </select></label
-      >
+      ><label>开始日期<input v-model="edit.start_date" type="date" /></label
+      ><label>交付日期<input v-model="edit.delivery_date" type="date" /></label
+      ><label>验收日期<input v-model="edit.acceptance_date" type="date" /></label
+      ><label>备注<input v-model.trim="edit.remark" /></label>
       <div class="action-group">
         <button
           v-permission="'project:manage'"
@@ -240,7 +441,7 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
-      <p v-else class="empty-state">暂无项目数据，请先导入合同主数据。</p>
+      <p v-else class="empty-state">暂无项目数据，请先在上方导入项目 CSV 或从合同导入带入项目。</p>
       <div class="pagination-controls">
         <span
           >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共

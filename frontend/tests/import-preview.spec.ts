@@ -15,6 +15,7 @@ const ALL_PERMISSIONS = [
   'project:view',
   'project:manage',
   'project:rule',
+  'project:import',
   'matching:view',
   'matching:run',
   'matching:confirm',
@@ -292,5 +293,110 @@ test('财务记录导入预览后确认导入', async ({ page }) => {
 
   await page.getByRole('button', { name: '确认导入' }).click()
   await expect(page.getByText('导入已确认，财务记录已入库。')).toBeVisible()
+  expect(confirmRequested).toBe(true)
+})
+
+const projectPreviewPayload = {
+  job_id: 303,
+  job_type: 'project',
+  status: 'preview_pending',
+  total_rows: 2,
+  success_rows: 1,
+  failed_rows: 1,
+  skipped_rows: 0,
+  preview_rows: [
+    {
+      id: 1,
+      row_no: 1,
+      status: 'valid',
+      error_message: null,
+      payload: {
+        project_no: 'PJ-2026-001',
+        project_name: '示例项目',
+        customer_name: '示例客户',
+        project_manager: '李四',
+        project_status: 'active',
+        start_date: '2026-09-01',
+        delivery_date: '2026-11-15',
+        acceptance_date: null,
+        remark: null,
+      },
+    },
+    {
+      id: 2,
+      row_no: 2,
+      status: 'failed',
+      error_message: '项目状态不合法',
+      payload: {
+        project_no: 'PJ-2026-002',
+        project_name: '异常项目',
+        customer_name: null,
+        project_manager: null,
+        project_status: 'unknown',
+        start_date: null,
+        delivery_date: null,
+        acceptance_date: null,
+        remark: null,
+      },
+    },
+  ],
+  error_details: [
+    {
+      row_no: 2,
+      field_name: 'project_status',
+      raw_json: '{"project_status":"unknown"}',
+      error_message: '项目状态不合法',
+    },
+  ],
+}
+
+test('项目导入预览后确认导入', async ({ page }) => {
+  let previewRequested = false
+  let confirmRequested = false
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/projects?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/projects/risk-rules', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/imports/projects/preview', async (route) => {
+    previewRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(projectPreviewPayload),
+    })
+  })
+  await page.route('**/api/v1/imports/303/confirm', async (route) => {
+    confirmRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...projectPreviewPayload, status: 'confirmed', failed_rows: 0 }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '项目资金' }).click()
+  await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'projects.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('项目编号,项目名称\nPJ-2026-001,示例项目\n'),
+  })
+  await page.getByRole('button', { name: '预览导入' }).click()
+  await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  expect(previewRequested).toBe(true)
+  await expect(page.getByText('任务 #303', { exact: true })).toBeVisible()
+  await expect(page.getByText('有效 1')).toBeVisible()
+  await expect(page.getByText('失败 1')).toBeVisible()
+  await expect(page.getByText('PJ-2026-001')).toBeVisible()
+  await expect(page.getByText('项目状态不合法')).toBeVisible()
+
+  await page.getByRole('button', { name: '确认导入' }).click()
+  await expect(page.getByText('导入已确认，项目清单已更新。')).toBeVisible()
   expect(confirmRequested).toBe(true)
 })

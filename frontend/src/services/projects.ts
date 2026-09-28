@@ -1,5 +1,6 @@
 import { authHeaders } from './auth'
-import { fetchJson } from './http'
+import { fetchJson, fetchMultipart } from './http'
+import type { GenericImportPreview } from './imports'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 export type Project = {
@@ -9,6 +10,10 @@ export type Project = {
   customer_name: string | null
   project_manager: string | null
   project_status: string
+  start_date: string | null
+  delivery_date: string | null
+  acceptance_date: string | null
+  remark: string | null
   contract_amount: string
   receivable_amount: string
   paid_amount: string
@@ -19,6 +24,40 @@ export type Project = {
   risk_score: number
   risk_level: string
   risk_items: string[]
+}
+
+export type ProjectImportPayload = {
+  project_no: string | null
+  project_name: string | null
+  customer_name: string | null
+  project_manager: string | null
+  project_status: string | null
+  start_date: string | null
+  delivery_date: string | null
+  acceptance_date: string | null
+  remark: string | null
+}
+
+export function previewProjects(baseUrl: string, token: string, tenantId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<GenericImportPreview<ProjectImportPayload>>>(
+    `${baseUrl}/api/v1/imports/projects/preview`,
+    formData,
+    token,
+    tenantId,
+  )
+}
+
+export function importProjects(baseUrl: string, token: string, tenantId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<Record<string, unknown>>>(
+    `${baseUrl}/api/v1/imports/projects`,
+    formData,
+    token,
+    tenantId,
+  )
 }
 export type ProjectPage = { items: Project[]; page: number; page_size: number; total: number }
 export function loadProjects(
