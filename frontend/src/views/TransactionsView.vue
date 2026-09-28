@@ -2,7 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+  batchClassifyTransactions,
+  batchUnlinkTransactions,
   confirmImportPreview,
+  exportTransactions,
   loadAccounts,
   loadTransactions,
   previewStatements,
@@ -52,6 +55,26 @@ const receiptPreview = ref<GenericImportPreview<ReceiptImportPayload> | null>(nu
 const receiptRetryJson = ref('')
 const receiptLoading = ref(false)
 const receiptMessage = ref('')
+const filterKeyword = ref('')
+const filterAmountMin = ref('')
+const filterAmountMax = ref('')
+const filterDateFrom = ref('')
+const filterDateTo = ref('')
+const selected = ref<number[]>([])
+const batchCategory = ref('')
+const batchPurpose = ref('')
+const batchReason = ref('')
+const batchLoading = ref(false)
+
+function activeFilters() {
+  return {
+    keyword: filterKeyword.value,
+    amount_min: filterAmountMin.value,
+    amount_max: filterAmountMax.value,
+    date_from: filterDateFrom.value,
+    date_to: filterDateTo.value,
+  }
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   const [a, t] = await Promise.all([
@@ -62,12 +85,92 @@ async function load() {
       session.user.value.tenant_id,
       page.value,
       pageSize.value,
+      activeFilters(),
     ),
   ])
   accounts.value = a.data.items
   transactions.value = t.data.items
   total.value = t.data.total
+  selected.value = []
   if (!accountId.value) accountId.value = accounts.value[0]?.id ?? null
+}
+function applyFilters() {
+  page.value = 1
+  load()
+}
+function resetFilters() {
+  filterKeyword.value = ''
+  filterAmountMin.value = ''
+  filterAmountMax.value = ''
+  filterDateFrom.value = ''
+  filterDateTo.value = ''
+  page.value = 1
+  load()
+}
+async function batchClassify() {
+  if (!session.user.value || !session.token.value || !selected.value.length) return
+  if (!batchCategory.value.trim()) {
+    message.value = '请输入批量分类'
+    return
+  }
+  batchLoading.value = true
+  try {
+    const result = await batchClassifyTransactions(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      selected.value,
+      batchCategory.value.trim(),
+      batchPurpose.value.trim(),
+      '',
+    )
+    message.value = `已批量分类 ${result.data.updated} 条流水。`
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '批量分类失败'
+  } finally {
+    batchLoading.value = false
+  }
+}
+async function batchUnlink() {
+  if (!session.user.value || !session.token.value || !selected.value.length) return
+  if (!batchReason.value.trim()) {
+    message.value = '请输入解除关联原因'
+    return
+  }
+  batchLoading.value = true
+  try {
+    const result = await batchUnlinkTransactions(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      selected.value,
+      batchReason.value.trim(),
+    )
+    message.value = `已解除 ${result.data.processed} 条流水的关联，回滚应收 ${result.data.rolled_back_plans} 条。`
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '批量解除关联失败'
+  } finally {
+    batchLoading.value = false
+  }
+}
+async function exportFile(format: 'csv' | 'xlsx') {
+  if (!session.user.value || !session.token.value) return
+  try {
+    const blob = await exportTransactions(base, session.token.value, session.user.value.tenant_id, {
+      ...activeFilters(),
+      format,
+    })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `bank-transactions.${format}`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    message.value = format === 'xlsx' ? 'Excel 导出成功。' : 'CSV 导出成功。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '导出失败'
+  }
 }
 function chooseFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -377,31 +480,92 @@ onMounted(() => {
       </article>
       <article class="panel table-panel">
         <div class="section-heading">
-          <h3>流水明细</h3>
-          <span class="meta">服务端分页</span>
+          <div>
+            <h3>流水明细</h3>
+            <span class="meta">服务端分页，支持关键字、金额区间和日期筛选</span>
+          </div>
+          <div class="action-group">
+            <button
+              v-permission="'transaction:export'"
+              class="ghost-button"
+              type="button"
+              @click="exportFile('csv')"
+            >
+              导出 CSV</button
+            ><button
+              v-permission="'transaction:export'"
+              class="ghost-button"
+              type="button"
+              @click="exportFile('xlsx')"
+            >
+              导出 Excel
+            </button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <label
+            >关键字<input
+              v-model.trim="filterKeyword"
+              placeholder="流水号/对方户名/摘要/合同编号/项目名称"
+          /></label>
+          <label>金额下限<input v-model.trim="filterAmountMin" type="number" step="0.01" /></label>
+          <label>金额上限<input v-model.trim="filterAmountMax" type="number" step="0.01" /></label>
+          <label>开始日期<input v-model="filterDateFrom" type="date" /></label>
+          <label>结束日期<input v-model="filterDateTo" type="date" /></label>
+          <button class="small-primary-button" type="button" @click="applyFilters">查询</button>
+          <button class="ghost-button" type="button" @click="resetFilters">重置</button>
+        </div>
+        <div v-if="selected.length" class="filter-bar">
+          <span class="meta">已选 {{ selected.length }} 条</span>
+          <label>分类<input v-model.trim="batchCategory" placeholder="如：客户回款" /></label>
+          <label>用途<input v-model.trim="batchPurpose" placeholder="选填" /></label>
+          <button
+            v-permission="'transaction:import'"
+            class="small-primary-button"
+            :disabled="batchLoading"
+            type="button"
+            @click="batchClassify"
+          >
+            批量分类</button
+          ><label>解除原因<input v-model.trim="batchReason" placeholder="必填" /></label>
+          <button
+            v-permission="'transaction:import'"
+            class="ghost-button"
+            :disabled="batchLoading"
+            type="button"
+            @click="batchUnlink"
+          >
+            批量解除关联
+          </button>
         </div>
         <div v-if="transactions.length" class="table-scroll">
           <table>
             <thead>
               <tr>
+                <th>选择</th>
                 <th>交易日期</th>
+                <th>银行/账户</th>
                 <th>方向</th>
                 <th>金额</th>
                 <th>对方户名</th>
                 <th>摘要</th>
+                <th>分类</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in transactions" :key="item.id">
+                <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
                 <td>{{ item.transaction_date }}</td>
+                <td>{{ item.bank_name || '-' }}·{{ item.account_no_last4 || '-' }}</td>
                 <td>{{ item.direction }}</td>
                 <td :class="item.direction === 'expense' ? 'expense-amount' : 'income-amount'">
                   {{ formatCurrency(item.amount) }}
                 </td>
                 <td>{{ item.counterparty_name || '-' }}</td>
                 <td>{{ item.summary || '-' }}</td>
+                <td>{{ item.category || '-' }}</td>
                 <td>
                   <span class="pill">{{ item.match_status }}</span>
                 </td>

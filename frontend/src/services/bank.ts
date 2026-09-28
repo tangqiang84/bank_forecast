@@ -30,6 +30,8 @@ export type BankTransaction = {
   purpose: string | null
   category: string | null
   match_status: string
+  bank_name?: string | null
+  account_no_last4?: string | null
 }
 
 export type TransactionPage = {
@@ -191,6 +193,41 @@ export function unlinkTransaction(
     method: 'POST',
     headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
+  })
+}
+
+export function batchClassifyTransactions(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  transactionIds: number[],
+  category: string,
+  purpose: string,
+  remark: string,
+) {
+  return fetchJson<ApiResponse<{ updated: number }>>(
+    `${baseUrl}/api/v1/bank-transactions/batch-classify`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction_ids: transactionIds, category, purpose, remark }),
+    },
+  )
+}
+
+export function batchUnlinkTransactions(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  transactionIds: number[],
+  reason: string,
+) {
+  return fetchJson<
+    ApiResponse<{ processed: number; unlinked_groups: number; rolled_back_plans: number }>
+  >(`${baseUrl}/api/v1/bank-transactions/batch-unlink`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transaction_ids: transactionIds, reason }),
   })
 }
 

@@ -3,6 +3,8 @@ package com.bankforecast.api;
 import com.bankforecast.security.RequirePermission;
 import com.bankforecast.bank.BankTransactionService;
 import com.bankforecast.common.ApiResponse;
+import com.bankforecast.api.dto.TransactionBatchClassifyRequest;
+import com.bankforecast.api.dto.TransactionBatchUnlinkRequest;
 import com.bankforecast.api.dto.TransactionClassifyRequest;
 import com.bankforecast.api.dto.TransactionUnlinkRequest;
 import java.util.Map;
@@ -36,8 +38,11 @@ public class BankTransactionController {
       @RequestParam(name = "project_no", required = false) String projectNo,
       @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
       @RequestParam(name = "date_to", required = false) LocalDate dateTo,
-      @RequestParam(required = false) String status) {
-    return ApiResponse.ok(bankTransactionService.list(page, pageSize, bankAccountId, contractNo, projectNo, dateFrom, dateTo, status));
+      @RequestParam(required = false) String status,
+      @RequestParam(required = false) String keyword,
+      @RequestParam(name = "amount_min", required = false) java.math.BigDecimal amountMin,
+      @RequestParam(name = "amount_max", required = false) java.math.BigDecimal amountMax) {
+    return ApiResponse.ok(bankTransactionService.list(page, pageSize, bankAccountId, contractNo, projectNo, dateFrom, dateTo, status, keyword, amountMin, amountMax));
   }
 
   @RequirePermission("transaction:view")
@@ -46,26 +51,52 @@ public class BankTransactionController {
     return ApiResponse.ok(bankTransactionService.detail(id));
   }
 
+  @RequirePermission("transaction:import")
   @org.springframework.web.bind.annotation.PostMapping("/{id}/manual-classify")
   public ApiResponse<Map<String, Object>> classify(@org.springframework.web.bind.annotation.PathVariable Long id,
       @Valid @org.springframework.web.bind.annotation.RequestBody TransactionClassifyRequest request) {
     return ApiResponse.ok(bankTransactionService.classify(id, request));
   }
 
+  @RequirePermission("transaction:import")
   @org.springframework.web.bind.annotation.PostMapping("/{id}/unlink")
   public ApiResponse<Map<String, Object>> unlink(@org.springframework.web.bind.annotation.PathVariable Long id,
       @Valid @org.springframework.web.bind.annotation.RequestBody TransactionUnlinkRequest request) {
     return ApiResponse.ok(bankTransactionService.unlink(id, request.getReason()));
   }
 
+  @RequirePermission("transaction:import")
+  @org.springframework.web.bind.annotation.PostMapping("/batch-classify")
+  public ApiResponse<Map<String, Object>> batchClassify(
+      @Valid @org.springframework.web.bind.annotation.RequestBody TransactionBatchClassifyRequest request) {
+    return ApiResponse.ok(bankTransactionService.batchClassify(
+        request.getTransaction_ids(), request.getCategory(), request.getPurpose(), request.getRemark()));
+  }
+
+  @RequirePermission("transaction:import")
+  @org.springframework.web.bind.annotation.PostMapping("/batch-unlink")
+  public ApiResponse<Map<String, Object>> batchUnlink(
+      @Valid @org.springframework.web.bind.annotation.RequestBody TransactionBatchUnlinkRequest request) {
+    return ApiResponse.ok(bankTransactionService.batchUnlink(request.getTransaction_ids(), request.getReason()));
+  }
+
   @RequirePermission("transaction:export")
-  @GetMapping(value = "/export", produces = "text/csv")
-  public ResponseEntity<String> export(@RequestParam(name = "bank_account_id", required = false) Long bankAccountId,
+  @GetMapping(value = "/export")
+  public ResponseEntity<?> export(@RequestParam(name = "bank_account_id", required = false) Long bankAccountId,
       @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
       @RequestParam(name = "date_to", required = false) LocalDate dateTo,
-      @RequestParam(required = false) String status, @RequestParam(required = false) String category) {
+      @RequestParam(required = false) String status, @RequestParam(required = false) String category,
+      @RequestParam(required = false) String keyword,
+      @RequestParam(name = "amount_min", required = false) java.math.BigDecimal amountMin,
+      @RequestParam(name = "amount_max", required = false) java.math.BigDecimal amountMax,
+      @RequestParam(required = false) String format) {
+    if ("xlsx".equalsIgnoreCase(format == null ? "" : format.trim())) {
+      return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=bank-transactions.xlsx")
+          .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+          .body(bankTransactionService.exportXlsx(bankAccountId, dateFrom, dateTo, status, category, keyword, amountMin, amountMax));
+    }
     return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=bank-transactions.csv")
         .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-        .body(bankTransactionService.exportCsv(bankAccountId, dateFrom, dateTo, status, category));
+        .body(bankTransactionService.exportCsv(bankAccountId, dateFrom, dateTo, status, category, keyword, amountMin, amountMax));
   }
 }

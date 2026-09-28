@@ -118,6 +118,108 @@ class BankTransactionControllerTest {
         Integer.class, resultId).intValue());
   }
 
+  @Test
+  void filtersByKeywordAndAmountRange() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    Long accountId = accountId(tenantId);
+    String suffix = suffix();
+    importStatement(token, tenantId, accountId,
+        "TX-KW-A" + suffix + ",2026-09-09,income,500.00,关键字客户甲,货款 " + suffix + "\n");
+    importStatement(token, tenantId, accountId,
+        "TX-KW-B" + suffix + ",2026-09-09,income,5000.00,其他客户,服务费\n");
+
+    mockMvc.perform(get("/api/v1/bank-transactions?page=1&page_size=20&keyword=关键字客户甲")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(1))
+        .andExpect(jsonPath("$.data.items[0].transaction_no").value("TX-KW-A" + suffix))
+        .andExpect(jsonPath("$.data.items[0].bank_name").exists());
+
+    mockMvc.perform(get("/api/v1/bank-transactions?page=1&page_size=20&amount_min=1000&amount_max=10000")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.transaction_no == 'TX-KW-B" + suffix + "')]").exists())
+        .andExpect(jsonPath("$.data.items[?(@.transaction_no == 'TX-KW-A" + suffix + "')]").isEmpty());
+  }
+
+  @Test
+  void batchClassifyAndBatchUnlink() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    Long accountId = accountId(tenantId);
+    String suffix = suffix();
+    importStatement(token, tenantId, accountId,
+        "TX-BATCH-A" + suffix + ",2026-09-09,income,100.00,批量客户,货款\n");
+    importStatement(token, tenantId, accountId,
+        "TX-BATCH-B" + suffix + ",2026-09-09,income,200.00,批量客户,货款\n");
+    Long idA = transactionId(tenantId, "TX-BATCH-A" + suffix);
+    Long idB = transactionId(tenantId, "TX-BATCH-B" + suffix);
+
+    mockMvc.perform(post("/api/v1/bank-transactions/batch-classify")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"transaction_ids\":[" + idA + "," + idB + "],\"category\":\"客户回款\",\"purpose\":\"批量复核\"}")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.updated").value(2));
+    assertEquals(2, jdbcTemplate.queryForObject(
+        "select count(*) from bank_transaction where id in (?, ?) and category = '客户回款'",
+        Integer.class, idA, idB).intValue());
+
+    mockMvc.perform(post("/api/v1/bank-transactions/batch-unlink")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"transaction_ids\":[" + idA + "," + idB + "],\"reason\":\"批量复核解除\"}")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.processed").value(2))
+        .andExpect(jsonPath("$.data.unlinked_groups").value(0));
+    assertEquals(2, jdbcTemplate.queryForObject(
+        "select count(*) from bank_transaction where id in (?, ?) and match_status = 'unmatched'",
+        Integer.class, idA, idB).intValue());
+  }
+
+  @Test
+  void exportsXlsxAndRejectsBatchWithoutPermission() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    Long accountId = accountId(tenantId);
+    String transactionNo = "TX-XLSX-" + suffix();
+    importStatement(token, tenantId, accountId,
+        transactionNo + ",2026-09-09,income,128.00,ACME客户,项目回款\n");
+
+    mockMvc.perform(get("/api/v1/bank-transactions/export?format=xlsx&keyword=" + transactionNo)
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Content-Disposition", containsString("bank-transactions.xlsx")))
+        .andExpect(content().contentTypeCompatibleWith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        .andExpect(result -> {
+          byte[] body = result.getResponse().getContentAsByteArray();
+          assertEquals('P', body[0]);
+          assertEquals('K', body[1]);
+        });
+
+    MvcResult ceoLogin = mockMvc.perform(post("/api/v1/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"login_name\":\"ceo01\",\"password\":\"" + TEST_PASSWORD + "\"}"))
+        .andExpect(status().isOk())
+        .andReturn();
+    String ceoBody = ceoLogin.getResponse().getContentAsString();
+    String ceoToken = ceoBody.substring(ceoBody.indexOf("access_token") + 15);
+    ceoToken = ceoToken.substring(0, ceoToken.indexOf('"'));
+    mockMvc.perform(post("/api/v1/bank-transactions/batch-classify")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"transaction_ids\":[1],\"category\":\"客户回款\"}")
+            .header("Authorization", "Bearer " + ceoToken)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(40301));
+  }
+
   private void importContract(String token, Long tenantId, String contractNo) throws Exception {
     String csv = "contract_no,contract_name,customer_name,project_no,project_name,contract_amount,node_name,node_type,due_date,plan_amount,owner_name\n"
         + contractNo + ",软件实施合同,甲方科技,PRJ-" + contractNo + ",甲方一期项目,1000.00,验收款,acceptance,2026-09-09,1000.00,财务负责人\n";

@@ -31,6 +31,8 @@ const ALL_PERMISSIONS = [
   'forecast:view',
   'forecast:run',
   'forecast:model',
+  'receipt:view',
+  'receipt:import',
   'audit:view',
 ]
 
@@ -475,4 +477,97 @@ test('预测失败任务展示原因并重试成功', async ({ page }) => {
   expect(retryRequested).toBe(true)
   await expect(page.getByText('任务 #801 · running · v1.0')).toBeVisible()
   await expect(page.getByText('预测服务超时，请稍后重试')).toBeHidden()
+})
+
+test('流水高级筛选、批量分类和 Excel 导出', async ({ page }) => {
+  let lastListUrl = ''
+  let batchClassified: Record<string, unknown> | null = null
+  const transactionsPage = {
+    items: [
+      {
+        id: 501,
+        bank_account_id: 1,
+        transaction_no: 'TXN-501',
+        transaction_date: '2026-09-01',
+        direction: 'income',
+        amount: '500.00',
+        balance_after: '1000.00',
+        counterparty_name: '示例客户',
+        summary: '货款',
+        purpose: null,
+        category: null,
+        match_status: 'unmatched',
+        bank_name: '工商银行',
+        account_no_last4: '1234',
+      },
+    ],
+    page: 1,
+    page_size: 20,
+    total: 1,
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '100.00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions?**', async (route) => {
+    lastListUrl = route.request().url()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(transactionsPage),
+    })
+  })
+  await page.route('**/api/v1/bank-transactions/batch-classify', async (route) => {
+    batchClassified = postBody(route)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok({ updated: 1 }) })
+  })
+  await page.route('**/api/v1/bank-transactions/export?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      body: Buffer.from('PK\x03\x04fake-xlsx'),
+    }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '银行流水' }).click()
+  await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
+  await expect(page.getByText('工商银行·1234')).toBeVisible()
+
+  await page.getByLabel('关键字').fill('示例客户')
+  await page.getByLabel('金额下限').fill('100')
+  await page.getByRole('button', { name: '查询' }).click()
+  await expect.poll(() => lastListUrl).toContain('keyword=%E7%A4%BA%E4%BE%8B%E5%AE%A2%E6%88%B7')
+  expect(lastListUrl).toContain('amount_min=100')
+
+  await page.locator('input[type="checkbox"]').first().check()
+  await page.getByLabel('分类', { exact: true }).fill('客户回款')
+  await page.getByRole('button', { name: '批量分类' }).click()
+  await expect(page.getByText('已批量分类 1 条流水。')).toBeVisible()
+  expect(batchClassified).toMatchObject({ transaction_ids: [501], category: '客户回款' })
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出 Excel' }).click()
+  expect((await download).suggestedFilename()).toBe('bank-transactions.xlsx')
 })
