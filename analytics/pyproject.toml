@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0,<9.0", "httpx2>=0.1.0"]
+dev = ["pytest>=9.0.3,<10.0", "httpx2>=0.1.0"]
 
 [project.scripts]
 bank-forecast-analytics = "bank_forecast_analytics.app:main"
