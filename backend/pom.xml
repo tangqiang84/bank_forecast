@@ -21,6 +21,12 @@
     <java.version>1.8</java.version>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <!-- 2026-09-28 依赖扫描处置：兼容线内升级修复已知 CVE，Spring Boot 3/JDK 17 大版本升级另列任务 -->
+    <tomcat.version>9.0.122</tomcat.version>
+    <spring-framework.version>5.3.39</spring-framework.version>
+    <logback.version>1.2.13</logback.version>
+    <snakeyaml.version>2.2</snakeyaml.version>
+    <jackson-bom.version>2.15.4</jackson-bom.version>
   </properties>
 
   <dependencies>
