@@ -1,5 +1,6 @@
 import { authHeaders } from './auth'
 import { fetchJson, fetchMultipart } from './http'
+import type { GenericImportPreview } from './imports'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 export type ReconciliationSummary = {
@@ -34,6 +35,36 @@ export type ReconciliationPage = {
   page_size: number
   total: number
   job?: Record<string, unknown>
+}
+
+export type FinanceRecordImportPayload = {
+  record_no: string | null
+  record_type: string | null
+  record_date: string | null
+  posting_date: string | null
+  counterparty_name: string | null
+  amount: string | null
+  summary: string | null
+  source_system: string | null
+  contract_no: string | null
+  project_no: string | null
+  remark: string | null
+}
+
+export function previewFinanceRecords(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  file: File,
+) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<GenericImportPreview<FinanceRecordImportPayload>>>(
+    `${baseUrl}/api/v1/imports/finance-records/preview`,
+    formData,
+    token,
+    tenantId,
+  )
 }
 
 export function importFinanceRecords(baseUrl: string, token: string, tenantId: number, file: File) {

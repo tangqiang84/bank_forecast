@@ -223,7 +223,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
 
   await page.getByRole('link', { name: '合同应收' }).click()
   await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '导入合同应收' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '预览导入' })).toBeVisible()
 
   await page.getByRole('link', { name: '项目资金' }).click()
   await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()

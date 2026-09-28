@@ -33,9 +33,11 @@ public class PermissionInterceptor implements HandlerInterceptor {
     }
     Set<String> permissions = permissionRepository.findPermissionCodes(
         principal.getTenantId(), principal.getRoles());
-    if (!permissions.contains(required.value())) {
-      throw new BusinessException(ErrorCode.PERMISSION_DENIED, "没有执行该操作的权限");
+    for (String code : required.value()) {
+      if (permissions.contains(code)) {
+        return true;
+      }
     }
-    return true;
+    throw new BusinessException(ErrorCode.PERMISSION_DENIED, "没有执行该操作的权限");
   }
 }

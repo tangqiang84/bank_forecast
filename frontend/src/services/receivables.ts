@@ -1,5 +1,6 @@
 import { authHeaders } from './auth'
 import { fetchBlob, fetchJson, fetchMultipart } from './http'
+import type { GenericImportPreview } from './imports'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 export type Contract = {
@@ -69,6 +70,31 @@ export type MatchResult = {
   confirmed_at: string | null
 }
 export type Paged<T> = { items: T[]; page: number; page_size: number; total: number }
+
+export type ContractImportPayload = {
+  contract_no: string | null
+  contract_name: string | null
+  customer_name: string | null
+  project_no: string | null
+  project_name: string | null
+  contract_amount: string | null
+  node_name: string | null
+  node_type: string | null
+  due_date: string | null
+  plan_amount: string | null
+  owner_name: string | null
+}
+
+export function previewContracts(baseUrl: string, token: string, tenantId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<GenericImportPreview<ContractImportPayload>>>(
+    `${baseUrl}/api/v1/imports/contracts/preview`,
+    formData,
+    token,
+    tenantId,
+  )
+}
 
 export function importContracts(baseUrl: string, token: string, tenantId: number, file: File) {
   const formData = new FormData()

@@ -6,6 +6,7 @@ import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
+import com.bankforecast.security.PermissionRepository;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -34,13 +35,14 @@ public class ImportJobService {
   private final ExcelBankStatementParser excelParser;
   private final BankAccountRepository bankAccountRepository;
   private final AuditService auditService;
+  private final PermissionRepository permissionRepository;
   private final int maxRows;
   private final long maxFileSize;
   private final int maxDateRangeDays;
   private final BigDecimal maxAmount;
 
   public ImportJobService(JdbcTemplate jdbcTemplate, CsvBankStatementParser parser, ExcelBankStatementParser excelParser,
-      BankAccountRepository bankAccountRepository, AuditService auditService,
+      BankAccountRepository bankAccountRepository, AuditService auditService, PermissionRepository permissionRepository,
       @Value("${bank-forecast.import.max-rows}") int maxRows,
       @Value("${bank-forecast.import.max-file-size-bytes}") long maxFileSize,
       @Value("${bank-forecast.import.max-date-range-days}") int maxDateRangeDays,
@@ -50,6 +52,7 @@ public class ImportJobService {
     this.excelParser = excelParser;
     this.bankAccountRepository = bankAccountRepository;
     this.auditService = auditService;
+    this.permissionRepository = permissionRepository;
     this.maxRows = maxRows;
     this.maxFileSize = maxFileSize;
     this.maxDateRangeDays = maxDateRangeDays;
@@ -163,6 +166,7 @@ public class ImportJobService {
   @Transactional
   public Map<String, Object> confirmPreview(Long jobId) {
     AuthPrincipal principal = requireAuth();
+    requirePermission(principal, "transaction:import");
     Map<String, Object> job = getJob(jobId, principal.getTenantId());
     String status = String.valueOf(job.get("status"));
     if (!"preview_pending".equals(status) && !"preview_failed".equals(status)) {
@@ -199,6 +203,7 @@ public class ImportJobService {
   @Transactional
   public Map<String, Object> retryPreviewErrors(Long jobId, Map<String, Object> request) {
     AuthPrincipal principal = requireAuth();
+    requirePermission(principal, "transaction:import");
     getJob(jobId, principal.getTenantId());
     Object rawRows = request == null ? null : request.get("rows");
     if (!(rawRows instanceof List)) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "rows 必须是数组");
@@ -325,6 +330,17 @@ public class ImportJobService {
   public Map<String, Object> getJob(Long jobId) {
     AuthPrincipal principal = requireAuth();
     return getJob(jobId, principal.getTenantId());
+  }
+
+  public String getJobType(Long jobId) {
+    AuthPrincipal principal = requireAuth();
+    return String.valueOf(getJob(jobId, principal.getTenantId()).get("job_type"));
+  }
+
+  private void requirePermission(AuthPrincipal principal, String code) {
+    if (!permissionRepository.findPermissionCodes(principal.getTenantId(), principal.getRoles()).contains(code)) {
+      throw new BusinessException(ErrorCode.PERMISSION_DENIED, "没有执行该操作的权限");
+    }
   }
 
   private Long createJob(Long tenantId, String fileName) {

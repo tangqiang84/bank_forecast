@@ -4,18 +4,27 @@ import { useRoute } from 'vue-router'
 import BusinessDetail from '../components/BusinessDetail.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import {
-  importFinanceRecords,
+  previewFinanceRecords,
   loadReconciliationResults,
   runReconciliation,
+  type FinanceRecordImportPayload,
   type ReconciliationResult,
   type ReconciliationSummary,
 } from '../services/finance'
+import {
+  confirmImportJob,
+  retryImportJobErrors,
+  type GenericImportPreview,
+  type GenericImportRow,
+} from '../services/imports'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
 const route = useRoute()
 const session = useSession()
 const file = ref<File | null>(null)
+const preview = ref<GenericImportPreview<FinanceRecordImportPayload> | null>(null)
+const retryJson = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const differenceType = ref('')
@@ -78,9 +87,16 @@ async function loadResults() {
 function chooseFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
   message.value = ''
+  preview.value = null
+  retryJson.value = ''
 }
 
-async function importRecords() {
+const previewActionable = computed(
+  () =>
+    preview.value !== null && ['preview_pending', 'preview_failed'].includes(preview.value.status),
+)
+
+async function startPreview() {
   if (!file.value || !session.user.value || !session.token.value) {
     message.value = '请选择财务记录 CSV 文件'
     return
@@ -88,18 +104,79 @@ async function importRecords() {
   importLoading.value = true
   message.value = ''
   try {
-    const response = await importFinanceRecords(
-      apiBase(),
-      session.token.value,
-      session.user.value.tenant_id,
-      file.value,
-    )
-    message.value = `导入完成：成功 ${response.data.success_rows ?? 0} 行，失败 ${response.data.failed_rows ?? 0} 行。`
+    preview.value = (
+      await previewFinanceRecords(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        file.value,
+      )
+    ).data
+    message.value =
+      preview.value.status === 'preview_failed'
+        ? '预览校验失败，请修正失败行后重新校验。'
+        : '预览完成，请核对后确认导入。'
   } catch (cause) {
-    message.value = cause instanceof Error ? cause.message : '财务记录导入失败'
+    message.value = cause instanceof Error ? cause.message : '财务记录预览失败'
   } finally {
     importLoading.value = false
   }
+}
+
+async function confirmPreview() {
+  if (!preview.value || !session.user.value || !session.token.value) return
+  importLoading.value = true
+  try {
+    preview.value = (
+      await confirmImportJob<FinanceRecordImportPayload>(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        preview.value.job_id,
+      )
+    ).data
+    message.value = '导入已确认，财务记录已入库。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '确认导入失败'
+  } finally {
+    importLoading.value = false
+  }
+}
+
+async function retryErrors() {
+  if (!preview.value || !session.user.value || !session.token.value) return
+  try {
+    preview.value = (
+      await retryImportJobErrors<FinanceRecordImportPayload>(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        preview.value.job_id,
+        JSON.parse(retryJson.value),
+      )
+    ).data
+    retryJson.value = ''
+    message.value = '失败行已重新校验。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '失败行格式不正确'
+  }
+}
+
+function retryPlaceholder(rows: Array<GenericImportRow<FinanceRecordImportPayload>>) {
+  return JSON.stringify(
+    rows
+      .filter((row) => row.status === 'failed')
+      .map((row) => ({
+        row_no: row.row_no,
+        record_no: row.payload?.record_no ?? '',
+        record_type: row.payload?.record_type ?? '',
+        record_date: row.payload?.record_date ?? '',
+        counterparty_name: row.payload?.counterparty_name ?? '',
+        amount: row.payload?.amount ?? '',
+      })),
+    null,
+    2,
+  )
 }
 
 async function run() {
@@ -167,9 +244,45 @@ onMounted(loadResults)
           class="primary-button"
           :disabled="importLoading"
           type="button"
-          @click="importRecords"
+          @click="startPreview"
         >
-          {{ importLoading ? '导入中...' : '导入财务记录' }}
+          {{ importLoading ? '处理中...' : '预览导入' }}
+        </button>
+        <div v-if="preview" class="import-summary">
+          <strong>任务 #{{ preview.job_id }}</strong
+          ><span>有效 {{ preview.success_rows }}</span
+          ><span>失败 {{ preview.failed_rows }}</span
+          ><span>跳过 {{ preview.skipped_rows }}</span
+          ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
+            >打开任务详情</RouterLink
+          >
+        </div>
+        <template v-if="preview && previewActionable && preview.failed_rows">
+          <label
+            >失败行修正 JSON<textarea
+              v-model="retryJson"
+              rows="5"
+              :placeholder="retryPlaceholder(preview.preview_rows)"
+            />
+          </label>
+          <button
+            v-permission="'reconciliation:run'"
+            class="ghost-button"
+            type="button"
+            @click="retryErrors"
+          >
+            重新校验失败行
+          </button>
+        </template>
+        <button
+          v-if="preview && previewActionable"
+          v-permission="'reconciliation:run'"
+          class="primary-button"
+          :disabled="importLoading || preview.success_rows === 0"
+          type="button"
+          @click="confirmPreview"
+        >
+          确认导入
         </button>
         <div class="detail-section">
           <h3>运行范围</h3>
@@ -269,6 +382,46 @@ onMounted(loadResults)
         </div>
       </article>
     </section>
+
+    <article v-if="preview" class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>导入预览行</h3>
+          <span class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</span>
+        </div>
+      </div>
+      <div v-if="preview.preview_rows.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>行号</th>
+              <th>记录编号</th>
+              <th>类型</th>
+              <th>记录日期</th>
+              <th>对手方</th>
+              <th>金额</th>
+              <th>状态</th>
+              <th>错误原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in preview.preview_rows" :key="row.id">
+              <td>{{ row.row_no }}</td>
+              <td>{{ row.payload?.record_no || '-' }}</td>
+              <td>{{ row.payload?.record_type || '-' }}</td>
+              <td>{{ row.payload?.record_date || '-' }}</td>
+              <td>{{ row.payload?.counterparty_name || '-' }}</td>
+              <td>{{ row.payload?.amount || '-' }}</td>
+              <td>
+                <span class="pill">{{ row.status }}</span>
+              </td>
+              <td>{{ row.error_message || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">本次预览没有可展示的行。</p>
+    </article>
 
     <DetailDrawer v-if="selected" title="对账差异详情" @close="selected = null"
       ><BusinessDetail :data="{ reconciliation: selected }"

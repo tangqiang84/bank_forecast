@@ -1,26 +1,71 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  confirmImportPreview,
-  loadImportPreview,
-  retryImportErrors,
-  type ImportPreview,
-} from '../services/bank'
+  confirmImportJob,
+  downloadImportJobErrors,
+  loadImportJobPreview,
+  retryImportJobErrors,
+  type ImportJobPreview,
+  type ImportJobPreviewRow,
+} from '../services/imports'
 import { apiBase, useSession } from '../session'
+
 const route = useRoute()
 const session = useSession()
-const job = ref<ImportPreview | null>(null)
+const job = ref<ImportJobPreview | null>(null)
 const retryJson = ref('')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
+
+type PreviewColumn = { key: string; label: string }
+const BUSINESS_COLUMNS: Record<string, PreviewColumn[]> = {
+  bank_statement: [
+    { key: 'transaction_no', label: '流水号' },
+    { key: 'transaction_date', label: '日期' },
+    { key: 'direction', label: '方向' },
+    { key: 'amount', label: '金额' },
+  ],
+  contract: [
+    { key: 'contract_no', label: '合同编号' },
+    { key: 'contract_name', label: '合同名称' },
+    { key: 'customer_name', label: '客户' },
+    { key: 'node_name', label: '节点' },
+    { key: 'due_date', label: '应收日期' },
+    { key: 'plan_amount', label: '计划金额' },
+  ],
+  finance_record: [
+    { key: 'record_no', label: '记录编号' },
+    { key: 'record_type', label: '类型' },
+    { key: 'record_date', label: '记录日期' },
+    { key: 'counterparty_name', label: '对手方' },
+    { key: 'amount', label: '金额' },
+  ],
+}
+const businessColumns = computed<PreviewColumn[]>(
+  () => BUSINESS_COLUMNS[job.value?.job_type ?? ''] ?? [],
+)
+const actionable = computed(
+  () => job.value !== null && ['preview_pending', 'preview_failed'].includes(job.value.status),
+)
+
+function fieldValue(row: ImportJobPreviewRow, key: string): string {
+  const flatFields: Record<string, string | null | undefined> = {
+    transaction_no: row.transaction_no,
+    transaction_date: row.transaction_date,
+    direction: row.direction,
+    amount: row.amount,
+  }
+  return row.payload?.[key] ?? flatFields[key] ?? '-'
+}
+
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
   try {
     job.value = (
-      await loadImportPreview(
+      await loadImportJobPreview(
         apiBase(),
         session.token.value,
         session.user.value.tenant_id,
@@ -38,7 +83,7 @@ async function confirm() {
   loading.value = true
   try {
     job.value = (
-      await confirmImportPreview(
+      await confirmImportJob(
         apiBase(),
         session.token.value,
         session.user.value.tenant_id,
@@ -56,7 +101,7 @@ async function retry() {
   if (!session.user.value || !session.token.value || !job.value) return
   try {
     job.value = (
-      await retryImportErrors(
+      await retryImportJobErrors(
         apiBase(),
         session.token.value,
         session.user.value.tenant_id,
@@ -68,6 +113,25 @@ async function retry() {
     message.value = '失败行重试完成。'
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '失败行 JSON 不正确'
+  }
+}
+async function downloadErrors() {
+  if (!session.user.value || !session.token.value || !job.value) return
+  try {
+    const blob = await downloadImportJobErrors(
+      apiBase(),
+      session.token.value,
+      session.user.value.tenant_id,
+      job.value.job_id,
+    )
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `import-job-${job.value.job_id}-errors.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    message.value = '错误明细 CSV 已导出。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '错误明细导出失败'
   }
 }
 onMounted(load)
@@ -112,10 +176,7 @@ onMounted(load)
             <thead>
               <tr>
                 <th>行号</th>
-                <th>流水号</th>
-                <th>日期</th>
-                <th>方向</th>
-                <th>金额</th>
+                <th v-for="column in businessColumns" :key="column.key">{{ column.label }}</th>
                 <th>状态</th>
                 <th>错误</th>
               </tr>
@@ -123,10 +184,9 @@ onMounted(load)
             <tbody>
               <tr v-for="row in job.preview_rows" :key="row.id">
                 <td>{{ row.row_no }}</td>
-                <td>{{ row.transaction_no || '-' }}</td>
-                <td>{{ row.transaction_date || '-' }}</td>
-                <td>{{ row.direction || '-' }}</td>
-                <td>{{ row.amount || '-' }}</td>
+                <td v-for="column in businessColumns" :key="column.key">
+                  {{ fieldValue(row, column.key) }}
+                </td>
                 <td>
                   <span class="pill">{{ row.status }}</span>
                 </td>
@@ -136,7 +196,7 @@ onMounted(load)
           </table>
         </div>
       </section>
-      <section v-if="job.failed_rows" class="detail-section">
+      <section v-if="actionable && job.failed_rows" class="detail-section">
         <h3>失败行重试</h3>
         <textarea v-model="retryJson" rows="6" placeholder="请输入 JSON 数组" /><button
           class="ghost-button"
@@ -148,13 +208,15 @@ onMounted(load)
       </section>
       <div class="action-group">
         <button
-          v-if="['preview_pending', 'preview_failed'].includes(job.status)"
+          v-if="actionable"
           class="primary-button"
           :disabled="loading || job.success_rows === 0"
           type="button"
           @click="confirm"
         >
           确认入账</button
+        ><button v-if="job.failed_rows" class="ghost-button" type="button" @click="downloadErrors">
+          下载错误 CSV</button
         ><span v-if="loading" class="meta">处理中...</span>
       </div>
     </article>
