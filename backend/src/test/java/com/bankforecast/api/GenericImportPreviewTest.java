@@ -338,6 +338,103 @@ class GenericImportPreviewTest {
         .andExpect(jsonPath("$.code").value(40301));
   }
 
+  @Test
+  void receiptPreviewConfirmWithSkippedRow() throws Exception {
+    String token = loginToken("finance01");
+    String receiptNo = "RC-PRE-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "receipt_no,transaction_date,amount,payer_name,payee_name,summary\n"
+        + receiptNo + ",2026-09-20,1000.00,客户甲,演示企业,货款\n"
+        + receiptNo + ",2026-09-20,1000.00,客户甲,演示企业,货款\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/receipts/preview")
+            .file(new MockMultipartFile("file", "receipts-preview.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.job_type").value("receipt"))
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.success_rows").value(2))
+        .andExpect(jsonPath("$.data.preview_rows[0].payload.receipt_no").value(receiptNo))
+        .andReturn();
+    Assertions.assertEquals(0, countReceipts(receiptNo));
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.success_rows").value(1))
+        .andExpect(jsonPath("$.data.skipped_rows").value(1));
+    Assertions.assertEquals(1, countReceipts(receiptNo));
+  }
+
+  @Test
+  void receiptPreviewRetryThenConfirm() throws Exception {
+    String token = loginToken("finance01");
+    String receiptNo = "RC-RETRY-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "receipt_no,transaction_date,amount\n"
+        + receiptNo + "-A,2026-09-20,100.00\n"
+        + receiptNo + "-B,2026-09-21,abc\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/receipts/preview")
+            .file(new MockMultipartFile("file", "receipts-retry.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andExpect(jsonPath("$.data.failed_rows").value(1))
+        .andExpect(jsonPath("$.data.preview_rows[1].status").value("failed"))
+        .andReturn();
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    String retry = "{\"rows\":[{\"row_no\":3,\"amount\":\"200.00\"}]}";
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/retry-errors")
+            .contentType(MediaType.APPLICATION_JSON).content(retry)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.failed_rows").value(0))
+        .andExpect(jsonPath("$.data.preview_rows[1].status").value("retry_success"));
+
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.success_rows").value(2));
+    Assertions.assertEquals(1, countReceipts(receiptNo + "-B"));
+  }
+
+  @Test
+  void receiptConfirmFailsWhenTransactionNoNotMatched() throws Exception {
+    String token = loginToken("finance01");
+    String receiptNo = "RC-LINK-" + UUID.randomUUID().toString().replace("-", "");
+    String csv = "receipt_no,transaction_date,amount,transaction_no\n"
+        + receiptNo + ",2026-09-20,100.00,TX-NOT-EXIST-000\n";
+
+    MvcResult result = mockMvc.perform(multipart("/api/v1/imports/receipts/preview")
+            .file(new MockMultipartFile("file", "receipts-link.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("preview_pending"))
+        .andReturn();
+    String jobId = extractJobId(result.getResponse().getContentAsString());
+
+    mockMvc.perform(post("/api/v1/imports/" + jobId + "/confirm")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("failed"))
+        .andExpect(jsonPath("$.data.success_rows").value(0));
+    Assertions.assertEquals(0, countReceipts(receiptNo));
+  }
+
+  @Test
+  void ceoCannotPreviewReceiptImport() throws Exception {
+    String ceoToken = loginToken("ceo01");
+    String csv = "receipt_no,transaction_date,amount\nRC-AUTH-1,2026-09-20,100.00\n";
+    mockMvc.perform(multipart("/api/v1/imports/receipts/preview")
+            .file(new MockMultipartFile("file", "receipts-auth.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)))
+            .header("Authorization", "Bearer " + ceoToken).header("X-Tenant-Id", tenantId()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(40301));
+  }
+
   private int countPlans(String contractNo) {
     return jdbcTemplate.queryForObject(
         "select count(*) from contract_receivable_plan p join contract c on c.id = p.contract_id where c.contract_no = ?",
@@ -352,6 +449,11 @@ class GenericImportPreviewTest {
   private int countProjects(String projectNo) {
     return jdbcTemplate.queryForObject(
         "select count(*) from project where project_no = ?", Integer.class, projectNo);
+  }
+
+  private int countReceipts(String receiptNo) {
+    return jdbcTemplate.queryForObject(
+        "select count(*) from receipt where receipt_no = ?", Integer.class, receiptNo);
   }
 
   private String extractJobId(String body) {

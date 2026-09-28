@@ -177,12 +177,15 @@ test('导入预览后确认入账', async ({ page }) => {
   await page.getByRole('link', { name: '银行流水' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
-  await page.locator('input[type="file"]').setInputFiles({
+  const statementPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '导入流水', exact: true }),
+  })
+  await statementPanel.locator('input[type="file"]').setInputFiles({
     name: 'statement.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from('交易日期,金额\n2026-09-01,100.00\n'),
   })
-  await page.getByRole('button', { name: '预览导入' }).click()
+  await statementPanel.getByRole('button', { name: '预览导入' }).click()
   await expect(page.getByText('预览完成，请核对后确认入账。')).toBeVisible()
   expect(previewRequested).toBe(true)
   await expect(page.getByText('任务 #101')).toBeVisible()

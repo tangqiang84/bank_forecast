@@ -32,6 +32,8 @@ const ALL_PERMISSIONS = [
   'forecast:view',
   'forecast:run',
   'forecast:model',
+  'receipt:view',
+  'receipt:import',
   'audit:view',
 ]
 
@@ -398,5 +400,125 @@ test('项目导入预览后确认导入', async ({ page }) => {
 
   await page.getByRole('button', { name: '确认导入' }).click()
   await expect(page.getByText('导入已确认，项目清单已更新。')).toBeVisible()
+  expect(confirmRequested).toBe(true)
+})
+
+const receiptPreviewPayload = {
+  job_id: 304,
+  job_type: 'receipt',
+  status: 'preview_pending',
+  total_rows: 2,
+  success_rows: 1,
+  failed_rows: 1,
+  skipped_rows: 0,
+  preview_rows: [
+    {
+      id: 1,
+      row_no: 1,
+      status: 'valid',
+      error_message: null,
+      payload: {
+        receipt_no: 'RC-2026-001',
+        transaction_date: '2026-09-20',
+        amount: '1000.00',
+        payer_name: '示例客户',
+        payee_name: '演示企业',
+        transaction_no: 'TXN-1',
+        currency: 'CNY',
+        summary: '货款',
+      },
+    },
+    {
+      id: 2,
+      row_no: 2,
+      status: 'failed',
+      error_message: '金额格式不正确',
+      payload: {
+        receipt_no: 'RC-2026-002',
+        transaction_date: '2026-09-21',
+        amount: 'abc',
+        payer_name: null,
+        payee_name: null,
+        transaction_no: null,
+      },
+    },
+  ],
+  error_details: [
+    {
+      row_no: 2,
+      field_name: 'amount',
+      raw_json: '{"amount":"abc"}',
+      error_message: '金额格式不正确',
+    },
+  ],
+}
+
+test('回单导入预览后确认导入', async ({ page }) => {
+  let previewRequested = false
+  let confirmRequested = false
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '100.00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/imports/receipts/preview', async (route) => {
+    previewRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(receiptPreviewPayload),
+    })
+  })
+  await page.route('**/api/v1/imports/304/confirm', async (route) => {
+    confirmRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...receiptPreviewPayload, status: 'confirmed', failed_rows: 0 }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行流水' }).click()
+  await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
+
+  const receiptPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '导入回单', exact: true }),
+  })
+  await receiptPanel.locator('input[type="file"]').setInputFiles({
+    name: 'receipts.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('回单号,交易日期,金额\nRC-2026-001,2026-09-20,1000.00\n'),
+  })
+  await receiptPanel.getByRole('button', { name: '预览导入' }).click()
+  await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  expect(previewRequested).toBe(true)
+  await expect(page.getByText('任务 #304', { exact: true })).toBeVisible()
+
+  await receiptPanel.getByRole('button', { name: '确认导入' }).click()
+  await expect(page.getByText('回单导入已确认。')).toBeVisible()
   expect(confirmRequested).toBe(true)
 })

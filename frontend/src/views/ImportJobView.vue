@@ -52,6 +52,14 @@ const BUSINESS_COLUMNS: Record<string, PreviewColumn[]> = {
     { key: 'delivery_date', label: '交付日期' },
     { key: 'acceptance_date', label: '验收日期' },
   ],
+  receipt: [
+    { key: 'receipt_no', label: '回单号' },
+    { key: 'transaction_date', label: '交易日期' },
+    { key: 'payer_name', label: '付款方' },
+    { key: 'payee_name', label: '收款方' },
+    { key: 'amount', label: '金额' },
+    { key: 'transaction_no', label: '关联流水号' },
+  ],
 }
 const businessColumns = computed<PreviewColumn[]>(
   () => BUSINESS_COLUMNS[job.value?.job_type ?? ''] ?? [],

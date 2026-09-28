@@ -8,6 +8,7 @@ import com.bankforecast.contract.ContractImportService;
 import com.bankforecast.importjob.ImportJobService;
 import com.bankforecast.finance.FinanceRecordImportService;
 import com.bankforecast.project.ProjectImportService;
+import com.bankforecast.receipt.ReceiptImportService;
 import java.util.Map;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -30,13 +31,16 @@ public class ImportController {
   private final ContractImportService contractImportService;
   private final FinanceRecordImportService financeRecordImportService;
   private final ProjectImportService projectImportService;
+  private final ReceiptImportService receiptImportService;
 
   public ImportController(ImportJobService importJobService, ContractImportService contractImportService,
-      FinanceRecordImportService financeRecordImportService, ProjectImportService projectImportService) {
+      FinanceRecordImportService financeRecordImportService, ProjectImportService projectImportService,
+      ReceiptImportService receiptImportService) {
     this.importJobService = importJobService;
     this.contractImportService = contractImportService;
     this.financeRecordImportService = financeRecordImportService;
     this.projectImportService = projectImportService;
+    this.receiptImportService = receiptImportService;
   }
 
   @RequirePermission("contract:import")
@@ -80,10 +84,13 @@ public class ImportController {
     if ("project".equals(jobType)) {
       return ApiResponse.ok(projectImportService.getPreview(jobId));
     }
+    if ("receipt".equals(jobType)) {
+      return ApiResponse.ok(receiptImportService.getPreview(jobId));
+    }
     return ApiResponse.ok(importJobService.getPreview(jobId));
   }
 
-  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import"})
+  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import", "receipt:import"})
   @PostMapping("/{jobId}/confirm")
   public ApiResponse<Map<String, Object>> confirm(@PathVariable Long jobId) {
     String jobType = importJobService.getJobType(jobId);
@@ -96,13 +103,16 @@ public class ImportController {
     if ("project".equals(jobType)) {
       return ApiResponse.ok(projectImportService.confirmPreview(jobId));
     }
+    if ("receipt".equals(jobType)) {
+      return ApiResponse.ok(receiptImportService.confirmPreview(jobId));
+    }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.confirmPreview(jobId));
     }
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "该导入任务类型不支持确认");
   }
 
-  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import"})
+  @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import", "receipt:import"})
   @PostMapping("/{jobId}/retry-errors")
   public ApiResponse<Map<String, Object>> retryErrors(@PathVariable Long jobId, @RequestBody Map<String, Object> request) {
     String jobType = importJobService.getJobType(jobId);
@@ -115,10 +125,25 @@ public class ImportController {
     if ("project".equals(jobType)) {
       return ApiResponse.ok(projectImportService.retryPreviewErrors(jobId, request));
     }
+    if ("receipt".equals(jobType)) {
+      return ApiResponse.ok(receiptImportService.retryPreviewErrors(jobId, request));
+    }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.retryPreviewErrors(jobId, request));
     }
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "该导入任务类型不支持失败行重试");
+  }
+
+  @RequirePermission("receipt:import")
+  @PostMapping("/receipts")
+  public ApiResponse<Map<String, Object>> importReceipts(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(receiptImportService.importReceipts(file));
+  }
+
+  @RequirePermission("receipt:import")
+  @PostMapping("/receipts/preview")
+  public ApiResponse<Map<String, Object>> previewReceipts(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(receiptImportService.previewReceipts(file));
   }
 
   @RequirePermission("project:import")

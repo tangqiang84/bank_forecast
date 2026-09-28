@@ -12,6 +12,13 @@ import {
   type ImportPreview,
   type ImportPreviewRow,
 } from '../services/bank'
+import { previewReceipts, type ReceiptImportPayload } from '../services/receipts'
+import {
+  confirmImportJob,
+  retryImportJobErrors,
+  type GenericImportPreview,
+  type GenericImportRow,
+} from '../services/imports'
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
@@ -40,6 +47,11 @@ function nextPage() {
 const total = ref(0)
 const pageSize = ref(20)
 const selectedAccount = computed(() => accounts.value.find((item) => item.id === accountId.value))
+const receiptFile = ref<File | null>(null)
+const receiptPreview = ref<GenericImportPreview<ReceiptImportPayload> | null>(null)
+const receiptRetryJson = ref('')
+const receiptLoading = ref(false)
+const receiptMessage = ref('')
 async function load() {
   if (!session.user.value || !session.token.value) return
   const [a, t] = await Promise.all([
@@ -142,6 +154,94 @@ function changePageSize() {
   page.value = 1
   load()
 }
+function chooseReceiptFile(event: Event) {
+  receiptFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  receiptMessage.value = ''
+  receiptPreview.value = null
+  receiptRetryJson.value = ''
+}
+const receiptPreviewActionable = computed(
+  () =>
+    receiptPreview.value !== null &&
+    ['preview_pending', 'preview_failed'].includes(receiptPreview.value.status),
+)
+async function startReceiptPreview() {
+  if (!session.user.value || !session.token.value || !receiptFile.value) {
+    receiptMessage.value = '请选择回单 CSV 文件'
+    return
+  }
+  receiptLoading.value = true
+  try {
+    receiptPreview.value = (
+      await previewReceipts(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        receiptFile.value,
+      )
+    ).data
+    receiptMessage.value =
+      receiptPreview.value.status === 'preview_failed'
+        ? '预览校验失败，请修正失败行后重新校验。'
+        : '预览完成，请核对后确认导入。'
+  } catch (cause) {
+    receiptMessage.value = cause instanceof Error ? cause.message : '回单预览失败'
+  } finally {
+    receiptLoading.value = false
+  }
+}
+async function confirmReceiptPreview() {
+  if (!session.user.value || !session.token.value || !receiptPreview.value) return
+  receiptLoading.value = true
+  try {
+    receiptPreview.value = (
+      await confirmImportJob<ReceiptImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        receiptPreview.value.job_id,
+      )
+    ).data
+    receiptMessage.value = '回单导入已确认。'
+  } catch (cause) {
+    receiptMessage.value = cause instanceof Error ? cause.message : '确认导入失败'
+  } finally {
+    receiptLoading.value = false
+  }
+}
+async function retryReceiptErrors() {
+  if (!session.user.value || !session.token.value || !receiptPreview.value) return
+  try {
+    receiptPreview.value = (
+      await retryImportJobErrors<ReceiptImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        receiptPreview.value.job_id,
+        JSON.parse(receiptRetryJson.value),
+      )
+    ).data
+    receiptRetryJson.value = ''
+    receiptMessage.value = '失败行已重新校验。'
+  } catch (cause) {
+    receiptMessage.value = cause instanceof Error ? cause.message : '失败行格式不正确'
+  }
+}
+function receiptRetryPlaceholder(rows: Array<GenericImportRow<ReceiptImportPayload>>) {
+  return JSON.stringify(
+    rows
+      .filter((row) => row.status === 'failed')
+      .map((row) => ({
+        row_no: row.row_no,
+        receipt_no: row.payload?.receipt_no ?? '',
+        transaction_date: row.payload?.transaction_date ?? '',
+        amount: row.payload?.amount ?? '',
+        transaction_no: row.payload?.transaction_no ?? '',
+      })),
+    null,
+    2,
+  )
+}
 onMounted(() => {
   load()
   window.addEventListener('workspace-refresh', load)
@@ -220,6 +320,60 @@ onMounted(() => {
         >
           确认入账
         </button>
+      </article>
+      <article class="panel import-panel">
+        <h3>导入回单</h3>
+        <label
+          >回单 CSV 文件<input accept=".csv,text/csv" type="file" @change="chooseReceiptFile"
+        /></label>
+        <p v-if="receiptFile" class="meta">已选择：{{ receiptFile.name }}</p>
+        <button
+          v-permission="'receipt:import'"
+          class="primary-button"
+          :disabled="receiptLoading"
+          type="button"
+          @click="startReceiptPreview"
+        >
+          {{ receiptLoading ? '处理中...' : '预览导入' }}
+        </button>
+        <p v-if="receiptMessage" class="feedback-text">{{ receiptMessage }}</p>
+        <div v-if="receiptPreview" class="import-summary">
+          <strong>任务 #{{ receiptPreview.job_id }}</strong
+          ><span>有效 {{ receiptPreview.success_rows }}</span
+          ><span>失败 {{ receiptPreview.failed_rows }}</span
+          ><span>跳过 {{ receiptPreview.skipped_rows }}</span
+          ><RouterLink class="text-button" :to="`/imports/${receiptPreview.job_id}`"
+            >打开任务详情</RouterLink
+          >
+        </div>
+        <template v-if="receiptPreview && receiptPreviewActionable && receiptPreview.failed_rows"
+          ><label
+            >失败行修正 JSON<textarea
+              v-model="receiptRetryJson"
+              rows="5"
+              :placeholder="receiptRetryPlaceholder(receiptPreview.preview_rows)"
+            /></label
+          ><button
+            v-permission="'receipt:import'"
+            class="ghost-button"
+            type="button"
+            @click="retryReceiptErrors"
+          >
+            重新校验失败行
+          </button></template
+        ><button
+          v-if="receiptPreview && receiptPreviewActionable"
+          v-permission="'receipt:import'"
+          class="primary-button"
+          :disabled="receiptLoading || receiptPreview.success_rows === 0"
+          type="button"
+          @click="confirmReceiptPreview"
+        >
+          确认导入
+        </button>
+        <p class="meta import-hint">
+          回单号、交易日期、金额必填；填写交易流水号时必须匹配已导入流水，重复回单号自动跳过；影像文件在流水详情页逐条上传。
+        </p>
       </article>
       <article class="panel table-panel">
         <div class="section-heading">

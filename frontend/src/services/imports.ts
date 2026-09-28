@@ -3,7 +3,7 @@ import { fetchBlob, fetchJson } from './http'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 
-export type ImportJobType = 'bank_statement' | 'contract' | 'finance_record' | 'project'
+export type ImportJobType = 'bank_statement' | 'contract' | 'finance_record' | 'project' | 'receipt'
 
 export type GenericImportRow<P> = {
   id: number

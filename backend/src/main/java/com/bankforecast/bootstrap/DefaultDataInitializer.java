@@ -32,6 +32,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
       "reconciliation:view", "reconciliation:run",
       "report:view", "report:generate", "report:download",
       "forecast:view", "forecast:run", "forecast:model",
+      "receipt:view", "receipt:import",
       "audit:view");
 
   private static final List<String> CEO_PERMISSIONS = Arrays.asList(
@@ -45,6 +46,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
       "contract:view", "matching:view", "matching:confirm",
       "exception:view", "exception:handle", "attachment:view", "attachment:manage",
       "reconciliation:view", "reconciliation:run",
+      "receipt:view", "receipt:import",
       "report:view", "report:generate", "report:download", "forecast:view");
 
   private static final List<String> BUSINESS_PERMISSIONS = Arrays.asList(
