@@ -35,7 +35,33 @@ export type ExceptionCase = {
   severity: string
   due_date: string | null
   owner_user_id: number | null
+  owner_name?: string | null
+  stage?: string
   closed_at?: string | null
+}
+
+export type ExceptionOwnerStat = {
+  owner_user_id: number
+  owner_name: string | null
+  total: number
+  active: number
+  resolved_closed: number
+  overdue: number
+}
+
+export type ExceptionStats = {
+  active_count: number
+  unassigned_count: number
+  my_todo_count: number
+  pending_close_count: number
+  overdue_count: number
+  closed_count: number
+  false_positive_count: number
+  total_count: number
+  closure_rate: number
+  avg_resolution_hours: number
+  by_type: Array<{ exception_type: string; count: number }>
+  by_owner: ExceptionOwnerStat[]
 }
 export type ExceptionAttachment = {
   id: number
@@ -157,11 +183,27 @@ export function loadExceptions(
   tenantId: number,
   page = 1,
   pageSize = 20,
+  filters: Record<string, string> = {},
 ) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    active_only: 'true',
+  })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  if (filters.queue) params.delete('active_only')
   return fetchJson<ApiResponse<Paged<ExceptionCase>>>(
-    `${baseUrl}/api/v1/matching/exceptions?page=${page}&page_size=${pageSize}&active_only=true`,
+    `${baseUrl}/api/v1/matching/exceptions?${params.toString()}`,
     { headers: authHeaders(token, tenantId) },
   )
+}
+
+export function loadExceptionStats(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<ExceptionStats>>(`${baseUrl}/api/v1/matching/exceptions/stats`, {
+    headers: authHeaders(token, tenantId),
+  })
 }
 
 export function loadMatchResults(

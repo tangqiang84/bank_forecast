@@ -767,3 +767,81 @@ test('规则中心修改规则并回滚版本', async ({ page }) => {
   await expect(page.getByText(/已回滚到版本 v2/)).toBeVisible()
   expect(rollbackBody).toMatchObject({ version_no: 2 })
 })
+
+test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
+  let lastListUrl = ''
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/matching/exceptions/stats', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        active_count: 2,
+        unassigned_count: 1,
+        my_todo_count: 1,
+        pending_close_count: 1,
+        overdue_count: 2,
+        closed_count: 3,
+        false_positive_count: 0,
+        total_count: 6,
+        closure_rate: 0.5,
+        avg_resolution_hours: 12.5,
+        by_type: [{ exception_type: 'unknown_receipt', count: 2 }],
+        by_owner: [
+          {
+            owner_user_id: 1,
+            owner_name: '财务负责人',
+            total: 3,
+            active: 1,
+            resolved_closed: 2,
+            overdue: 1,
+          },
+        ],
+      }),
+    }),
+  )
+  await page.route('**/api/v1/matching/exceptions?**', async (route) => {
+    lastListUrl = route.request().url()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 701,
+            exception_no: 'EX-701',
+            exception_type: 'unknown_receipt',
+            title: '未知收款：示例客户',
+            description: '到账流水未匹配到合同应收计划',
+            status: 'in_progress',
+            stage: '处理中',
+            severity: 'medium',
+            due_date: '2026-09-20',
+            owner_user_id: 1,
+            owner_name: '财务负责人',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '异常事项' }).click()
+  await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
+  await expect(page.locator('.summary-grid').getByText('我的待办')).toBeVisible()
+  await expect(page.getByText('12.5h')).toBeVisible()
+  await expect(page.getByText('待处理 1 · 已处理 2 · 超期 1')).toBeVisible()
+  await expect(page.getByText('处理中')).toBeVisible()
+  await expect(page.getByText('财务负责人').first()).toBeVisible()
+
+  await page.getByLabel('队列').selectOption('mine')
+  await expect.poll(() => lastListUrl).toContain('queue=mine')
+  expect(lastListUrl).not.toContain('active_only')
+
+  await page.getByLabel('责任人').selectOption('1')
+  await expect.poll(() => lastListUrl).toContain('owner_user_id=1')
+})

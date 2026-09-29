@@ -223,7 +223,7 @@ public class MatchingService {
   }
 
   public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
-      LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly) {
+      LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly, Long ownerUserId, String queue) {
     AuthPrincipal principal = requireAuth();
     int safePage = Math.max(page, 1);
     int safeSize = Math.min(Math.max(pageSize, 1), 100);
@@ -231,14 +231,21 @@ public class MatchingService {
     String filter = " where e.tenant_id = ? and e.deleted_at is null "
         + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
         + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) "
-        + "and (? is null or e.status = ?)"
+        + "and (? is null or e.status = ?) "
+        + "and (? is null or e.owner_user_id = ?)"
+        + queueFilter(queue, principal.getUserId())
         + (activeOnly ? " and e.status in ('new', 'in_progress')" : "");
     Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
-        dateFrom, dateFrom, dateTo, dateTo, status, status};
+        dateFrom, dateFrom, dateTo, dateTo, status, status, ownerUserId, ownerUserId};
     String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
-        + "left join contract c on c.id = p.contract_id";
+        + "left join contract c on c.id = p.contract_id "
+        + "left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id";
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
-        "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, e.status, e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at"
+        "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, u.display_name as owner_name, e.status, "
+            + "case when e.status = 'closed' then '已关闭' when e.status = 'false_positive' then '误报' "
+            + "when e.status = 'resolved' then '待关闭' when e.status = 'in_progress' or e.owner_user_id is not null then '处理中' "
+            + "else '待分派' end as stage, "
+            + "e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at"
             + joins + filter + " order by e.id desc limit ? offset ?", append(args, safeSize, offset));
     Integer total = jdbcTemplate.queryForObject("select count(*)" + joins + filter, args, Integer.class);
     Map<String, Object> data = new LinkedHashMap<>();
@@ -247,6 +254,85 @@ public class MatchingService {
     data.put("page_size", safeSize);
     data.put("total", total == null ? 0 : total);
     return data;
+  }
+
+  private String queueFilter(String queue, Long currentUserId) {
+    if (queue == null || queue.trim().isEmpty()) return "";
+    switch (queue.trim()) {
+      case "mine":
+        return " and e.owner_user_id = " + currentUserId + " and e.status in ('new', 'in_progress')";
+      case "unassigned":
+        return " and e.owner_user_id is null and e.status = 'new'";
+      case "pending_close":
+        return " and e.status = 'resolved'";
+      case "closed":
+        return " and e.status in ('closed', 'false_positive')";
+      default:
+        throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的队列类型");
+    }
+  }
+
+  public Map<String, Object> exceptionStats() {
+    AuthPrincipal principal = requireAuth();
+    Long tenantId = principal.getTenantId();
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("active_count", countExceptions(tenantId, "e.status in ('new', 'in_progress')", null));
+    data.put("unassigned_count", countExceptions(tenantId, "e.status = 'new' and e.owner_user_id is null", null));
+    data.put("my_todo_count", countExceptions(tenantId, "e.status in ('new', 'in_progress') and e.owner_user_id = ?", principal.getUserId()));
+    data.put("pending_close_count", countExceptions(tenantId, "e.status = 'resolved'", null));
+    data.put("overdue_count", countExceptions(tenantId, "e.status in ('new', 'in_progress') and e.due_date is not null and e.due_date < current_date", null));
+    data.put("closed_count", countExceptions(tenantId, "e.status = 'closed'", null));
+    data.put("false_positive_count", countExceptions(tenantId, "e.status = 'false_positive'", null));
+    int total = countExceptions(tenantId, null, null);
+    int closed = (Integer) data.get("closed_count") + (Integer) data.get("false_positive_count");
+    data.put("total_count", total);
+    data.put("closure_rate", total == 0 ? BigDecimal.ZERO
+        : BigDecimal.valueOf(closed).divide(BigDecimal.valueOf(total), 4, java.math.RoundingMode.HALF_UP));
+    data.put("avg_resolution_hours", avgResolutionHours(tenantId));
+    data.put("by_type", jdbcTemplate.queryForList(
+        "select exception_type, count(*) as count from exception_case where tenant_id = ? and deleted_at is null and status in ('new', 'in_progress') group by exception_type order by count desc",
+        tenantId));
+    data.put("by_owner", jdbcTemplate.queryForList(
+        "select e.owner_user_id, u.display_name as owner_name, "
+            + "count(*) as total, "
+            + "sum(case when e.status in ('new', 'in_progress') then 1 else 0 end) as active, "
+            + "sum(case when e.status in ('resolved', 'closed') then 1 else 0 end) as resolved_closed, "
+            + "sum(case when e.status in ('new', 'in_progress') and e.due_date is not null and e.due_date < current_date then 1 else 0 end) as overdue "
+            + "from exception_case e left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id "
+            + "where e.tenant_id = ? and e.deleted_at is null and e.owner_user_id is not null "
+            + "group by e.owner_user_id, u.display_name order by active desc",
+        tenantId));
+    return data;
+  }
+
+  private int countExceptions(Long tenantId, String condition, Long ownerUserId) {
+    String sql = "select count(*) from exception_case e where e.tenant_id = ? and e.deleted_at is null"
+        + (condition == null ? "" : " and " + condition);
+    Integer count = ownerUserId == null
+        ? jdbcTemplate.queryForObject(sql, Integer.class, tenantId)
+        : jdbcTemplate.queryForObject(sql, Integer.class, tenantId, ownerUserId);
+    return count == null ? 0 : count;
+  }
+
+  private BigDecimal avgResolutionHours(Long tenantId) {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select created_at, coalesce(closed_at, updated_at) as finished_at from exception_case "
+            + "where tenant_id = ? and deleted_at is null and status in ('resolved', 'closed')",
+        tenantId);
+    if (rows.isEmpty()) return BigDecimal.ZERO;
+    BigDecimal totalHours = BigDecimal.ZERO;
+    for (Map<String, Object> row : rows) {
+      LocalDateTime created = timestamp(row.get("created_at"));
+      LocalDateTime finished = timestamp(row.get("finished_at"));
+      totalHours = totalHours.add(BigDecimal.valueOf(ChronoUnit.MINUTES.between(created, finished))
+          .divide(BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
+    }
+    return totalHours.divide(BigDecimal.valueOf(rows.size()), 2, java.math.RoundingMode.HALF_UP);
+  }
+
+  private LocalDateTime timestamp(Object value) {
+    if (value instanceof Timestamp) return ((Timestamp) value).toLocalDateTime();
+    return LocalDateTime.parse(String.valueOf(value).replace(' ', 'T'));
   }
 
   public Map<String, Object> exceptionDetail(Long exceptionId) {

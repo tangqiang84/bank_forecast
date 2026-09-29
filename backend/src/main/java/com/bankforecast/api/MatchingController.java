@@ -63,8 +63,16 @@ public class MatchingController {
       @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
       @RequestParam(name = "date_to", required = false) LocalDate dateTo,
       @RequestParam(required = false) String status,
-      @RequestParam(name = "active_only", defaultValue = "false") boolean activeOnly) {
-    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly));
+      @RequestParam(name = "active_only", defaultValue = "false") boolean activeOnly,
+      @RequestParam(name = "owner_user_id", required = false) Long ownerUserId,
+      @RequestParam(required = false) String queue) {
+    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly, ownerUserId, queue));
+  }
+
+  @RequirePermission("exception:view")
+  @GetMapping("/exceptions/stats")
+  public ApiResponse<Map<String, Object>> exceptionStats() {
+    return ApiResponse.ok(matchingService.exceptionStats());
   }
 
   @RequirePermission("exception:view")

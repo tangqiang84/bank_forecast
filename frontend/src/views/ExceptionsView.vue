@@ -7,11 +7,13 @@ import {
   closeException,
   commentException,
   loadExceptions,
+  loadExceptionStats,
   markFalsePositive,
   resolveException,
   runMatching,
   uploadExceptionAttachment,
   type ExceptionCase,
+  type ExceptionStats,
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
 
@@ -19,6 +21,9 @@ const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const rows = ref<ExceptionCase[]>([])
+const stats = ref<ExceptionStats | null>(null)
+const queue = ref('')
+const ownerFilter = ref('')
 const selected = ref<number[]>([])
 const page = ref(1)
 
@@ -46,6 +51,7 @@ async function load() {
       session.user.value.tenant_id,
       page.value,
       pageSize.value,
+      { queue: queue.value, owner_user_id: ownerFilter.value },
     )
     rows.value = result.data.items
     total.value = result.data.total
@@ -54,6 +60,20 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+async function loadStats() {
+  if (!session.user.value || !session.token.value) return
+  try {
+    stats.value = (
+      await loadExceptionStats(base, session.token.value, session.user.value.tenant_id)
+    ).data
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '异常统计加载失败'
+  }
+}
+function applyQueue() {
+  page.value = 1
+  load()
 }
 async function matching() {
   if (!session.user.value || !session.token.value) return
@@ -112,6 +132,7 @@ async function action(
       )
     message.value = '异常事项操作已完成。'
     await load()
+    await loadStats()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
   }
@@ -133,6 +154,7 @@ async function batch(actionName: string) {
     message.value = `已批量处理 ${result.data.updated} 条异常。`
     selected.value = []
     await load()
+    await loadStats()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '批量操作失败'
   }
@@ -160,6 +182,7 @@ function changeSize() {
 }
 onMounted(() => {
   load()
+  loadStats()
   window.addEventListener('workspace-refresh', load)
 })
 </script>
@@ -204,11 +227,68 @@ onMounted(() => {
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>
+    <article v-if="stats" class="panel">
+      <div class="summary-grid compact-summary">
+        <div>
+          <span>我的待办</span><strong>{{ stats.my_todo_count }}</strong>
+        </div>
+        <div>
+          <span>待分派</span><strong>{{ stats.unassigned_count }}</strong>
+        </div>
+        <div>
+          <span>待关闭</span><strong>{{ stats.pending_close_count }}</strong>
+        </div>
+        <div>
+          <span>超期未处理</span><strong>{{ stats.overdue_count }}</strong>
+        </div>
+        <div>
+          <span>闭环率</span><strong>{{ (Number(stats.closure_rate) * 100).toFixed(1) }}%</strong>
+        </div>
+        <div>
+          <span>平均处理时长</span><strong>{{ stats.avg_resolution_hours }}h</strong>
+        </div>
+      </div>
+      <div v-if="stats.by_owner.length" class="detail-section">
+        <h3>责任人视图</h3>
+        <div class="mini-list">
+          <div v-for="owner in stats.by_owner" :key="owner.owner_user_id" class="mini-row">
+            <span>{{ owner.owner_name || `用户 ${owner.owner_user_id}` }}</span>
+            <span class="meta"
+              >待处理 {{ owner.active }} · 已处理 {{ owner.resolved_closed }} · 超期
+              {{ owner.overdue }}</span
+            >
+          </div>
+        </div>
+      </div>
+    </article>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>
           <h3>异常清单</h3>
           <span class="meta">共 {{ total }} 条，支持分派、备注、处理、关闭和附件</span>
+        </div>
+        <div class="filter-bar">
+          <label
+            >队列<select v-model="queue" @change="applyQueue">
+              <option value="">进行中</option>
+              <option value="mine">我的待办</option>
+              <option value="unassigned">待分派</option>
+              <option value="pending_close">待关闭</option>
+              <option value="closed">已关闭/误报</option>
+            </select></label
+          >
+          <label
+            >责任人<select v-model="ownerFilter" @change="applyQueue">
+              <option value="">全部</option>
+              <option
+                v-for="owner in stats?.by_owner ?? []"
+                :key="owner.owner_user_id"
+                :value="String(owner.owner_user_id)"
+              >
+                {{ owner.owner_name || `用户 ${owner.owner_user_id}` }}
+              </option>
+            </select></label
+          >
         </div>
       </div>
       <div v-if="rows.length" class="list-stack">
@@ -222,13 +302,14 @@ onMounted(() => {
             </p>
             <p class="meta">{{ item.description }}</p>
             <p class="meta">
-              责任人：{{ item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派' }} · 截止：{{
-                item.due_date || '-'
+              责任人：{{
+                item.owner_name || (item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派')
               }}
+              · 截止：{{ item.due_date || '-' }}
             </p>
           </div>
           <div class="exception-actions">
-            <span class="pill">{{ item.status }}</span>
+            <span class="pill">{{ item.stage || item.status }}</span>
             <div class="action-group">
               <button
                 class="text-button"
