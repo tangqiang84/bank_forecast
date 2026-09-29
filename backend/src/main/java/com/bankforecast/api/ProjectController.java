@@ -32,9 +32,9 @@ public class ProjectController {
 
   @RequirePermission("project:view")
   @GetMapping
-  public ApiResponse<Map<String, Object>> list(@RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "20") int pageSize, @RequestParam(name = "project_no", required = false) String projectNo, @RequestParam(name = "customer_name", required = false) String customerName, @RequestParam(name = "project_status", required = false) String projectStatus) {
+  public ApiResponse<Map<String, Object>> list(@RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "20") int pageSize, @RequestParam(name = "project_no", required = false) String projectNo, @RequestParam(name = "customer_name", required = false) String customerName, @RequestParam(name = "project_status", required = false) String projectStatus, @RequestParam(name = "project_manager", required = false) String projectManager) {
     AuthPrincipal principal = requireAuth();
-    return ApiResponse.ok(projectService.list(principal.getTenantId(), page, pageSize, projectNo, customerName, projectStatus, dataScopeService.projectScopeOrNull(principal)));
+    return ApiResponse.ok(projectService.list(principal.getTenantId(), page, pageSize, projectNo, customerName, projectStatus, projectManager, dataScopeService.projectScopeOrNull(principal)));
   }
 
   @RequirePermission("project:view")

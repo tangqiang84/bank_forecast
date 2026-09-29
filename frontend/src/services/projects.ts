@@ -66,11 +66,15 @@ export function loadProjects(
   tenantId: number,
   page = 1,
   pageSize = 20,
+  filters: Record<string, string> = {},
 ) {
-  return fetchJson<ApiResponse<ProjectPage>>(
-    `${baseUrl}/api/v1/projects?page=${page}&page_size=${pageSize}`,
-    { headers: authHeaders(token, tenantId) },
-  )
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<ProjectPage>>(`${baseUrl}/api/v1/projects?${params.toString()}`, {
+    headers: authHeaders(token, tenantId),
+  })
 }
 export function loadProjectDetail(baseUrl: string, token: string, tenantId: number, id: number) {
   return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/projects/${id}`, {

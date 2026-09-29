@@ -911,3 +911,100 @@ test('生成周报并下载 Excel 与打印预览', async ({ page }) => {
   expect((await download).suggestedFilename()).toBe('weekly-cash-report-20260907-20260913.xlsx')
   await expect(page.getByRole('button', { name: '打印/PDF' })).toBeVisible()
 })
+
+test('项目负责人筛选与详情付款事实/资金时间线', async ({ page }) => {
+  let lastListUrl = ''
+  const project = {
+    id: 501,
+    project_no: 'PJ-501',
+    project_name: '示例项目',
+    customer_name: '示例客户',
+    project_manager: '张三',
+    project_status: 'active',
+    start_date: '2026-09-01',
+    delivery_date: null,
+    acceptance_date: null,
+    remark: null,
+    contract_amount: '1000.00',
+    receivable_amount: '1000.00',
+    paid_amount: '500.00',
+    overdue_amount: '0',
+    contract_count: 1,
+    exception_count: 0,
+    paid_rate: 0.5,
+    risk_score: 90,
+    risk_level: 'healthy',
+    risk_items: [],
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/projects?**', async (route) => {
+    lastListUrl = route.request().url()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [project], page: 1, page_size: 20, total: 1 }),
+    })
+  })
+  await page.route('**/api/v1/projects/risk-rules', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/projects/501', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        project,
+        summary: { paid_out_amount: '200.00', risk_items: [] },
+        contracts: [],
+        receivables: [],
+        transactions: [],
+        payments: [
+          {
+            id: 91,
+            transaction_no: 'TX-PAY-91',
+            transaction_date: '2026-09-15',
+            direction: 'expense',
+            allocated_amount: '200.00',
+            counterparty_name: '供应商甲',
+            summary: '外包付款',
+          },
+        ],
+        timeline: [
+          {
+            date: '2026-12-01',
+            type: 'receivable',
+            title: '应收节点：验收款',
+            amount: '1000.00',
+            status: 'unpaid',
+          },
+          {
+            date: '2026-09-15',
+            type: 'payment',
+            title: '供应商甲 外包付款',
+            amount: '200.00',
+            status: 'matched',
+          },
+          { date: '2026-09-01', type: 'milestone', title: '项目启动', amount: null, status: null },
+        ],
+        exceptions: [],
+      }),
+    }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '项目资金' }).click()
+  await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
+
+  await page.getByLabel('负责人').fill('张三')
+  await page.getByRole('button', { name: '查询' }).click()
+  await expect.poll(() => lastListUrl).toContain('project_manager')
+
+  await page.getByRole('button', { name: '详情' }).click()
+  await expect(page.getByRole('heading', { name: '项目详情' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '付款事实' })).toBeVisible()
+  await expect(page.getByText('供应商甲')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资金时间线' })).toBeVisible()
+  await expect(page.getByText('项目启动')).toBeVisible()
+  await expect(page.getByText('应收节点：验收款')).toBeVisible()
+})

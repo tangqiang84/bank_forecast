@@ -27,11 +27,12 @@ public class ProjectService {
     this.ruleCenterService = ruleCenterService;
   }
 
-  public Map<String, Object> list(Long tenantId, int page, int pageSize, String projectNo, String customerName, String projectStatus, List<Long> scopedProjectIds) {
+  public Map<String, Object> list(Long tenantId, int page, int pageSize, String projectNo, String customerName, String projectStatus, String projectManager, List<Long> scopedProjectIds) {
     int safePage = Math.max(page, 1), safeSize = Math.min(Math.max(pageSize, 1), 100), offset = (safePage - 1) * safeSize;
-    String filter = " where p.tenant_id = ? and p.deleted_at is null and (? is null or p.project_no = ?) and (? is null or p.customer_name like ?) and (? is null or p.project_status = ?)";
+    String filter = " where p.tenant_id = ? and p.deleted_at is null and (? is null or p.project_no = ?) and (? is null or p.customer_name like ?) and (? is null or p.project_status = ?) and (? is null or p.project_manager like ?)";
     String customerLike = blankToNull(customerName) == null ? null : "%" + customerName.trim() + "%";
-    Object[] args = {tenantId, blankToNull(projectNo), blankToNull(projectNo), customerLike, customerLike, blankToNull(projectStatus), blankToNull(projectStatus)};
+    String managerLike = blankToNull(projectManager) == null ? null : "%" + projectManager.trim() + "%";
+    Object[] args = {tenantId, blankToNull(projectNo), blankToNull(projectNo), customerLike, customerLike, blankToNull(projectStatus), blankToNull(projectStatus), managerLike, managerLike};
     if (scopedProjectIds != null) {
       if (scopedProjectIds.isEmpty()) {
         filter += " and 1 = 0";
@@ -81,11 +82,70 @@ public class ProjectService {
     Map<String, Object> project = projects.get(0);
     Map<String, Object> metrics = jdbcTemplate.queryForMap("select coalesce((select sum(c.contract_amount) from contract c where c.project_id = ? and c.tenant_id = ? and c.deleted_at is null), 0) as contract_amount, coalesce((select sum(r.plan_amount) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as receivable_amount, coalesce((select sum(r.paid_amount) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as paid_amount, coalesce((select sum(case when r.status <> 'paid' and r.due_date < current_date then r.plan_amount - r.paid_amount else 0 end) from contract_receivable_plan r where r.project_id = ? and r.tenant_id = ? and r.deleted_at is null), 0) as overdue_amount", id, tenantId, id, tenantId, id, tenantId, id, tenantId);
     Integer exceptions = jdbcTemplate.queryForObject("select count(*) from exception_case e where e.tenant_id = ? and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = ?) and e.status not in ('closed', 'false_positive') and e.deleted_at is null", Integer.class, tenantId, id);
-    Map<String, Object> summary = new LinkedHashMap<>(metrics); summary.put("exception_count", exceptions); summary.put("cashflow_amount", jdbcTemplate.queryForObject("select coalesce(sum(case when bt.direction = 'income' then a.allocated_amount when bt.direction = 'expense' then -a.allocated_amount else 0 end), 0) from match_result_allocation a join match_result mr on mr.id = a.match_result_id join bank_transaction bt on bt.id = a.bank_transaction_id where mr.project_id = ? and mr.tenant_id = ? and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr.deleted_at is null and a.deleted_at is null", BigDecimal.class, id, tenantId)); enrichRisk(summary, tenantId);
-    Map<String, Object> data = new LinkedHashMap<>(); data.put("project", project); data.put("summary", summary); data.put("contracts", jdbcTemplate.queryForList("select id, contract_no, contract_name, customer_name, contract_amount, status from contract where project_id = ? and tenant_id = ? and deleted_at is null order by id desc", id, tenantId)); data.put("receivables", jdbcTemplate.queryForList("select id, contract_id, node_name, node_type, due_date, plan_amount, paid_amount, status from contract_receivable_plan where project_id = ? and tenant_id = ? and deleted_at is null order by due_date, id", id, tenantId)); data.put("transactions", jdbcTemplate.queryForList("select distinct bt.id, bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.counterparty_name, bt.summary, bt.match_status from bank_transaction bt join match_result mr on mr.bank_transaction_id = bt.id where mr.project_id = ? and mr.tenant_id = ? and mr.deleted_at is null order by bt.transaction_date desc, bt.id desc", id, tenantId)); data.put("exceptions", jdbcTemplate.queryForList("select e.id, e.exception_no, e.exception_type, e.title, e.status, e.severity, e.due_date from exception_case e where e.tenant_id = ? and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = ?) and e.deleted_at is null order by e.id desc", tenantId, id)); return data;
+    Map<String, Object> summary = new LinkedHashMap<>(metrics); summary.put("exception_count", exceptions); summary.put("cashflow_amount", jdbcTemplate.queryForObject("select coalesce(sum(case when bt.direction = 'income' then a.allocated_amount when bt.direction = 'expense' then -a.allocated_amount else 0 end), 0) from match_result_allocation a join match_result mr on mr.id = a.match_result_id join bank_transaction bt on bt.id = a.bank_transaction_id where mr.project_id = ? and mr.tenant_id = ? and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr.deleted_at is null and a.deleted_at is null", BigDecimal.class, id, tenantId)); summary.put("paid_in_amount", allocationSum(tenantId, id, "income", "refund")); summary.put("paid_out_amount", allocationSum(tenantId, id, "expense", "reversal")); enrichRisk(summary, tenantId);
+    Map<String, Object> data = new LinkedHashMap<>(); data.put("project", project); data.put("summary", summary); data.put("contracts", jdbcTemplate.queryForList("select id, contract_no, contract_name, customer_name, contract_amount, status from contract where project_id = ? and tenant_id = ? and deleted_at is null order by id desc", id, tenantId)); data.put("receivables", jdbcTemplate.queryForList("select id, contract_id, node_name, node_type, due_date, plan_amount, paid_amount, status from contract_receivable_plan where project_id = ? and tenant_id = ? and deleted_at is null order by due_date, id", id, tenantId)); data.put("transactions", jdbcTemplate.queryForList("select distinct bt.id, bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.counterparty_name, bt.summary, bt.match_status from bank_transaction bt join match_result mr on mr.bank_transaction_id = bt.id where mr.project_id = ? and mr.tenant_id = ? and mr.deleted_at is null order by bt.transaction_date desc, bt.id desc", id, tenantId)); data.put("exceptions", jdbcTemplate.queryForList("select e.id, e.exception_no, e.exception_type, e.title, e.status, e.severity, e.due_date from exception_case e where e.tenant_id = ? and e.source_type = 'contract_receivable_plan' and exists (select 1 from contract_receivable_plan r where r.id = e.source_id and r.project_id = ?) and e.deleted_at is null order by e.id desc", tenantId, id)); data.put("payments", jdbcTemplate.queryForList("select bt.id, bt.transaction_no, bt.transaction_date, bt.direction, a.allocated_amount, bt.counterparty_name, bt.summary from match_result_allocation a join match_result mr on mr.id = a.match_result_id join bank_transaction bt on bt.id = a.bank_transaction_id where mr.project_id = ? and mr.tenant_id = ? and bt.direction in ('expense', 'reversal') and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr.deleted_at is null and a.deleted_at is null order by bt.transaction_date desc, bt.id desc", id, tenantId)); data.put("timeline", buildTimeline(project, data)); return data;
   }
 
-  private void enrichRisk(Map<String, Object> row, Long tenantId) { ensureDefaultRules(tenantId); BigDecimal receivable = decimal(row.get("receivable_amount")), paid = decimal(row.get("paid_amount")), overdue = decimal(row.get("overdue_amount")), cashflow = decimal(row.get("cashflow_amount")); int exceptionCount = number(row.get("exception_count")); BigDecimal paidRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ONE : paid.divide(receivable, 4, RoundingMode.HALF_UP), overdueRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : overdue.divide(receivable, 4, RoundingMode.HALF_UP); int riskScore = 100; List<Map<String, Object>> rules = jdbcTemplate.queryForList("select rule_code, threshold, penalty, max_penalty, enabled from project_risk_rule where tenant_id = ? and enabled = true", tenantId); Map<String, Object> factors = new LinkedHashMap<>(); List<String> risks = new ArrayList<>(); for (Map<String, Object> rule : rules) { String code = String.valueOf(rule.get("rule_code")); BigDecimal value = ruleValue(code, overdue, overdueRate, paidRate, cashflow, exceptionCount), threshold = decimal(rule.get("threshold")); boolean hit = "open_exception_count".equals(code) ? value.compareTo(threshold) >= 0 : value.compareTo(threshold) < 0; if ("overdue_exists".equals(code) || "overdue_ratio_high".equals(code) || "negative_cashflow".equals(code)) hit = value.compareTo(threshold) > 0; BigDecimal deduction = hit ? decimal(rule.get("penalty")) : BigDecimal.ZERO; if ("open_exception_count".equals(code) && hit) deduction = deduction.multiply(BigDecimal.valueOf(exceptionCount)); if (rule.get("max_penalty") != null && deduction.compareTo(decimal(rule.get("max_penalty"))) > 0) deduction = decimal(rule.get("max_penalty")); riskScore -= deduction.intValue(); Map<String, Object> factor = new LinkedHashMap<>(); factor.put("value", value); factor.put("threshold", threshold); factor.put("deduction", deduction); factor.put("triggered", hit); factors.put(code, factor); if (hit) risks.add(ruleTitle(code)); } riskScore = Math.max(0, riskScore); row.put("paid_rate", paidRate); row.put("risk_score", riskScore); row.put("risk_level", riskScore >= 80 ? "healthy" : riskScore >= 60 ? "warning" : "danger"); row.put("cashflow_amount", cashflow); row.put("overdue_rate", overdueRate); row.put("risk_factors", factors); row.put("risk_items", risks); }
+  private BigDecimal allocationSum(Long tenantId, Long projectId, String first, String second) {
+    BigDecimal value = jdbcTemplate.queryForObject("select coalesce(sum(a.allocated_amount), 0) from match_result_allocation a join match_result mr on mr.id = a.match_result_id join bank_transaction bt on bt.id = a.bank_transaction_id where mr.project_id = ? and mr.tenant_id = ? and bt.direction in (?, ?) and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and mr.deleted_at is null and a.deleted_at is null", BigDecimal.class, projectId, tenantId, first, second);
+    return value == null ? BigDecimal.ZERO : value;
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> buildTimeline(Map<String, Object> project, Map<String, Object> data) {
+    List<Map<String, Object>> timeline = new ArrayList<>();
+    addMilestone(timeline, project.get("start_date"), "项目启动");
+    addMilestone(timeline, project.get("delivery_date"), "项目交付");
+    addMilestone(timeline, project.get("acceptance_date"), "项目验收");
+    for (Map<String, Object> plan : (List<Map<String, Object>>) data.get("receivables")) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("date", plan.get("due_date"));
+      item.put("type", "receivable");
+      item.put("title", "应收节点：" + plan.get("node_name"));
+      item.put("amount", plan.get("plan_amount"));
+      item.put("status", plan.get("status"));
+      timeline.add(item);
+    }
+    for (Map<String, Object> transaction : (List<Map<String, Object>>) data.get("transactions")) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("date", transaction.get("transaction_date"));
+      item.put("type", "expense".equals(String.valueOf(transaction.get("direction"))) ? "payment" : "receipt");
+      item.put("title", text(transaction.get("counterparty_name")) + " " + text(transaction.get("summary")));
+      item.put("amount", transaction.get("amount"));
+      item.put("status", transaction.get("match_status"));
+      timeline.add(item);
+    }
+    for (Map<String, Object> exception : (List<Map<String, Object>>) data.get("exceptions")) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("date", exception.get("due_date"));
+      item.put("type", "exception");
+      item.put("title", exception.get("title"));
+      item.put("amount", null);
+      item.put("status", exception.get("status"));
+      timeline.add(item);
+    }
+    timeline.sort((left, right) -> {
+      String leftDate = String.valueOf(left.get("date"));
+      String rightDate = String.valueOf(right.get("date"));
+      return rightDate.compareTo(leftDate);
+    });
+    return timeline;
+  }
+
+  private void addMilestone(List<Map<String, Object>> timeline, Object date, String title) {
+    if (date == null) return;
+    Map<String, Object> item = new LinkedHashMap<>();
+    item.put("date", date);
+    item.put("type", "milestone");
+    item.put("title", title);
+    item.put("amount", null);
+    item.put("status", null);
+    timeline.add(item);
+  }
+
+  private String text(Object value) { return value == null ? "" : String.valueOf(value); }
+
+  private void enrichRisk(Map<String, Object> row, Long tenantId) {ensureDefaultRules(tenantId); BigDecimal receivable = decimal(row.get("receivable_amount")), paid = decimal(row.get("paid_amount")), overdue = decimal(row.get("overdue_amount")), cashflow = decimal(row.get("cashflow_amount")); int exceptionCount = number(row.get("exception_count")); BigDecimal paidRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ONE : paid.divide(receivable, 4, RoundingMode.HALF_UP), overdueRate = receivable.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : overdue.divide(receivable, 4, RoundingMode.HALF_UP); int riskScore = 100; List<Map<String, Object>> rules = jdbcTemplate.queryForList("select rule_code, threshold, penalty, max_penalty, enabled from project_risk_rule where tenant_id = ? and enabled = true", tenantId); Map<String, Object> factors = new LinkedHashMap<>(); List<String> risks = new ArrayList<>(); for (Map<String, Object> rule : rules) { String code = String.valueOf(rule.get("rule_code")); BigDecimal value = ruleValue(code, overdue, overdueRate, paidRate, cashflow, exceptionCount), threshold = decimal(rule.get("threshold")); boolean hit = "open_exception_count".equals(code) ? value.compareTo(threshold) >= 0 : value.compareTo(threshold) < 0; if ("overdue_exists".equals(code) || "overdue_ratio_high".equals(code) || "negative_cashflow".equals(code)) hit = value.compareTo(threshold) > 0; BigDecimal deduction = hit ? decimal(rule.get("penalty")) : BigDecimal.ZERO; if ("open_exception_count".equals(code) && hit) deduction = deduction.multiply(BigDecimal.valueOf(exceptionCount)); if (rule.get("max_penalty") != null && deduction.compareTo(decimal(rule.get("max_penalty"))) > 0) deduction = decimal(rule.get("max_penalty")); riskScore -= deduction.intValue(); Map<String, Object> factor = new LinkedHashMap<>(); factor.put("value", value); factor.put("threshold", threshold); factor.put("deduction", deduction); factor.put("triggered", hit); factors.put(code, factor); if (hit) risks.add(ruleTitle(code)); } riskScore = Math.max(0, riskScore); row.put("paid_rate", paidRate); row.put("risk_score", riskScore); row.put("risk_level", riskScore >= 80 ? "healthy" : riskScore >= 60 ? "warning" : "danger"); row.put("cashflow_amount", cashflow); row.put("overdue_rate", overdueRate); row.put("risk_factors", factors); row.put("risk_items", risks); }
   private BigDecimal ruleValue(String code, BigDecimal overdue, BigDecimal overdueRate, BigDecimal paidRate, BigDecimal cashflow, int exceptions) { if ("overdue_exists".equals(code)) return overdue; if ("overdue_ratio_high".equals(code)) return overdueRate; if ("paid_rate_low".equals(code) || "paid_rate_mid".equals(code)) return paidRate; if ("negative_cashflow".equals(code)) return cashflow; return BigDecimal.valueOf(exceptions); }
   private String ruleTitle(String code) { if ("overdue_exists".equals(code)) return "存在逾期应收"; if ("overdue_ratio_high".equals(code)) return "逾期金额占比较高"; if ("paid_rate_low".equals(code)) return "回款率低于50%"; if ("paid_rate_mid".equals(code)) return "回款率低于80%"; if ("negative_cashflow".equals(code)) return "项目关联流水净现金流为负"; return "存在待处理异常"; }
   private void ensureDefaultRules(Long tenantId) { Integer count = jdbcTemplate.queryForObject("select count(*) from project_risk_rule where tenant_id = ?", Integer.class, tenantId); if (count != null && count > 0) return; Object[][] defaults = {{"overdue_exists", "0", "30", null}, {"overdue_ratio_high", "0.5", "15", null}, {"paid_rate_low", "0.5", "30", null}, {"paid_rate_mid", "0.8", "15", null}, {"open_exception_count", "1", "10", "30"}, {"negative_cashflow", "0", "15", null}}; for (Object[] item : defaults) jdbcTemplate.update("insert into project_risk_rule (tenant_id, rule_code, threshold, penalty, max_penalty) values (?, ?, ?, ?, ?)", tenantId, item[0], new BigDecimal(String.valueOf(item[1])), new BigDecimal(String.valueOf(item[2])), item[3] == null ? null : new BigDecimal(String.valueOf(item[3]))); }

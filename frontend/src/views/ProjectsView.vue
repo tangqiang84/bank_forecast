@@ -27,6 +27,7 @@ const base = apiBase()
 const rows = ref<Project[]>([])
 const rules = ref<ProjectRiskRule[]>([])
 const selected = ref<number[]>([])
+const managerFilter = ref('')
 const file = ref<File | null>(null)
 const preview = ref<GenericImportPreview<ProjectImportPayload> | null>(null)
 const retryJson = ref('')
@@ -57,6 +58,7 @@ async function load() {
         session.user.value.tenant_id,
         page.value,
         pageSize.value,
+        { project_manager: managerFilter.value },
       ),
       loadProjectRiskRules(base, session.token.value, session.user.value.tenant_id),
     ])
@@ -220,6 +222,15 @@ function changeSize() {
   page.value = 1
   load()
 }
+function applyManagerFilter() {
+  page.value = 1
+  load()
+}
+function clearManagerFilter() {
+  managerFilter.value = ''
+  page.value = 1
+  load()
+}
 onMounted(() => {
   load()
   window.addEventListener('workspace-refresh', load)
@@ -364,6 +375,25 @@ onMounted(() => {
         <div>
           <h3>项目清单</h3>
           <span class="meta">批量状态更新和详情追溯</span>
+        </div>
+        <div class="filter-bar">
+          <label
+            >负责人<input
+              v-model.trim="managerFilter"
+              placeholder="项目负责人关键字"
+              @keyup.enter="applyManagerFilter"
+          /></label>
+          <button class="small-primary-button" type="button" @click="applyManagerFilter">
+            查询
+          </button>
+          <button
+            v-if="managerFilter"
+            class="ghost-button"
+            type="button"
+            @click="clearManagerFilter"
+          >
+            清除
+          </button>
         </div>
         <div class="action-group">
           <button

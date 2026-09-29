@@ -138,6 +138,8 @@ function list(value: unknown) {
         'contracts',
         'receivables',
         'transactions',
+        'payments',
+        'timeline',
         'exceptions',
         'allocations',
         'attachments',
@@ -152,11 +154,15 @@ function list(value: unknown) {
                 ? '应收计划'
                 : key === 'transactions'
                   ? '关联流水'
-                  : key === 'exceptions'
-                    ? '关联异常'
-                    : key === 'allocations'
-                      ? '分配明细'
-                      : '附件'
+                  : key === 'payments'
+                    ? '付款事实'
+                    : key === 'timeline'
+                      ? '资金时间线'
+                      : key === 'exceptions'
+                        ? '关联异常'
+                        : key === 'allocations'
+                          ? '分配明细'
+                          : '附件'
           }}
         </h3>
         <div class="mini-list">
@@ -174,6 +180,7 @@ function list(value: unknown) {
                   `记录 ${index + 1}`,
               )
             }}</strong
+            ><span v-if="key === 'timeline'" class="meta">{{ display(item.date) }}</span
             ><span>{{ display(item.status ?? item.amount ?? item.description) }}</span>
           </div>
         </div>
