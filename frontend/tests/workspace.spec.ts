@@ -89,6 +89,13 @@ async function mockWorkspaceApi(page: Page) {
       }),
     }),
   )
+  await page.route('**/api/v1/bank-connections**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+    }),
+  )
   await page.route('**/api/v1/contracts/receivables**', async (route) =>
     route.fulfill({
       status: 200,

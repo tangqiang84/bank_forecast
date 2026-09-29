@@ -343,3 +343,92 @@ export function retryImportErrors(
     body: JSON.stringify({ rows }),
   })
 }
+
+export type BankConnection = {
+  id: number
+  bank_code: string
+  bank_name: string
+  connection_type: string
+  bank_account_id: number | null
+  account_name?: string | null
+  account_no_last4?: string | null
+  status: string
+  last_tested_at: string | null
+  last_test_status: string | null
+  last_test_message: string | null
+  remark: string | null
+  created_at: string
+}
+
+export type BankTemplate = {
+  bank_code: string
+  bank_name: string
+  format: string
+  recognition: string
+  field_mappings: Array<{ header: string; field: string }>
+}
+
+export type ConnectionTestResult = {
+  connection_id: number
+  bank_code: string
+  status: string
+  message: string
+  duration_ms: number
+  parsed_rows?: number
+  error_rows?: number
+  recognized_templates?: Array<{
+    sheet_name: string
+    bank_name?: string
+    status: string
+    message: string
+  }>
+}
+
+export function loadBankConnections(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<BankConnection[]>>(`${baseUrl}/api/v1/bank-connections`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function loadBankTemplates(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<BankTemplate[]>>(`${baseUrl}/api/v1/bank-connections/templates`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function createBankConnection(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: Record<string, unknown>,
+) {
+  return fetchJson<ApiResponse<BankConnection>>(`${baseUrl}/api/v1/bank-connections`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteBankConnection(baseUrl: string, token: string, tenantId: number, id: number) {
+  return fetchJson<ApiResponse<{ deleted: boolean }>>(`${baseUrl}/api/v1/bank-connections/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function testBankConnection(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  file: File,
+) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return fetchMultipart<ApiResponse<ConnectionTestResult>>(
+    `${baseUrl}/api/v1/bank-connections/${id}/test`,
+    formData,
+    token,
+    tenantId,
+  )
+}

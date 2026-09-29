@@ -1106,3 +1106,124 @@ test('系统管理新建用户与角色权限编辑', async ({ page }) => {
     permission_codes: ['dashboard:view', 'report:download'],
   })
 })
+
+test('银行接入配置新建、模板字典与连接测试', async ({ page }) => {
+  let createBody: Record<string, unknown> | null = null
+  let tested = false
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '100.00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-connections/templates', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok([
+        {
+          bank_code: 'BOC',
+          bank_name: '中国银行',
+          format: 'xlsx/csv',
+          recognition: '工作表名称包含银行名称 + 表头归一化映射',
+          field_mappings: [{ header: '交易日期', field: 'transaction_date' }],
+        },
+      ]),
+    }),
+  )
+  await page.route('**/api/v1/bank-connections', async (route) => {
+    if (route.request().method() === 'POST') {
+      createBody = postBody(route)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: ok({ id: 41, bank_code: 'BOC', bank_name: '中国银行', connection_type: 'file' }),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok([
+        {
+          id: 41,
+          bank_code: 'BOC',
+          bank_name: '中国银行',
+          connection_type: 'file',
+          bank_account_id: 1,
+          account_name: '基本户',
+          status: 'active',
+          last_tested_at: null,
+          last_test_status: null,
+          last_test_message: null,
+          remark: null,
+          created_at: '2026-09-29 10:00:00',
+        },
+      ]),
+    })
+  })
+  await page.route('**/api/v1/bank-connections/41/test', async (route) => {
+    tested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        connection_id: 41,
+        bank_code: 'BOC',
+        status: 'success',
+        message: '模板识别成功，解析出 3 条流水',
+        duration_ms: 12,
+        parsed_rows: 3,
+        error_rows: 0,
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行账户' }).click()
+  await expect(page.getByRole('heading', { name: '银行接入配置' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '银行模板字典' })).toBeVisible()
+  await expect(page.getByText('中国银行（BOC）')).toBeVisible()
+
+  const connectionPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '银行接入配置', exact: true }),
+  })
+  await connectionPanel.getByLabel('银行编码').fill('BOC')
+  await connectionPanel.getByLabel('银行名称').fill('中国银行')
+  await connectionPanel.getByRole('button', { name: '新建接入配置' }).click()
+  await expect(page.getByText('接入配置已保存。')).toBeVisible()
+  expect(createBody).toMatchObject({ bank_code: 'BOC', bank_name: '中国银行' })
+
+  await page.getByText('选择样本').first().click()
+  await page
+    .locator('article', { hasText: '银行接入配置' })
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: 'sample.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('交易日期,金额\n2026-09-01,100.00\n'),
+    })
+  await page.getByRole('button', { name: '连接测试' }).click()
+  await expect(page.getByText(/连接测试成功/)).toBeVisible()
+  expect(tested).toBe(true)
+})

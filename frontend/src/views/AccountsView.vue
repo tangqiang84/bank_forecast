@@ -5,12 +5,19 @@ import {
   closeBankAccount,
   confirmImportPreview,
   createBankAccount,
+  createBankConnection,
+  deleteBankConnection,
   loadAccounts,
+  loadBankConnections,
+  loadBankTemplates,
   previewStatements,
   retryImportErrors,
   scanIdleAccounts,
+  testBankConnection,
   type BankAccount,
   type BankAccountInput,
+  type BankConnection,
+  type BankTemplate,
   type ImportPreview,
   type ImportPreviewRow,
   updateBankAccount,
@@ -53,6 +60,13 @@ const accountForm = ref<BankAccountInput>({
   currentBalance: '0',
 })
 const accountMessage = ref('')
+const connections = ref<BankConnection[]>([])
+const templates = ref<BankTemplate[]>([])
+const connectionForm = ref({ bank_code: '', bank_name: '', bank_account_id: '' })
+const connectionMessage = ref('')
+const testResults = ref<Record<number, string>>({})
+const testFiles = ref<Record<number, File | null>>({})
+const selectedTemplate = ref<BankTemplate | null>(null)
 const selectedAccount = computed(() => accounts.value.find((item) => item.id === accountId.value))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
@@ -71,6 +85,12 @@ async function load() {
     accounts.value = result.data.items
     total.value = result.data.total
     if (!accountId.value) accountId.value = accounts.value[0]?.id ?? null
+    const [connectionList, templateList] = await Promise.all([
+      loadBankConnections(base, session.token.value, session.user.value.tenant_id),
+      loadBankTemplates(base, session.token.value, session.user.value.tenant_id),
+    ])
+    connections.value = connectionList.data
+    templates.value = templateList.data
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '账户加载失败'
   } finally {
@@ -157,6 +177,67 @@ function retryPayload(rows: ImportPreviewRow[]) {
     null,
     2,
   )
+}
+async function createConnection() {
+  if (!session.user.value || !session.token.value) return
+  if (!connectionForm.value.bank_code.trim()) {
+    connectionMessage.value = '请填写银行编码'
+    return
+  }
+  try {
+    await createBankConnection(base, session.token.value, session.user.value.tenant_id, {
+      bank_code: connectionForm.value.bank_code.trim(),
+      bank_name: connectionForm.value.bank_name.trim() || undefined,
+      bank_account_id: connectionForm.value.bank_account_id || undefined,
+    })
+    connectionMessage.value = '接入配置已保存。'
+    connectionForm.value = { bank_code: '', bank_name: '', bank_account_id: '' }
+    await load()
+  } catch (cause) {
+    connectionMessage.value = cause instanceof Error ? cause.message : '接入配置保存失败'
+  }
+}
+async function removeConnection(connection: BankConnection) {
+  if (!session.user.value || !session.token.value) return
+  try {
+    await deleteBankConnection(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      connection.id,
+    )
+    connectionMessage.value = `接入配置 ${connection.bank_name} 已删除。`
+    await load()
+  } catch (cause) {
+    connectionMessage.value = cause instanceof Error ? cause.message : '接入配置删除失败'
+  }
+}
+function chooseTestFile(id: number, event: Event) {
+  testFiles.value[id] = (event.target as HTMLInputElement).files?.[0] ?? null
+}
+async function testConnection(connection: BankConnection) {
+  if (!session.user.value || !session.token.value) return
+  const testFile = testFiles.value[connection.id]
+  if (!testFile) {
+    testResults.value[connection.id] = '请先选择样本文件'
+    return
+  }
+  try {
+    const result = (
+      await testBankConnection(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        connection.id,
+        testFile,
+      )
+    ).data
+    testResults.value[connection.id] =
+      `${result.status === 'success' ? '连接测试成功' : '连接测试失败'}：${result.message}（${result.duration_ms}ms）`
+    await load()
+  } catch (cause) {
+    testResults.value[connection.id] = cause instanceof Error ? cause.message : '连接测试请求失败'
+  }
 }
 function edit(account: BankAccount) {
   editingId.value = account.id
@@ -427,6 +508,139 @@ onMounted(() => {
         >
           下一页
         </button>
+      </div>
+    </article>
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>银行接入配置</h3>
+          <span class="meta">文件导入型接入；连接测试用样本文件 dry-run 模板识别，不入库</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <label
+          >银行编码<input v-model.trim="connectionForm.bank_code" placeholder="如 BOC"
+        /></label>
+        <label
+          >银行名称<input v-model.trim="connectionForm.bank_name" placeholder="如 中国银行"
+        /></label>
+        <label
+          >关联账户<select v-model="connectionForm.bank_account_id">
+            <option value="">不关联</option>
+            <option v-for="account in accounts" :key="account.id" :value="String(account.id)">
+              {{ account.bank_name }} · {{ account.account_no_last4 }}
+            </option>
+          </select></label
+        >
+        <button
+          v-permission="'account:manage'"
+          class="small-primary-button"
+          type="button"
+          @click="createConnection"
+        >
+          新建接入配置
+        </button>
+      </div>
+      <p v-if="connectionMessage" class="feedback-text">{{ connectionMessage }}</p>
+      <div v-if="connections.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>银行</th>
+              <th>类型</th>
+              <th>关联账户</th>
+              <th>最近测试</th>
+              <th>样本测试</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="connection in connections" :key="connection.id">
+              <td>
+                {{ connection.bank_code }}<br /><span class="meta">{{ connection.bank_name }}</span>
+              </td>
+              <td>{{ connection.connection_type }}</td>
+              <td>{{ connection.account_name || '-' }}</td>
+              <td>
+                <span v-if="connection.last_test_status" class="pill">{{
+                  connection.last_test_status
+                }}</span
+                ><br /><span class="meta">{{ connection.last_test_message || '尚未测试' }}</span>
+              </td>
+              <td>
+                <label class="text-button"
+                  >选择样本<input
+                    accept=".csv,.xlsx"
+                    type="file"
+                    style="display: none"
+                    @change="chooseTestFile(connection.id, $event)"
+                /></label>
+                <span v-if="testFiles[connection.id]" class="meta">{{
+                  testFiles[connection.id]?.name
+                }}</span>
+                <button
+                  v-permission="'account:manage'"
+                  class="text-button"
+                  type="button"
+                  @click="testConnection(connection)"
+                >
+                  连接测试
+                </button>
+                <p v-if="testResults[connection.id]" class="meta">
+                  {{ testResults[connection.id] }}
+                </p>
+              </td>
+              <td>
+                <button
+                  v-permission="'account:manage'"
+                  class="text-button"
+                  type="button"
+                  @click="removeConnection(connection)"
+                >
+                  删除
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无接入配置，请先新建文件导入型接入。</p>
+    </article>
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>银行模板字典</h3>
+          <span class="meta">六家支持银行的表头映射规则（只读，来自解析器实际规则）</span>
+        </div>
+      </div>
+      <div class="mini-list">
+        <div v-for="template in templates" :key="template.bank_code" class="mini-row">
+          <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>
+          <span class="meta">{{ template.format }} · {{ template.recognition }}</span>
+          <button class="text-button" type="button" @click="selectedTemplate = template">
+            字段映射
+          </button>
+        </div>
+      </div>
+      <div v-if="selectedTemplate" class="detail-section">
+        <h3>{{ selectedTemplate.bank_name }} 字段映射</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>银行表头</th>
+                <th>标准字段</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="mapping in selectedTemplate.field_mappings" :key="mapping.header">
+                <td>{{ mapping.header }}</td>
+                <td>{{ mapping.field }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="ghost-button" type="button" @click="selectedTemplate = null">收起</button>
       </div>
     </article>
   </section>
