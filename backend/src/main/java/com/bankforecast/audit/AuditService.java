@@ -26,7 +26,7 @@ public class AuditService {
         action,
         targetType,
         targetId,
-        TraceIdHolder.next(),
+        TraceIdHolder.current(),
         detail);
   }
 }

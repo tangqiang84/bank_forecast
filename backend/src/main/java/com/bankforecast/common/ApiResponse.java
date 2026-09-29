@@ -17,15 +17,15 @@ public class ApiResponse<T> {
   }
 
   public static <T> ApiResponse<T> ok(T data) {
-    return new ApiResponse<>(0, "ok", data, TraceIdHolder.next());
+    return new ApiResponse<>(0, "ok", data, TraceIdHolder.current());
   }
 
   public static <T> ApiResponse<T> fail(int code, String message) {
-    return new ApiResponse<>(code, message, null, TraceIdHolder.next());
+    return new ApiResponse<>(code, message, null, TraceIdHolder.current());
   }
 
   public static <T> ApiResponse<T> fail(int code, String message, T data) {
-    return new ApiResponse<>(code, message, data, TraceIdHolder.next());
+    return new ApiResponse<>(code, message, data, TraceIdHolder.current());
   }
 
   public int getCode() {

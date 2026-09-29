@@ -169,7 +169,7 @@ public class ForecastJobService {
       request.put("model_version", modelVersion);
       HttpHeaders headers = new HttpHeaders();
       headers.setContentType(MediaType.APPLICATION_JSON);
-      headers.set("X-Trace-Id", TraceIdHolder.next());
+      headers.set("X-Trace-Id", TraceIdHolder.current());
       HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
       ResponseEntity<Map> response = analyticsRestTemplate.postForEntity(
           analyticsBaseUrl + "/forecast/cashflow", entity, Map.class);

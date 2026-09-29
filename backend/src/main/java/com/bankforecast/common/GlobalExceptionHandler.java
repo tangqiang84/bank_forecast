@@ -45,7 +45,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleMediaType(HttpMediaTypeNotSupportedException ex) {
-    String traceId = TraceIdHolder.next();
+    String traceId = TraceIdHolder.current();
     log.warn("请求媒体类型不支持, traceId={}, contentType={}, supported={}", traceId,
         ex.getContentType() == null ? "unknown" : ex.getContentType().toString(), ex.getSupportedMediaTypes());
     Map<String, Object> data = new LinkedHashMap<>();
@@ -78,7 +78,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleException(Exception ex) {
-    String traceId = TraceIdHolder.next();
+    String traceId = TraceIdHolder.current();
     log.error("系统异常, traceId={}", traceId, ex);
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("trace_id", traceId);
