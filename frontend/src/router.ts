@@ -17,6 +17,7 @@ import ProjectsView from './views/ProjectsView.vue'
 import MatchingView from './views/MatchingView.vue'
 import ExceptionsView from './views/ExceptionsView.vue'
 import ReportsView from './views/ReportsView.vue'
+import RulesView from './views/RulesView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -94,6 +95,12 @@ const router = createRouter({
           name: 'reconciliation-job',
           component: ReconciliationView,
           meta: { permission: 'reconciliation:view' },
+        },
+        {
+          path: 'rules',
+          name: 'rules',
+          component: RulesView,
+          meta: { permission: 'project:rule' },
         },
         {
           path: 'reports',

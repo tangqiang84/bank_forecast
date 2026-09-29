@@ -31,14 +31,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class MatchingService {
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
+  private final com.bankforecast.rule.RuleCenterService ruleCenterService;
   private final int customerNameMinLength;
   private final boolean customerNameAllowContains;
 
   public MatchingService(JdbcTemplate jdbcTemplate, AuditService auditService,
+      com.bankforecast.rule.RuleCenterService ruleCenterService,
       @Value("${bank-forecast.import.customer-name-min-length}") int customerNameMinLength,
       @Value("${bank-forecast.import.customer-name-allow-contains}") boolean customerNameAllowContains) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
+    this.ruleCenterService = ruleCenterService;
     this.customerNameMinLength = customerNameMinLength;
     this.customerNameAllowContains = customerNameAllowContains;
   }
@@ -47,6 +50,7 @@ public class MatchingService {
   public Map<String, Object> runReceivableMatching() {
     AuthPrincipal principal = requireAuth();
     Long tenantId = principal.getTenantId();
+    int[] windows = ruleCenterService.matchWindows(tenantId);
     Long jobId = createJob(tenantId);
     int matched = 0;
     int suggested = 0;
@@ -71,7 +75,7 @@ public class MatchingService {
     for (Map<String, Object> transaction : transactions) {
       Long transactionId = number(transaction.get("id"));
       if (processedTransactions.contains(transactionId)) continue;
-      MatchCandidate candidate = findCandidate(transaction, transactions, plans, processedTransactions);
+      MatchCandidate candidate = findCandidate(transaction, transactions, plans, processedTransactions, windows);
       if (candidate == null) {
         unknown++;
         createException(tenantId, "unknown_receipt", "bank_transaction", transactionId,
@@ -411,18 +415,18 @@ public class MatchingService {
   }
 
   private MatchCandidate findCandidate(Map<String, Object> transaction, List<Map<String, Object>> transactions,
-      List<Map<String, Object>> plans, Set<Long> processedTransactions) {
-    MatchCandidate exact = findSingleCandidate(transaction, plans, false);
+      List<Map<String, Object>> plans, Set<Long> processedTransactions, int[] windows) {
+    MatchCandidate exact = findSingleCandidate(transaction, plans, false, windows);
     if (exact != null && !exact.partial) return exact;
-    MatchCandidate split = findSplitCandidate(transaction, plans);
+    MatchCandidate split = findSplitCandidate(transaction, plans, windows);
     if (split != null) return split;
-    MatchCandidate merge = findMergeCandidate(transaction, transactions, plans, processedTransactions);
+    MatchCandidate merge = findMergeCandidate(transaction, transactions, plans, processedTransactions, windows);
     if (merge != null) return merge;
     return exact;
   }
 
   private MatchCandidate findSingleCandidate(Map<String, Object> transaction, List<Map<String, Object>> plans,
-      boolean exactOnly) {
+      boolean exactOnly, int[] windows) {
     String summary = text(transaction.get("summary")).toLowerCase();
     String counterparty = CustomerNameNormalizer.normalize(text(transaction.get("counterparty_name")));
     BigDecimal amount = decimal(transaction.get("amount"));
@@ -431,7 +435,7 @@ public class MatchingService {
     for (Map<String, Object> plan : plans) {
       LocalDate dueDate = sqlDate(plan.get("due_date"));
       long days = Math.abs(ChronoUnit.DAYS.between(date, dueDate));
-      if (days > 30) continue;
+      if (days > windows[0]) continue;
       String contractNo = text(plan.get("contract_no")).toLowerCase();
       String customer = CustomerNameNormalizer.normalize(text(plan.get("customer_name")));
       boolean customerMatch = customerNameMatches(counterparty, customer);
@@ -439,25 +443,26 @@ public class MatchingService {
       BigDecimal planAmount = decimal(plan.get("plan_amount"));
       BigDecimal paidAmount = decimal(plan.get("paid_amount"));
       BigDecimal remainingAmount = planAmount.subtract(paidAmount);
-      if ((contractMatch || customerMatch) && amount.compareTo(remainingAmount) == 0 && days <= 7) {
+      if ((contractMatch || customerMatch) && amount.compareTo(remainingAmount) == 0 && days <= windows[1]) {
         return singleCandidate(transaction, plan, amount, "single", "exact", "high",
             contractMatch ? "摘要包含合同编号且金额、日期一致" : "客户名称归一化、金额和日期窗口一致", false);
       }
-      if (!exactOnly && partial == null && customerMatch && amount.compareTo(remainingAmount) < 0 && days <= 14) {
+      if (!exactOnly && partial == null && customerMatch && amount.compareTo(remainingAmount) < 0 && days <= windows[2]) {
         partial = singleCandidate(transaction, plan, amount, "single", "partial", "medium", "客户名称归一化匹配，到账金额小于应收剩余金额", true);
       }
     }
     return partial;
   }
 
-  private MatchCandidate findSplitCandidate(Map<String, Object> transaction, List<Map<String, Object>> plans) {
+  private MatchCandidate findSplitCandidate(Map<String, Object> transaction, List<Map<String, Object>> plans,
+      int[] windows) {
     String summary = text(transaction.get("summary")).toLowerCase();
     String counterparty = CustomerNameNormalizer.normalize(text(transaction.get("counterparty_name")));
     BigDecimal remaining = decimal(transaction.get("amount"));
     LocalDate date = sqlDate(transaction.get("transaction_date"));
     List<MatchAllocation> allocations = new ArrayList<>();
     for (Map<String, Object> plan : plans) {
-      if (!candidatePlanMatches(transaction, summary, counterparty, date, plan, 14)) continue;
+      if (!candidatePlanMatches(transaction, summary, counterparty, date, plan, windows[2])) continue;
       BigDecimal planRemaining = decimal(plan.get("plan_amount")).subtract(decimal(plan.get("paid_amount")));
       if (planRemaining.compareTo(BigDecimal.ZERO) <= 0 || planRemaining.compareTo(remaining) > 0) continue;
       allocations.add(allocation(number(transaction.get("id")), plan, planRemaining));
@@ -470,8 +475,8 @@ public class MatchingService {
   }
 
   private MatchCandidate findMergeCandidate(Map<String, Object> transaction, List<Map<String, Object>> transactions,
-      List<Map<String, Object>> plans, Set<Long> processedTransactions) {
-    MatchCandidate single = findSingleCandidate(transaction, plans, true);
+      List<Map<String, Object>> plans, Set<Long> processedTransactions, int[] windows) {
+    MatchCandidate single = findSingleCandidate(transaction, plans, true, windows);
     if (single != null) return null;
     for (Map<String, Object> plan : plans) {
       BigDecimal planRemaining = decimal(plan.get("plan_amount")).subtract(decimal(plan.get("paid_amount")));
@@ -481,10 +486,10 @@ public class MatchingService {
       for (Map<String, Object> current : transactions) {
         Long currentId = number(current.get("id"));
         if (processedTransactions.contains(currentId)) continue;
-        if (!sameMergeScope(transaction, current)) continue;
+        if (!sameMergeScope(transaction, current, windows[1])) continue;
         String summary = text(current.get("summary")).toLowerCase();
         String counterparty = CustomerNameNormalizer.normalize(text(current.get("counterparty_name")));
-        if (!candidatePlanMatches(current, summary, counterparty, sqlDate(current.get("transaction_date")), plan, 14)) continue;
+        if (!candidatePlanMatches(current, summary, counterparty, sqlDate(current.get("transaction_date")), plan, windows[2])) continue;
         BigDecimal amount = decimal(current.get("amount"));
         if (sum.add(amount).compareTo(planRemaining) > 0) continue;
         allocations.add(allocation(currentId, plan, amount));
@@ -509,12 +514,12 @@ public class MatchingService {
     return contractMatch || customerMatch;
   }
 
-  private boolean sameMergeScope(Map<String, Object> seed, Map<String, Object> current) {
+  private boolean sameMergeScope(Map<String, Object> seed, Map<String, Object> current, int mergeScopeDays) {
     String seedCounterparty = CustomerNameNormalizer.normalize(text(seed.get("counterparty_name")));
     String currentCounterparty = CustomerNameNormalizer.normalize(text(current.get("counterparty_name")));
     if (!seedCounterparty.equals(currentCounterparty)) return false;
     long days = Math.abs(ChronoUnit.DAYS.between(sqlDate(seed.get("transaction_date")), sqlDate(current.get("transaction_date"))));
-    return days <= 7;
+    return days <= mergeScopeDays;
   }
 
   private boolean customerNameMatches(String counterparty, String customer) {

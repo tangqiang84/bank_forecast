@@ -18,10 +18,13 @@ import org.springframework.stereotype.Service;
 public class ProjectService {
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
+  private final com.bankforecast.rule.RuleCenterService ruleCenterService;
 
-  public ProjectService(JdbcTemplate jdbcTemplate, AuditService auditService) {
+  public ProjectService(JdbcTemplate jdbcTemplate, AuditService auditService,
+      com.bankforecast.rule.RuleCenterService ruleCenterService) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
+    this.ruleCenterService = ruleCenterService;
   }
 
   public Map<String, Object> list(Long tenantId, int page, int pageSize, String projectNo, String customerName, String projectStatus, List<Long> scopedProjectIds) {
@@ -50,10 +53,7 @@ public class ProjectService {
     BigDecimal threshold = decimal(request.get("threshold")), penalty = decimal(request.get("penalty")), maxPenalty = request.get("max_penalty") == null ? null : decimal(request.get("max_penalty"));
     if (threshold.compareTo(BigDecimal.ZERO) < 0 || penalty.compareTo(BigDecimal.ZERO) < 0 || (maxPenalty != null && maxPenalty.compareTo(BigDecimal.ZERO) < 0)) throw new BusinessException(ErrorCode.PARAM_ERROR, "风险规则参数不能为负数");
     boolean enabled = request.get("enabled") == null || Boolean.parseBoolean(String.valueOf(request.get("enabled")));
-    ensureDefaultRules(tenantId);
-    jdbcTemplate.update("update project_risk_rule set threshold = ?, penalty = ?, max_penalty = ?, enabled = ?, updated_by = ?, updated_at = current_timestamp where tenant_id = ? and rule_code = ?", threshold, penalty, maxPenalty, enabled, userId, tenantId, ruleCode);
-    auditService.record("UPDATE_PROJECT_RISK_RULE", "project_risk_rule", ruleCode, request.toString());
-    return jdbcTemplate.queryForMap("select id, rule_code, threshold, penalty, max_penalty, enabled, updated_at from project_risk_rule where tenant_id = ? and rule_code = ?", tenantId, ruleCode);
+    return ruleCenterService.updateRule(tenantId, userId, ruleCode, threshold, penalty, maxPenalty, enabled, "manual", null);
   }
 
   public Map<String, Object> update(Long tenantId, Long userId, Long id, Map<String, Object> request) {

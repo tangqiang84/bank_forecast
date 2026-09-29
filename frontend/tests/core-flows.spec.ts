@@ -662,3 +662,108 @@ test('财务对账展示跨月时间差和财务记录科目', async ({ page }) 
   await expect(page.getByText(/多对多匹配 1 组，跨月时间差 1 条/)).toBeVisible()
   expect(runRequested).toBe(true)
 })
+
+test('规则中心修改规则并回滚版本', async ({ page }) => {
+  let ruleUpdated: Record<string, unknown> | null = null
+  let rollbackBody: Record<string, unknown> | null = null
+  const ruleList = [
+    {
+      id: 1,
+      rule_code: 'overdue_exists',
+      threshold: '0',
+      penalty: '30',
+      max_penalty: null,
+      enabled: true,
+      updated_at: '2026-09-01 10:00:00',
+    },
+  ]
+  const versionList = [
+    {
+      id: 2,
+      rule_code: 'overdue_exists',
+      threshold: '1',
+      penalty: '20',
+      max_penalty: null,
+      enabled: true,
+      version_no: 2,
+      change_source: 'manual',
+      remark: null,
+      updated_by: 1,
+      created_at: '2026-09-28 10:00:00',
+    },
+    {
+      id: 1,
+      rule_code: 'overdue_exists',
+      threshold: '0',
+      penalty: '30',
+      max_penalty: null,
+      enabled: true,
+      version_no: 1,
+      change_source: 'baseline',
+      remark: '规则基线',
+      updated_by: 1,
+      created_at: '2026-09-01 10:00:00',
+    },
+  ]
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/rules/risk-rules', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(ruleList) }),
+  )
+  await page.route('**/api/v1/rules/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: ok({
+          match_scan_window_days: 30,
+          match_exact_window_days: 7,
+          match_suggest_window_days: 14,
+          industry_template: 'it_software',
+        }),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        match_scan_window_days: 30,
+        match_exact_window_days: 7,
+        match_suggest_window_days: 14,
+        industry_template: 'it_software',
+      }),
+    })
+  })
+  await page.route('**/api/v1/rules/risk-rules/overdue_exists', async (route) => {
+    ruleUpdated = postBody(route)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(ruleList[0]) })
+  })
+  await page.route('**/api/v1/rules/risk-rules/overdue_exists/versions', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(versionList) }),
+  )
+  await page.route('**/api/v1/rules/risk-rules/overdue_exists/rollback', async (route) => {
+    rollbackBody = postBody(route)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(ruleList[0]) })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '规则中心' }).click()
+  await expect(page.getByRole('heading', { name: '规则配置与版本管理' })).toBeVisible()
+  await expect(page.getByText('当前行业模板：it_software')).toBeVisible()
+
+  const rulePanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '项目风险规则', exact: true }),
+  })
+  await rulePanel.locator('input[type="number"]').first().fill('1')
+  await rulePanel.getByRole('button', { name: '保存' }).first().click()
+  await expect(page.getByText(/已保存并记录新版本/)).toBeVisible()
+  expect(ruleUpdated).toMatchObject({ threshold: 1 })
+
+  await page.getByRole('button', { name: '版本' }).click()
+  await expect(page.getByRole('heading', { name: '版本历史：overdue_exists' })).toBeVisible()
+  await expect(page.getByText('v1')).toBeVisible()
+  await page.getByRole('button', { name: '回滚到此版本' }).first().click()
+  await expect(page.getByText(/已回滚到版本 v2/)).toBeVisible()
+  expect(rollbackBody).toMatchObject({ version_no: 2 })
+})
