@@ -177,7 +177,9 @@ public class DefaultDataInitializer implements CommandLineRunner {
 
   private static Map<String, List<String>> rolePermissions() {
     Map<String, List<String>> map = new LinkedHashMap<>();
-    map.put("ADMIN", ALL_PERMISSIONS);
+    List<String> adminPermissions = new java.util.ArrayList<>(ALL_PERMISSIONS);
+    adminPermissions.add("system:manage");
+    map.put("ADMIN", adminPermissions);
     map.put("CFO", ALL_PERMISSIONS);
     map.put("CEO", CEO_PERMISSIONS);
     map.put("CASHIER", CASHIER_PERMISSIONS);

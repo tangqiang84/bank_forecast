@@ -18,6 +18,7 @@ import MatchingView from './views/MatchingView.vue'
 import ExceptionsView from './views/ExceptionsView.vue'
 import ReportsView from './views/ReportsView.vue'
 import RulesView from './views/RulesView.vue'
+import SystemView from './views/SystemView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -101,6 +102,12 @@ const router = createRouter({
           name: 'rules',
           component: RulesView,
           meta: { permission: 'project:rule' },
+        },
+        {
+          path: 'system',
+          name: 'system',
+          component: SystemView,
+          meta: { permission: 'system:manage' },
         },
         {
           path: 'reports',

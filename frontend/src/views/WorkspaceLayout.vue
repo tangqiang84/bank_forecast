@@ -16,6 +16,7 @@ const links = [
   { path: '/exceptions', label: '异常事项', permission: 'exception:view' },
   { path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' },
   { path: '/rules', label: '规则中心', permission: 'project:rule' },
+  { path: '/system', label: '系统管理', permission: 'system:manage' },
   { path: '/reports', label: '报表中心', permission: 'report:view' },
   { path: '/forecast', label: '现金预测', permission: 'forecast:view' },
 ]

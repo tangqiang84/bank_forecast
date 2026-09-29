@@ -33,6 +33,7 @@ const ALL_PERMISSIONS = [
   'forecast:model',
   'receipt:view',
   'receipt:import',
+  'system:manage',
   'audit:view',
 ]
 
@@ -1007,4 +1008,101 @@ test('项目负责人筛选与详情付款事实/资金时间线', async ({ page
   await expect(page.getByRole('heading', { name: '资金时间线' })).toBeVisible()
   await expect(page.getByText('项目启动')).toBeVisible()
   await expect(page.getByText('应收节点：验收款')).toBeVisible()
+})
+
+test('系统管理新建用户与角色权限编辑', async ({ page }) => {
+  let createBody: Record<string, unknown> | null = null
+  let permissionBody: Record<string, unknown> | null = null
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/system/users?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            login_name: 'admin01',
+            display_name: '系统管理员',
+            status: 'active',
+            last_login_at: null,
+            created_at: '2026-09-01 10:00:00',
+            roles: ['ADMIN'],
+            scoped_project_count: 0,
+          },
+        ],
+        page: 1,
+        page_size: 50,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/system/users', async (route) => {
+    createBody = postBody(route)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ id: 2, login_name: 'cashier02', display_name: '出纳乙', status: 'active' }),
+    })
+  })
+  await page.route('**/api/v1/system/roles', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok([
+        {
+          id: 5,
+          role_code: 'CASHIER',
+          role_name: '出纳资金专员',
+          status: 'active',
+          created_at: '2026-09-01 10:00:00',
+          permission_codes: ['dashboard:view'],
+        },
+      ]),
+    }),
+  )
+  await page.route('**/api/v1/system/permissions', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok([
+        { permission_code: 'dashboard:view', permission_name: '查看驾驶舱', module: 'dashboard' },
+        { permission_code: 'report:download', permission_name: '下载报表', module: 'report' },
+      ]),
+    }),
+  )
+  await page.route('**/api/v1/system/roles/5/permissions', async (route) => {
+    permissionBody = postBody(route)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ id: 5, role_code: 'CASHIER', role_name: '出纳资金专员', status: 'active' }),
+    })
+  })
+  await page.route('**/api/v1/projects?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '系统管理' }).click()
+  await expect(page.getByRole('heading', { name: '用户、角色与数据范围' })).toBeVisible()
+  await expect(page.getByText('admin01')).toBeVisible()
+
+  await page.getByLabel('登录名').fill('cashier02')
+  await page.getByLabel('姓名').fill('出纳乙')
+  await page.getByLabel('密码').fill('Passw0rd!23')
+  await page.getByLabel('角色').selectOption('CASHIER')
+  await page.getByRole('button', { name: '新建用户' }).click()
+  await expect(page.getByText('用户 cashier02 已创建。')).toBeVisible()
+  expect(createBody).toMatchObject({ login_name: 'cashier02', role_codes: ['CASHIER'] })
+
+  await page.getByRole('button', { name: '编辑权限' }).click()
+  await expect(page.getByRole('heading', { name: '编辑角色权限：出纳资金专员' })).toBeVisible()
+  await page.getByLabel(/下载报表/).check()
+  await page.getByRole('button', { name: '保存权限' }).click()
+  await expect(page.getByText('角色 出纳资金专员 的权限已更新。')).toBeVisible()
+  expect(permissionBody).toMatchObject({
+    permission_codes: ['dashboard:view', 'report:download'],
+  })
 })
