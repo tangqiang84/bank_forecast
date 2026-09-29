@@ -15,12 +15,13 @@ public class CsvFinanceRecordRow {
   private final String sourceSystem;
   private final String contractNo;
   private final String projectNo;
+  private final String subject;
   private final String remark;
   private final String rawJson;
 
   public CsvFinanceRecordRow(int rowNo, String recordNo, String recordType, LocalDate recordDate,
       LocalDate postingDate, String counterpartyName, BigDecimal amount, String summary,
-      String sourceSystem, String contractNo, String projectNo, String remark, String rawJson) {
+      String sourceSystem, String contractNo, String projectNo, String subject, String remark, String rawJson) {
     this.rowNo = rowNo;
     this.recordNo = recordNo;
     this.recordType = recordType;
@@ -32,6 +33,7 @@ public class CsvFinanceRecordRow {
     this.sourceSystem = sourceSystem;
     this.contractNo = contractNo;
     this.projectNo = projectNo;
+    this.subject = subject;
     this.remark = remark;
     this.rawJson = rawJson;
   }
@@ -47,6 +49,7 @@ public class CsvFinanceRecordRow {
   public String getSourceSystem() { return sourceSystem; }
   public String getContractNo() { return contractNo; }
   public String getProjectNo() { return projectNo; }
+  public String getSubject() { return subject; }
   public String getRemark() { return remark; }
   public String getRawJson() { return rawJson; }
 }

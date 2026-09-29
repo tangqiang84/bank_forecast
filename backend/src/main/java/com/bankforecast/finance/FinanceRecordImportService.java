@@ -260,6 +260,7 @@ public class FinanceRecordImportService {
     payload.put("source_system", row.getSourceSystem());
     payload.put("contract_no", row.getContractNo());
     payload.put("project_no", row.getProjectNo());
+    payload.put("subject", row.getSubject());
     payload.put("remark", row.getRemark());
     return payload;
   }
@@ -277,7 +278,8 @@ public class FinanceRecordImportService {
     return new CsvFinanceRecordRow(rowNo, recordNo, recordType, recordDate, postingDate,
         textOrNull(payload.get("counterparty_name")), amount, textOrNull(payload.get("summary")),
         textOrNull(payload.get("source_system")), textOrNull(payload.get("contract_no")),
-        textOrNull(payload.get("project_no")), textOrNull(payload.get("remark")), writePayload(payload));
+        textOrNull(payload.get("project_no")), textOrNull(payload.get("subject")),
+        textOrNull(payload.get("remark")), writePayload(payload));
   }
 
   private void insertPreviewItem(Long tenantId, Long jobId, int rowNo, String status, String payloadJson, String errorMessage) {
@@ -369,10 +371,10 @@ public class FinanceRecordImportService {
 
   private void insertRecord(Long tenantId, CsvFinanceRecordRow row) {
     jdbcTemplate.update(
-        "insert into finance_record (tenant_id, record_no, record_type, record_date, posting_date, counterparty_name, amount, summary, source_system, status, created_by, updated_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+        "insert into finance_record (tenant_id, record_no, record_type, record_date, posting_date, counterparty_name, amount, summary, source_system, subject, status, created_by, updated_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
         tenantId, row.getRecordNo(), row.getRecordType(), Date.valueOf(row.getRecordDate()),
         row.getPostingDate() == null ? null : Date.valueOf(row.getPostingDate()), row.getCounterpartyName(),
-        row.getAmount(), appendRemark(row.getSummary(), row.getRemark()), row.getSourceSystem(),
+        row.getAmount(), appendRemark(row.getSummary(), row.getRemark()), row.getSourceSystem(), row.getSubject(),
         currentUserId(), currentUserId());
   }
 

@@ -7,6 +7,8 @@ export type ReconciliationSummary = {
   job_id: number
   status: string
   matched: number
+  multi_matched?: number
+  timing_difference?: number
   bank_unrecorded: number
   finance_unmatched: number
   date_from: string | null
@@ -15,7 +17,7 @@ export type ReconciliationSummary = {
 export type ReconciliationResult = {
   id: number
   exception_no: string
-  exception_type: 'bank_unrecorded' | 'finance_unmatched'
+  exception_type: 'bank_unrecorded' | 'finance_unmatched' | 'timing_difference'
   source_type: string
   source_id: number
   title: string
@@ -28,6 +30,44 @@ export type ReconciliationResult = {
   record_no: string | null
   record_date: string | null
   finance_amount: string | null
+  finance_subject?: string | null
+}
+export type FinanceRecord = {
+  id: number
+  record_no: string
+  record_type: string
+  record_date: string
+  posting_date: string | null
+  counterparty_name: string | null
+  amount: string
+  summary: string | null
+  source_system: string | null
+  subject: string | null
+  status: string
+}
+export type FinanceRecordPage = {
+  items: FinanceRecord[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export function loadFinanceRecords(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  page = 1,
+  pageSize = 20,
+  filters: Record<string, string> = {},
+) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+  return fetchJson<ApiResponse<FinanceRecordPage>>(
+    `${baseUrl}/api/v1/finance-records?${params.toString()}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 export type ReconciliationPage = {
   items: ReconciliationResult[]
@@ -48,6 +88,7 @@ export type FinanceRecordImportPayload = {
   source_system: string | null
   contract_no: string | null
   project_no: string | null
+  subject: string | null
   remark: string | null
 }
 

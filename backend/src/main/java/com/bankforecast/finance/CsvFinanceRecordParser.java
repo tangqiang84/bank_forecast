@@ -61,7 +61,8 @@ public class CsvFinanceRecordParser {
           rows.add(new CsvFinanceRecordRow(rowNo, required(raw, "record_no", rowNo), type,
               parseDate(raw, "record_date", rowNo), optionalDate(raw, "posting_date", rowNo),
               optional(raw, "counterparty_name"), amount, optional(raw, "summary"), optional(raw, "source_system"),
-              optional(raw, "contract_no"), optional(raw, "project_no"), optional(raw, "remark"), objectMapper.writeValueAsString(raw)));
+              optional(raw, "contract_no"), optional(raw, "project_no"), optional(raw, "subject"),
+              optional(raw, "remark"), objectMapper.writeValueAsString(raw)));
         } catch (BusinessException ex) {
           errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw)));
         } catch (NumberFormatException ex) {
@@ -128,6 +129,7 @@ public class CsvFinanceRecordParser {
     aliases.put("sourcesystem", "source_system"); aliases.put("来源系统", "source_system");
     aliases.put("contractno", "contract_no"); aliases.put("关联合同编号", "contract_no");
     aliases.put("projectno", "project_no"); aliases.put("关联项目编号", "project_no");
+    aliases.put("subject", "subject"); aliases.put("科目", "subject"); aliases.put("会计科目", "subject");
     aliases.put("remark", "remark"); aliases.put("备注", "remark");
     return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }

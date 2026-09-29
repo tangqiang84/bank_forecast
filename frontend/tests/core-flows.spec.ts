@@ -571,3 +571,94 @@ test('流水高级筛选、批量分类和 Excel 导出', async ({ page }) => {
   await page.getByRole('button', { name: '导出 Excel' }).click()
   expect((await download).suggestedFilename()).toBe('bank-transactions.xlsx')
 })
+
+test('财务对账展示跨月时间差和财务记录科目', async ({ page }) => {
+  let runRequested = false
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/reconciliation/results?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 601,
+            exception_no: 'EX-REC-601',
+            exception_type: 'timing_difference',
+            source_type: 'finance_record',
+            source_id: 61,
+            title: '跨月时间差/在途：FR-601',
+            description: '财务单据与银行流水金额方向一致但跨月',
+            status: 'new',
+            severity: 'medium',
+            transaction_no: null,
+            transaction_date: null,
+            bank_amount: null,
+            record_no: 'FR-601',
+            record_date: '2026-08-25',
+            finance_amount: '700.00',
+            finance_subject: '应收账款',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/reconciliation/run?**', async (route) => {
+    runRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        job_id: 610,
+        status: 'success',
+        matched: 3,
+        multi_matched: 1,
+        timing_difference: 1,
+        bank_unrecorded: 0,
+        finance_unmatched: 0,
+        date_from: '2026-08-01',
+        date_to: '2026-09-30',
+      }),
+    })
+  })
+  await page.route('**/api/v1/finance-records?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 61,
+            record_no: 'FR-601',
+            record_type: 'receipt',
+            record_date: '2026-08-25',
+            posting_date: null,
+            counterparty_name: '示例客户',
+            amount: '700.00',
+            summary: '货款',
+            source_system: 'ERP',
+            subject: '应收账款',
+            status: 'active',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '财务对账' }).click()
+  await expect(page.getByRole('heading', { name: '银行账 / 财务账对账' })).toBeVisible()
+  await expect(page.getByText('跨月时间差/在途：FR-601')).toBeVisible()
+  await expect(page.getByText('应收账款').first()).toBeVisible()
+
+  await page.getByRole('button', { name: '运行对账' }).click()
+  await expect(page.getByText(/多对多匹配 1 组，跨月时间差 1 条/)).toBeVisible()
+  expect(runRequested).toBe(true)
+})
