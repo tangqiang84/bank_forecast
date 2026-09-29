@@ -6,6 +6,7 @@ import {
   loadReportAudits,
   loadReportDetail,
   loadReports,
+  printReport,
   type ReportAuditLog,
   type ReportTask,
 } from '../services/reports'
@@ -33,6 +34,7 @@ const total = ref(0)
 const reportType = ref('monthly')
 const reportMonth = ref(new Date().toISOString().slice(0, 7))
 const reportDate = ref(new Date().toISOString().slice(0, 10))
+const reportWeek = ref(new Date().toISOString().slice(0, 10))
 const loading = ref(false)
 const detailLoading = ref(false)
 const message = ref('')
@@ -86,7 +88,9 @@ async function generate() {
         ? { month: reportMonth.value }
         : reportType.value === 'daily'
           ? { date_from: reportDate.value, date_to: reportDate.value }
-          : {}
+          : reportType.value === 'weekly'
+            ? { week: reportWeek.value }
+            : {}
     await createReport(
       base,
       session.token.value,
@@ -102,7 +106,7 @@ async function generate() {
     loading.value = false
   }
 }
-async function download(report: ReportTask) {
+async function download(report: ReportTask, format: 'csv' | 'xlsx' = 'csv') {
   if (!session.user.value || !session.token.value) return
   try {
     const blob = await downloadReport(
@@ -110,15 +114,35 @@ async function download(report: ReportTask) {
       session.token.value,
       session.user.value.tenant_id,
       report.id,
+      format,
     )
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = report.file_name || `report-${report.id}.csv`
+    link.download =
+      format === 'xlsx'
+        ? (report.file_name || `report-${report.id}`).replace(/\.csv$/, '') + '.xlsx'
+        : report.file_name || `report-${report.id}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    message.value = '报表 CSV 已导出。'
+    message.value = format === 'xlsx' ? '报表 Excel 已导出。' : '报表 CSV 已导出。'
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '报表导出失败'
+  }
+}
+async function printPreview(report: ReportTask) {
+  if (!session.user.value || !session.token.value) return
+  try {
+    const blob = await printReport(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      report.id,
+    )
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    message.value = '打印预览已在新窗口打开，可在浏览器中另存为 PDF。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '打印预览打开失败'
   }
 }
 function changeSize() {
@@ -151,6 +175,7 @@ onMounted(() => {
         <label
           >报告类型<select v-model="reportType">
             <option value="daily">日报</option>
+            <option value="weekly">周报</option>
             <option value="monthly">月报</option>
             <option value="health">资金体检报告</option>
           </select></label
@@ -158,6 +183,8 @@ onMounted(() => {
           >统计月份<input v-model="reportMonth" type="month" /></label
         ><label v-if="reportType === 'daily'"
           >统计日期<input v-model="reportDate" type="date" /></label
+        ><label v-if="reportType === 'weekly'"
+          >周内任意日期<input v-model="reportWeek" type="date" /></label
         ><button
           v-permission="'report:generate'"
           class="primary-button"
@@ -168,7 +195,8 @@ onMounted(() => {
           {{ loading ? '生成中...' : '生成报表' }}
         </button>
         <p class="meta import-hint">
-          日报展示余额变化、收支和新增异常；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。
+          日报展示余额变化、收支和新增异常；周报展示回款、应付、账户活跃度和待办闭环；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。所有报表支持
+          CSV/Excel 下载和打印预览（浏览器另存 PDF）。
         </p>
       </article>
       <article class="panel table-panel">
@@ -202,7 +230,9 @@ onMounted(() => {
                       ? '资金体检'
                       : report.report_type === 'monthly'
                         ? '月报'
-                        : '日报'
+                        : report.report_type === 'weekly'
+                          ? '周报'
+                          : '日报'
                   }}
                 </td>
                 <td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td>
@@ -219,9 +249,25 @@ onMounted(() => {
                       v-permission="'report:download'"
                       class="text-button"
                       type="button"
-                      @click="download(report)"
+                      @click="download(report, 'csv')"
                     >
-                      下载 CSV
+                      下载 CSV</button
+                    ><button
+                      v-if="report.status === 'success'"
+                      v-permission="'report:download'"
+                      class="text-button"
+                      type="button"
+                      @click="download(report, 'xlsx')"
+                    >
+                      下载 Excel</button
+                    ><button
+                      v-if="report.status === 'success'"
+                      v-permission="'report:download'"
+                      class="text-button"
+                      type="button"
+                      @click="printPreview(report)"
+                    >
+                      打印/PDF
                     </button>
                   </div>
                 </td>

@@ -101,6 +101,117 @@ public class ReportService {
     return text(row.get("file_content"));
   }
 
+  public byte[] downloadXlsx(Long reportId) {
+    Map<String, Object> result = reportResult(reportId, "DOWNLOAD_REPORT");
+    return com.bankforecast.common.XlsxWriter.write("报表", toSectionRows(result));
+  }
+
+  public String printHtml(Long reportId) {
+    Map<String, Object> result = reportResult(reportId, "PRINT_REPORT");
+    StringBuilder html = new StringBuilder("<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"/>")
+        .append("<title>").append(escapeHtml(text(result.get("report_name")))).append("</title>")
+        .append("<style>body{font-family:sans-serif;margin:32px;color:#1a1a1a}h1{font-size:20px}h2{font-size:15px;margin-top:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left;font-size:13px}th{background:#f5f5f5}.meta{color:#666;font-size:12px}@media print{.no-print{display:none}}</style>")
+        .append("</head><body>")
+        .append("<h1>").append(escapeHtml(text(result.get("report_name")))).append("</h1>")
+        .append("<p class=\"meta\">统计区间：").append(text(result.get("date_from"))).append(" ~ ").append(text(result.get("date_to")))
+        .append(" ｜ 生成时间：").append(java.time.LocalDateTime.now().toString().replace('T', ' ')).append("</p>")
+        .append("<h2>指标概览</h2><table><tr><th>指标</th><th>数值</th></tr>");
+    for (List<String> row : metricRows(result)) {
+      html.append("<tr><td>").append(escapeHtml(row.get(0))).append("</td><td>").append(escapeHtml(row.get(1))).append("</td></tr>");
+    }
+    html.append("</table>");
+    List<?> daily = result.get("daily_breakdown") instanceof List ? (List<?>) result.get("daily_breakdown") : null;
+    if (daily != null && !daily.isEmpty()) {
+      html.append("<h2>每日明细</h2><table><tr><th>日期</th><th>收入</th><th>支出</th><th>笔数</th></tr>");
+      for (Object item : daily) {
+        Map<?, ?> row = (Map<?, ?>) item;
+        html.append("<tr><td>").append(text(row.get("transaction_date"))).append("</td><td>").append(text(row.get("income_total")))
+            .append("</td><td>").append(text(row.get("expense_total"))).append("</td><td>").append(text(row.get("transaction_count"))).append("</td></tr>");
+      }
+      html.append("</table>");
+    }
+    List<?> risks = result.get("risk_items") instanceof List ? (List<?>) result.get("risk_items") : null;
+    if (risks != null && !risks.isEmpty()) {
+      html.append("<h2>风险项</h2><table><tr><th>风险项</th><th>数量</th><th>说明</th></tr>");
+      for (Object item : risks) {
+        Map<?, ?> row = (Map<?, ?>) item;
+        html.append("<tr><td>").append(escapeHtml(text(row.get("title")))).append("</td><td>").append(text(row.get("count")))
+            .append("</td><td>").append(escapeHtml(text(row.get("description")))).append("</td></tr>");
+      }
+      html.append("</table>");
+    }
+    html.append("<p class=\"meta\">数据来源：银行流水、合同应收、财务记录与异常事项的实时汇总；口径以《计算指标口径表》为准。本报表含敏感经营数据，请勿外传。</p>");
+    html.append("</body></html>");
+    return html.toString();
+  }
+
+  private Map<String, Object> reportResult(Long reportId, String auditAction) {
+    AuthPrincipal principal = requireAuth();
+    Map<String, Object> row = find(principal.getTenantId(), reportId);
+    if (!"success".equals(text(row.get("status"))) || row.get("result_json") == null) {
+      throw new BusinessException(ErrorCode.FILE_NOT_AVAILABLE, "报表结果不可用");
+    }
+    try {
+      auditService.record(auditAction, "report_task", String.valueOf(reportId), "");
+      return objectMapper.readValue(text(row.get("result_json")), new TypeReference<Map<String, Object>>() { });
+    } catch (Exception ex) {
+      throw new BusinessException(ErrorCode.REPORT_FILE_INVALID, "报表结果不可读取");
+    }
+  }
+
+  private static final String[][] METRIC_LABELS = {
+      {"total_balance", "全账户总余额"}, {"income_total", "收入金额"}, {"expense_total", "支出金额"},
+      {"net_cashflow", "净流入"}, {"transaction_count", "交易笔数"},
+      {"receivable_plan_total", "应收总额"}, {"receivable_paid_total", "已收总额"},
+      {"overdue_receivable_total", "逾期未收"}, {"pending_exception_count", "待处理异常"},
+      {"match_rate", "匹配率"}, {"health_score", "健康评分"}, {"health_level", "健康等级"},
+      {"receivable_due_in_week", "本周到期应收"}, {"confirmed_receipts_in_week", "本周确认回款"},
+      {"active_account_total", "账户总数"}, {"active_accounts_in_week", "本周动账账户"},
+      {"exceptions_closed_in_week", "本周闭环异常"},
+  };
+
+  private List<List<String>> metricRows(Map<String, Object> result) {
+    List<List<String>> rows = new ArrayList<>();
+    for (String[] pair : METRIC_LABELS) {
+      if (result.get(pair[0]) != null) rows.add(java.util.Arrays.asList(pair[1], text(result.get(pair[0]))));
+    }
+    return rows;
+  }
+
+  private List<List<String>> toSectionRows(Map<String, Object> result) {
+    List<List<String>> rows = new ArrayList<>();
+    rows.add(java.util.Arrays.asList("报表名称", text(result.get("report_name"))));
+    rows.add(java.util.Arrays.asList("统计区间", text(result.get("date_from")) + " ~ " + text(result.get("date_to"))));
+    rows.add(java.util.Arrays.asList("生成时间", java.time.LocalDateTime.now().toString().replace('T', ' ')));
+    rows.add(java.util.Arrays.asList("", ""));
+    rows.add(java.util.Arrays.asList("指标", "数值"));
+    rows.addAll(metricRows(result));
+    List<?> daily = result.get("daily_breakdown") instanceof List ? (List<?>) result.get("daily_breakdown") : null;
+    if (daily != null && !daily.isEmpty()) {
+      rows.add(java.util.Arrays.asList("", ""));
+      rows.add(java.util.Arrays.asList("日期", "收入", "支出", "笔数"));
+      for (Object item : daily) {
+        Map<?, ?> row = (Map<?, ?>) item;
+        rows.add(java.util.Arrays.asList(text(row.get("transaction_date")), text(row.get("income_total")),
+            text(row.get("expense_total")), text(row.get("transaction_count"))));
+      }
+    }
+    List<?> risks = result.get("risk_items") instanceof List ? (List<?>) result.get("risk_items") : null;
+    if (risks != null && !risks.isEmpty()) {
+      rows.add(java.util.Arrays.asList("", ""));
+      rows.add(java.util.Arrays.asList("风险项", "数量", "说明"));
+      for (Object item : risks) {
+        Map<?, ?> row = (Map<?, ?>) item;
+        rows.add(java.util.Arrays.asList(text(row.get("title")), text(row.get("count")), text(row.get("description"))));
+      }
+    }
+    return rows;
+  }
+
+  private String escapeHtml(String value) {
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+  }
+
   private Map<String, Object> detail(Long tenantId, Long reportId) {
     Map<String, Object> row = find(tenantId, reportId);
     Map<String, Object> result = new LinkedHashMap<>();
@@ -150,7 +261,30 @@ public class ReportService {
 
   private Map<String, Object> buildResult(Long tenantId, String reportType, DateRange range) {
     if ("health".equals(reportType)) return health(tenantId, range);
+    if ("weekly".equals(reportType)) return weekly(tenantId, range);
     return cashflow(tenantId, reportType, range);
+  }
+
+  private Map<String, Object> weekly(Long tenantId, DateRange range) {
+    Map<String, Object> base = cashflow(tenantId, "weekly", range);
+    base.put("report_name", "资金周报");
+    base.put("receivable_due_in_week", queryAmount(
+        "select coalesce(sum(plan_amount), 0) from contract_receivable_plan where tenant_id = ? and deleted_at is null and (? is null or due_date >= ?) and (? is null or due_date <= ?)",
+        tenantId, sqlDate(range.from), sqlDate(range.from), sqlDate(range.to), sqlDate(range.to)));
+    base.put("confirmed_receipts_in_week", queryAmount(
+        "select coalesce(sum(a.allocated_amount), 0) from match_result_allocation a join bank_transaction bt on bt.id = a.bank_transaction_id "
+            + "where a.tenant_id = ? and a.status in ('matched', 'confirmed', 'auto_confirmed', 'manual_confirmed') and a.deleted_at is null "
+            + "and (? is null or bt.transaction_date >= ?) and (? is null or bt.transaction_date <= ?)",
+        tenantId, sqlDate(range.from), sqlDate(range.from), sqlDate(range.to), sqlDate(range.to)));
+    int activeAccounts = count("select count(*) from bank_account where tenant_id = ? and status <> 'closed' and deleted_at is null", tenantId);
+    int activeInWeek = count("select count(distinct bank_account_id) from bank_transaction where tenant_id = ? and deleted_at is null and (? is null or transaction_date >= ?) and (? is null or transaction_date <= ?)",
+        tenantId, sqlDate(range.from), sqlDate(range.from), sqlDate(range.to), sqlDate(range.to));
+    base.put("active_account_total", activeAccounts);
+    base.put("active_accounts_in_week", activeInWeek);
+    base.put("exceptions_closed_in_week", count(
+        "select count(*) from exception_case where tenant_id = ? and deleted_at is null and closed_at is not null and (? is null or closed_at >= ?) and (? is null or closed_at < ?)",
+        tenantId, sqlDate(range.from), sqlDate(range.from), range.to == null ? null : Date.valueOf(range.to.plusDays(1)), range.to == null ? null : Date.valueOf(range.to.plusDays(1))));
+    return base;
   }
 
   private Map<String, Object> cashflow(Long tenantId, String reportType, DateRange range) {
@@ -250,7 +384,7 @@ public class ReportService {
 
   private String normalizeType(String reportType) {
     String type = reportType == null ? "" : reportType.trim().toLowerCase();
-    if (!type.equals("daily") && !type.equals("monthly") && !type.equals("health")) throw new BusinessException(ErrorCode.REPORT_TYPE_INVALID, "报表类型不支持，仅支持 daily、monthly、health");
+    if (!type.equals("daily") && !type.equals("weekly") && !type.equals("monthly") && !type.equals("health")) throw new BusinessException(ErrorCode.REPORT_TYPE_INVALID, "报表类型不支持，仅支持 daily、weekly、monthly、health");
     return type;
   }
 
@@ -262,6 +396,18 @@ public class ReportService {
       YearMonth yearMonth;
       try { yearMonth = YearMonth.parse(month); } catch (Exception ex) { throw new BusinessException(ErrorCode.PARAM_ERROR, "month 格式必须为 YYYY-MM"); }
       from = yearMonth.atDay(1); to = yearMonth.atEndOfMonth();
+    } else if ("weekly".equals(reportType)) {
+      String week = text(params.get("week"));
+      LocalDate anchor = null;
+      if (week.length() > 0) {
+        try { anchor = LocalDate.parse(week); } catch (Exception ex) { throw new BusinessException(ErrorCode.PARAM_ERROR, "week 格式必须为 YYYY-MM-DD"); }
+      } else if (from != null) {
+        anchor = from;
+      } else {
+        anchor = LocalDate.now();
+      }
+      from = anchor.with(java.time.DayOfWeek.MONDAY);
+      to = anchor.with(java.time.DayOfWeek.SUNDAY);
     } else if ("daily".equals(reportType) && from == null && to == null) {
       from = LocalDate.now(); to = from;
     } else if ("health".equals(reportType) && from == null && to == null) {

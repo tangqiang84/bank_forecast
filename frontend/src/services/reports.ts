@@ -94,8 +94,15 @@ export async function downloadReport(
   token: string,
   tenantId: number,
   reportId: number,
+  format: 'csv' | 'xlsx' = 'csv',
 ) {
-  return fetchBlob(`${baseUrl}/api/v1/reports/${reportId}/download`, {
+  return fetchBlob(`${baseUrl}/api/v1/reports/${reportId}/download?format=${format}`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function printReport(baseUrl: string, token: string, tenantId: number, reportId: number) {
+  return fetchBlob(`${baseUrl}/api/v1/reports/${reportId}/print`, {
     headers: authHeaders(token, tenantId),
   })
 }

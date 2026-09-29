@@ -385,7 +385,7 @@ test('生成报表并下载 CSV', async ({ page }) => {
     createBody = postBody(route)
     await route.fulfill({ status: 200, contentType: 'application/json', body: ok(reportTask) })
   })
-  await page.route('**/api/v1/reports/701/download', async (route) =>
+  await page.route('**/api/v1/reports/701/download?**', async (route) =>
     route.fulfill({
       status: 200,
       contentType: 'text/csv',
@@ -844,4 +844,70 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
 
   await page.getByLabel('责任人').selectOption('1')
   await expect.poll(() => lastListUrl).toContain('owner_user_id=1')
+})
+
+test('生成周报并下载 Excel 与打印预览', async ({ page }) => {
+  let createBody: Record<string, unknown> | null = null
+  const weeklyTask = {
+    id: 901,
+    report_type: 'weekly',
+    date_from: '2026-09-07',
+    date_to: '2026-09-13',
+    status: 'success',
+    file_name: 'weekly-cash-report-20260907-20260913.csv',
+    error_message: null,
+    created_at: '2026-09-14 08:00:00',
+    updated_at: '2026-09-14 08:00:01',
+    result: {
+      report_name: '资金周报',
+      report_type: 'weekly',
+      income_total: '1000.00',
+      expense_total: '300.00',
+      net_cashflow: '700.00',
+      receivable_due_in_week: '2000.00',
+      confirmed_receipts_in_week: '800.00',
+      active_accounts_in_week: 2,
+      exceptions_closed_in_week: 1,
+    },
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/reports?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [weeklyTask], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/reports', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    createBody = postBody(route)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(weeklyTask) })
+  })
+  await page.route('**/api/v1/reports/901/download?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      body: Buffer.from('PK\x03\x04fake'),
+    }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '报表中心' }).click()
+  await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
+  await expect(page.locator('td', { hasText: '周报' })).toBeVisible()
+
+  await page.locator('select').first().selectOption('weekly')
+  await page.getByLabel('周内任意日期').fill('2026-09-10')
+  await page.getByRole('button', { name: '生成报表' }).click()
+  await expect(page.getByText('报表已生成。')).toBeVisible()
+  expect(createBody).toMatchObject({
+    report_type: 'weekly',
+    params_json: { week: '2026-09-10' },
+  })
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '下载 Excel' }).click()
+  expect((await download).suggestedFilename()).toBe('weekly-cash-report-20260907-20260913.xlsx')
+  await expect(page.getByRole('button', { name: '打印/PDF' })).toBeVisible()
 })

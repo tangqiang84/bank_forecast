@@ -43,10 +43,22 @@ public class ReportController {
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) { return ApiResponse.ok(reportService.detail(id)); }
 
   @RequirePermission("report:download")
-  @GetMapping(value = "/{id}/download", produces = "text/csv")
-  public ResponseEntity<String> download(@PathVariable Long id) {
+  @GetMapping(value = "/{id}/download")
+  public ResponseEntity<?> download(@PathVariable Long id, @RequestParam(required = false) String format) {
+    if ("xlsx".equalsIgnoreCase(format == null ? "" : format.trim())) {
+      return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report-" + id + ".xlsx")
+          .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+          .body(reportService.downloadXlsx(id));
+    }
     return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report-" + id + ".csv")
         .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8")).body(reportService.download(id));
+  }
+
+  @RequirePermission("report:download")
+  @GetMapping(value = "/{id}/print", produces = "text/html")
+  public ResponseEntity<String> print(@PathVariable Long id) {
+    return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/html;charset=UTF-8"))
+        .body(reportService.printHtml(id));
   }
 
   @SuppressWarnings("unchecked")

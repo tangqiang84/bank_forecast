@@ -76,6 +76,51 @@ class ReportControllerTest {
         .andExpect(content().string(containsString("100.00")));
   }
 
+  @Test
+  void generatesWeeklyReportAndExportsXlsxAndPrintHtml() throws Exception {
+    String token = loginToken();
+    MvcResult weekly = mockMvc.perform(post("/api/v1/reports")
+            .contentType("application/json")
+            .content("{\"report_type\":\"weekly\",\"params_json\":{\"week\":\"2026-09-10\"}}")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantIdHeader()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("success"))
+        .andExpect(jsonPath("$.data.report_type").value("weekly"))
+        .andExpect(jsonPath("$.data.date_from").value("2026-09-07"))
+        .andExpect(jsonPath("$.data.date_to").value("2026-09-13"))
+        .andExpect(jsonPath("$.data.result.report_name").value("资金周报"))
+        .andExpect(jsonPath("$.data.result.receivable_due_in_week").exists())
+        .andExpect(jsonPath("$.data.result.confirmed_receipts_in_week").exists())
+        .andExpect(jsonPath("$.data.result.active_accounts_in_week").exists())
+        .andExpect(jsonPath("$.data.result.exceptions_closed_in_week").exists())
+        .andReturn();
+    Long weeklyId = reportId(weekly);
+
+    mockMvc.perform(get("/api/v1/reports/" + weeklyId + "/download?format=xlsx")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantIdHeader()))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Content-Disposition", containsString(".xlsx")))
+        .andExpect(content().contentTypeCompatibleWith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        .andExpect(result -> {
+          byte[] body = result.getResponse().getContentAsByteArray();
+          org.junit.jupiter.api.Assertions.assertEquals('P', body[0]);
+          org.junit.jupiter.api.Assertions.assertEquals('K', body[1]);
+        });
+
+    mockMvc.perform(get("/api/v1/reports/" + weeklyId + "/print")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", tenantIdHeader()))
+        .andExpect(status().isOk())
+        .andExpect(content().contentTypeCompatibleWith("text/html"))
+        .andExpect(content().string(containsString("资金周报")))
+        .andExpect(content().string(containsString("指标概览")))
+        .andExpect(content().string(containsString("2026-09-07")));
+  }
+
+  private String tenantIdHeader() {
+    return String.valueOf(jdbcTemplate.queryForObject(
+        "select tenant_id from user_account where login_name = ?", Long.class, "finance01"));
+  }
+
   private Long reportId(MvcResult result) throws Exception {
     String body = result.getResponse().getContentAsString();
     int start = body.indexOf("\"id\":") + 5;
