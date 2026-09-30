@@ -24,6 +24,7 @@ import {
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import { directionLabel, matchStatusLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -611,7 +612,7 @@ onMounted(() => {
               <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
               <td>{{ item.transaction_date }}</td>
               <td>{{ item.bank_name || '-' }}·{{ item.account_no_last4 || '-' }}</td>
-              <td>{{ item.direction }}</td>
+              <td>{{ directionLabel(item.direction) }}</td>
               <td :class="item.direction === 'expense' ? 'expense-amount' : 'income-amount'">
                 {{ formatCurrency(item.amount) }}
               </td>
@@ -619,7 +620,7 @@ onMounted(() => {
               <td>{{ item.summary || '-' }}</td>
               <td>{{ item.category || '-' }}</td>
               <td>
-                <span class="pill">{{ item.match_status }}</span>
+                <span class="pill">{{ matchStatusLabel(item.match_status) }}</span>
               </td>
               <td>
                 <button class="text-button" type="button" @click="openDetail(item.id)">

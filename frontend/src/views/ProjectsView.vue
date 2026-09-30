@@ -20,6 +20,12 @@ import {
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import {
+  healthLevelLabel,
+  importJobStatusLabel,
+  importRowStatusLabel,
+  projectStatusLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -384,7 +390,8 @@ onMounted(() => {
               </td>
               <td>{{ (Number(item.paid_rate) * 100).toFixed(1) }}%</td>
               <td>
-                <span class="pill">{{ item.risk_level }} · {{ item.risk_score }}</span
+                <span class="pill"
+                  >{{ healthLevelLabel(item.risk_level) }} · {{ item.risk_score }}</span
                 ><br /><span class="meta">{{ item.risk_items.join('；') || '暂无风险项' }}</span>
               </td>
               <td>
@@ -482,7 +489,7 @@ onMounted(() => {
       </button>
       <template v-if="preview">
         <h3>导入预览行</h3>
-        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ importJobStatusLabel(preview.status) }}</p>
         <div v-if="preview.preview_rows.length" class="table-scroll">
           <table>
             <thead>
@@ -505,10 +512,10 @@ onMounted(() => {
                 <td>{{ row.payload?.project_name || '-' }}</td>
                 <td>{{ row.payload?.customer_name || '-' }}</td>
                 <td>{{ row.payload?.project_manager || '-' }}</td>
-                <td>{{ row.payload?.project_status || '-' }}</td>
+                <td>{{ projectStatusLabel(row.payload?.project_status) }}</td>
                 <td>{{ row.payload?.start_date || '-' }}</td>
                 <td>
-                  <span class="pill">{{ row.status }}</span>
+                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
                 </td>
                 <td>{{ row.error_message || '-' }}</td>
               </tr>
@@ -558,10 +565,10 @@ onMounted(() => {
       ><label>负责人<input v-model.trim="edit.project_manager" /></label
       ><label
         >状态<select v-model="edit.project_status">
-          <option value="active">active</option>
-          <option value="paused">paused</option>
-          <option value="completed">completed</option>
-          <option value="cancelled">cancelled</option>
+          <option value="active">进行中</option>
+          <option value="paused">已暂停</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
         </select></label
       ><label>开始日期<input v-model="edit.start_date" type="date" /></label
       ><label>交付日期<input v-model="edit.delivery_date" type="date" /></label

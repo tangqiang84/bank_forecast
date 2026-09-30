@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReportTask } from '../services/reports'
+import { healthLevelLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 defineProps<{ report: ReportTask }>()
@@ -20,7 +21,8 @@ defineProps<{ report: ReportTask }>()
         ><strong class="health-score">{{ report.result.health_score ?? '-' }}</strong>
       </div>
       <div v-if="report.report_type === 'health'">
-        <span class="label">健康等级</span><strong>{{ report.result.health_level ?? '-' }}</strong>
+        <span class="label">健康等级</span
+        ><strong>{{ healthLevelLabel(String(report.result.health_level ?? '')) }}</strong>
       </div>
     </div>
     <div v-if="report.report_type === 'health'" class="risk-list">

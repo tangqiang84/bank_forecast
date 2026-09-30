@@ -13,6 +13,7 @@ import {
 } from '../services/rules'
 import type { ProjectRiskRule } from '../services/projects'
 import { apiBase, useSession } from '../session'
+import { industryTemplateLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -148,7 +149,9 @@ onMounted(load)
         <h2>规则配置与版本管理</h2>
         <p class="lead">维护项目风险规则、匹配窗口和行业模板，规则变更记录版本并支持回滚。</p>
       </div>
-      <span v-if="config" class="meta">当前行业模板：{{ config.industry_template }}</span>
+      <span v-if="config" class="meta"
+        >当前行业模板：{{ industryTemplateLabel(config.industry_template) }}</span
+      >
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>

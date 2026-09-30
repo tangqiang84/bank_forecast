@@ -17,6 +17,7 @@ import {
   type SystemUser,
 } from '../services/system'
 import { apiBase, useSession } from '../session'
+import { permissionModuleLabel, userStatusLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -291,7 +292,7 @@ onMounted(load)
               <td>{{ (user.roles ?? []).join('、') || '-' }}</td>
               <td>{{ user.scoped_project_count ?? 0 }} 个项目</td>
               <td>
-                <span class="pill">{{ user.status }}</span>
+                <span class="pill">{{ userStatusLabel(user.status) }}</span>
               </td>
               <td>{{ user.last_login_at || '-' }}</td>
               <td>
@@ -425,7 +426,7 @@ onMounted(load)
       @close="closeRole"
     >
       <div v-for="(points, module) in permissionsByModule" :key="module" class="detail-section">
-        <h3>{{ module }}</h3>
+        <h3>{{ permissionModuleLabel(module) }}</h3>
         <label v-for="point in points" :key="point.permission_code" class="checkbox-label">
           <input v-model="roleChecked" type="checkbox" :value="point.permission_code" />
           {{ point.permission_name }}（{{ point.permission_code }}）

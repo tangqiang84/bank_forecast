@@ -13,6 +13,7 @@ import {
   type ReportTask,
 } from '../services/reports'
 import { apiBase, useSession } from '../session'
+import { auditActionLabel, reportTaskStatusLabel, reportTypeLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -321,20 +322,10 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr v-for="report in rows" :key="report.id">
-              <td>
-                {{
-                  report.report_type === 'health'
-                    ? '资金体检'
-                    : report.report_type === 'monthly'
-                      ? '月报'
-                      : report.report_type === 'weekly'
-                        ? '周报'
-                        : '日报'
-                }}
-              </td>
+              <td>{{ reportTypeLabel(report.report_type) }}</td>
               <td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td>
               <td>
-                <span class="pill">{{ report.status }}</span>
+                <span class="pill">{{ reportTaskStatusLabel(report.status) }}</span>
               </td>
               <td>{{ report.created_at }}</td>
               <td>
@@ -408,7 +399,7 @@ onMounted(() => {
         <div v-if="audits.length" class="audit-list">
           <div v-for="audit in audits" :key="audit.id" class="audit-row">
             <div>
-              <strong>{{ audit.action }}</strong>
+              <strong>{{ auditActionLabel(audit.action) }}</strong>
               <p class="meta">{{ audit.detail || '-' }}</p>
             </div>
             <span class="meta">{{ audit.created_at }}</span>

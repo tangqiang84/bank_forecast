@@ -13,6 +13,7 @@ import {
   type ForecastModel,
 } from '../services/forecast'
 import { apiBase, useSession } from '../session'
+import { forecastTaskStatusLabel, modelNameLabel, riskLevelLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const route = useRoute()
@@ -190,7 +191,7 @@ onMounted(load)
           <h3>模型版本</h3>
           <div v-for="model in models" :key="model.version" class="mini-row">
             <span
-              ><strong>{{ model.version }}</strong> · {{ model.model_name }}</span
+              ><strong>{{ model.version }}</strong> · {{ modelNameLabel(model.model_name) }}</span
             ><button
               v-if="model.status !== 'active'"
               v-permission="'forecast:model'"
@@ -209,7 +210,7 @@ onMounted(load)
             <h3>预测任务详情</h3>
             <span class="meta">{{
               forecast.job
-                ? `任务 #${forecast.job.id} · ${forecast.job.status} · ${forecast.job.model_version || '-'}`
+                ? `任务 #${forecast.job.id} · ${forecastTaskStatusLabel(forecast.job.status)} · ${forecast.job.model_version || '-'}`
                 : '暂无已完成预测'
             }}</span>
           </div>
@@ -231,7 +232,7 @@ onMounted(load)
           <div>
             <span>模型</span
             ><strong
-              >{{ forecast.job.model_name || '-' }} /
+              >{{ modelNameLabel(forecast.job.model_name) }} /
               {{ forecast.job.model_version || '-' }}</strong
             >
           </div>
@@ -274,7 +275,7 @@ onMounted(load)
                 </td>
                 <td>
                   <span class="pill" :class="`risk-${item.risk_level}`"
-                    >{{ item.risk_level }} · {{ item.risk_message }}</span
+                    >{{ riskLevelLabel(item.risk_level) }} · {{ item.risk_message }}</span
                   >
                 </td>
               </tr>

@@ -279,7 +279,7 @@ test('匹配结果确认与拒绝', async ({ page }) => {
   await confirmDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByText('匹配组已确认，应收和流水状态已更新。')).toBeVisible()
   expect(confirmRequested).toBe(true)
-  await expect(confirmRow.locator('.pill')).toHaveText('confirmed')
+  await expect(confirmRow.locator('.pill')).toHaveText('已确认')
 
   const rejectRow = page.locator('tr', { hasText: 'TXN-9002' })
   await rejectRow.getByRole('button', { name: '拒绝组' }).click()
@@ -288,7 +288,7 @@ test('匹配结果确认与拒绝', async ({ page }) => {
   await rejectDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByText('匹配组已拒绝。')).toBeVisible()
   expect(rejectReason).toBe('人工复核后拒绝')
-  await expect(rejectRow.locator('.pill')).toHaveText('rejected')
+  await expect(rejectRow.locator('.pill')).toHaveText('已拒绝')
 })
 
 function exceptionCase(status: string) {
@@ -347,7 +347,7 @@ test('异常事项备注并处理完成', async ({ page }) => {
 
   const row = page.locator('.exception-row', { hasText: 'EXC-0001' })
   await expect(row.getByText('未知收款待确认')).toBeVisible()
-  await expect(row.locator('.pill')).toHaveText('new')
+  await expect(row.locator('.pill')).toHaveText('新发现')
 
   await row.getByRole('button', { name: '备注' }).click()
   const commentDialog = page.getByRole('dialog', { name: '备注：EXC-0001' })
@@ -363,7 +363,7 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await resolveDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect.poll(() => resolveText).toBe('客户已回款，处理完成')
   await resolveDialog.getByRole('button', { name: '关闭', exact: true }).click()
-  await expect(row.locator('.pill')).toHaveText('resolved')
+  await expect(row.locator('.pill')).toHaveText('已解决')
   await expect(row.getByRole('button', { name: '关闭' })).toBeVisible()
 })
 
@@ -423,7 +423,7 @@ test('生成报表并下载 CSV', async ({ page }) => {
   await page.getByRole('button', { name: '报表任务' }).click()
   const taskDialog = page.getByRole('dialog', { name: '报表任务' })
   const row = taskDialog.locator('tr', { hasText: '月报' })
-  await expect(row.locator('.pill')).toHaveText('success')
+  await expect(row.locator('.pill')).toHaveText('成功')
 
   const downloadPromise = page.waitForEvent('download')
   await row.getByRole('button', { name: '下载 CSV' }).click()
@@ -487,13 +487,13 @@ test('预测失败任务展示原因并重试成功', async ({ page }) => {
   await page.getByRole('link', { name: '现金预测' }).click()
   await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
   await expect(page.getByText('预测服务超时，请稍后重试')).toBeVisible()
-  await expect(page.getByText('任务 #801 · failed · v1.0')).toBeVisible()
+  await expect(page.getByText('任务 #801 · 失败 · v1.0')).toBeVisible()
   await expect(page.getByText('尝试次数')).toBeVisible()
 
   await page.getByRole('button', { name: '重试失败任务' }).click()
   await expect(page.getByText('失败任务已重试。')).toBeVisible()
   expect(retryRequested).toBe(true)
-  await expect(page.getByText('任务 #801 · running · v1.0')).toBeVisible()
+  await expect(page.getByText('任务 #801 · 处理中 · v1.0')).toBeVisible()
   await expect(page.getByText('预测服务超时，请稍后重试')).toBeHidden()
 })
 
@@ -770,7 +770,7 @@ test('规则中心修改规则并回滚版本', async ({ page }) => {
   await login(page)
   await page.getByRole('link', { name: '规则中心' }).click()
   await expect(page.getByRole('heading', { name: '规则配置与版本管理' })).toBeVisible()
-  await expect(page.getByText('当前行业模板：it_software')).toBeVisible()
+  await expect(page.getByText('当前行业模板：IT 软件与信息服务')).toBeVisible()
 
   const rulePanel = page.locator('article').filter({
     has: page.getByRole('heading', { name: '项目风险规则', exact: true }),

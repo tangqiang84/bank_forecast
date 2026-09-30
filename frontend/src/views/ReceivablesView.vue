@@ -16,6 +16,7 @@ import {
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import { importJobStatusLabel, importRowStatusLabel, receivableStatusLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -250,7 +251,7 @@ onMounted(() => {
               <td>{{ formatCurrency(item.plan_amount) }}</td>
               <td>{{ formatCurrency(item.paid_amount) }}</td>
               <td>
-                <span class="pill">{{ item.status }}</span>
+                <span class="pill">{{ receivableStatusLabel(item.status) }}</span>
               </td>
               <td>
                 <button class="text-button" type="button" @click="openContract(item.contract_id)">
@@ -336,7 +337,7 @@ onMounted(() => {
       </button>
       <template v-if="preview">
         <h3>导入预览行</h3>
-        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ importJobStatusLabel(preview.status) }}</p>
         <div v-if="preview.preview_rows.length" class="table-scroll">
           <table>
             <thead>
@@ -362,7 +363,7 @@ onMounted(() => {
                 <td>{{ row.payload?.due_date || '-' }}</td>
                 <td>{{ row.payload?.plan_amount || '-' }}</td>
                 <td>
-                  <span class="pill">{{ row.status }}</span>
+                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
                 </td>
                 <td>{{ row.error_message || '-' }}</td>
               </tr>

@@ -10,6 +10,14 @@ import {
   type ImportJobPreviewRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import {
+  directionLabel,
+  importJobStatusLabel,
+  importRowStatusLabel,
+  projectStatusLabel,
+  recordTypeLabel,
+  templateRecognitionStatusLabel,
+} from '../utils/labels'
 
 const route = useRoute()
 const session = useSession()
@@ -68,6 +76,12 @@ const actionable = computed(
   () => job.value !== null && ['preview_pending', 'preview_failed'].includes(job.value.status),
 )
 
+const BUSINESS_VALUE_LABELS: Record<string, (value: string | null | undefined) => string> = {
+  direction: directionLabel,
+  record_type: recordTypeLabel,
+  project_status: projectStatusLabel,
+}
+
 function fieldValue(row: ImportJobPreviewRow, key: string): string {
   const flatFields: Record<string, string | null | undefined> = {
     transaction_no: row.transaction_no,
@@ -75,7 +89,10 @@ function fieldValue(row: ImportJobPreviewRow, key: string): string {
     direction: row.direction,
     amount: row.amount,
   }
-  return row.payload?.[key] ?? flatFields[key] ?? '-'
+  const raw = row.payload?.[key] ?? flatFields[key]
+  if (raw === null || raw === undefined || raw === '') return '-'
+  const mapper = BUSINESS_VALUE_LABELS[key]
+  return mapper ? mapper(raw) : raw
 }
 
 async function load() {
@@ -167,7 +184,7 @@ onMounted(load)
     <p v-if="error" class="error-banner">{{ error }}</p>
     <article v-if="job" class="panel">
       <div class="import-summary">
-        <strong>{{ job.status }}</strong
+        <strong>{{ importJobStatusLabel(job.status) }}</strong
         ><span>总行数 {{ job.total_rows }}</span
         ><span>有效 {{ job.success_rows }}</span
         ><span>失败 {{ job.failed_rows }}</span
@@ -183,7 +200,7 @@ onMounted(load)
             class="mini-row"
           >
             <span>{{ template.sheet_name }} · {{ template.bank_name || '未识别' }}</span
-            ><span class="pill">{{ template.status }}</span>
+            ><span class="pill">{{ templateRecognitionStatusLabel(template.status) }}</span>
           </div>
         </div>
       </section>
@@ -206,7 +223,7 @@ onMounted(load)
                   {{ fieldValue(row, column.key) }}
                 </td>
                 <td>
-                  <span class="pill">{{ row.status }}</span>
+                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
                 </td>
                 <td>{{ row.error_message || '-' }}</td>
               </tr>

@@ -11,6 +11,7 @@ import {
 import { loadProjects, type ProjectPage } from '../services/projects'
 import { loadReports, type ReportPage } from '../services/reports'
 import { apiBase, useSession } from '../session'
+import { genericStatusLabel, matchStatusLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 type Kind =
   | 'accounts'
@@ -115,6 +116,11 @@ function detailPath(row: Record<string, unknown>) {
   const targetId = props.kind === 'receivables' ? Number(row.contract_id) : id(row)
   return `/${map[props.kind]}/${targetId}`
 }
+function statusText(row: Record<string, unknown>) {
+  if (row.match_status) return matchStatusLabel(String(row.match_status))
+  if (row.status) return genericStatusLabel(String(row.status))
+  return '-'
+}
 function changePageSize() {
   page.value = 1
   load()
@@ -178,11 +184,7 @@ onMounted(() => {
                 }}</span>
               </td>
               <td>
-                {{
-                  row.amount
-                    ? formatCurrency(String(row.amount))
-                    : row.status || row.match_status || '-'
-                }}
+                {{ row.amount ? formatCurrency(String(row.amount)) : statusText(row) }}
               </td>
               <td>
                 <button class="text-button" type="button" @click="router.push(detailPath(row))">

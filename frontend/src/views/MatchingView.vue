@@ -10,6 +10,12 @@ import {
   type MatchResult,
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
+import {
+  allocationModeLabel,
+  confidenceLevelLabel,
+  matchStatusLabel,
+  matchTypeLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -197,14 +203,14 @@ onMounted(() => {
                 >
               </td>
               <td>
-                {{ item.allocation_mode }}<br /><span class="meta"
-                  >{{ item.match_type }} · {{ item.match_group_id }}</span
+                {{ allocationModeLabel(item.allocation_mode) }}<br /><span class="meta"
+                  >{{ matchTypeLabel(item.match_type) }} · {{ item.match_group_id }}</span
                 >
               </td>
-              <td>{{ item.confidence_level }}</td>
+              <td>{{ confidenceLevelLabel(item.confidence_level) }}</td>
               <td class="reason-cell">{{ item.match_reason }}</td>
               <td>
-                <span class="pill">{{ item.match_status }}</span>
+                <span class="pill">{{ matchStatusLabel(item.match_status) }}</span>
               </td>
               <td>
                 <div class="action-group">

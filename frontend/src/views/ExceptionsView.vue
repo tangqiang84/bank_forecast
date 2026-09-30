@@ -17,6 +17,7 @@ import {
   type ExceptionStats,
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
+import { exceptionStatusLabel, exceptionTypeLabel, severityLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -343,7 +344,8 @@ onMounted(() => {
               item.title
             }}</strong>
             <p class="meta">
-              {{ item.exception_no }} · {{ item.exception_type }} · {{ item.severity }}
+              {{ item.exception_no }} · {{ exceptionTypeLabel(item.exception_type) }} ·
+              {{ severityLabel(item.severity) }}
             </p>
             <p class="meta">{{ item.description }}</p>
             <p class="meta">
@@ -354,7 +356,7 @@ onMounted(() => {
             </p>
           </div>
           <div class="exception-actions">
-            <span class="pill">{{ item.stage || item.status }}</span>
+            <span class="pill">{{ item.stage || exceptionStatusLabel(item.status) }}</span>
             <div class="action-group">
               <button class="text-button" type="button" @click="openException(item.id)">详情</button
               ><button

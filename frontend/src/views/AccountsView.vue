@@ -24,6 +24,13 @@ import {
   updateBankAccount,
 } from '../services/bank'
 import { apiBase, useSession } from '../session'
+import {
+  accountStatusLabel,
+  connectionTypeLabel,
+  fieldNameLabel,
+  idleLevelLabel,
+  taskStatusLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -436,11 +443,11 @@ onMounted(() => {
               <td>{{ account.account_no_last4 }}</td>
               <td>{{ formatCurrency(account.current_balance) }}</td>
               <td>
-                <span class="pill">{{ account.status }}</span>
+                <span class="pill">{{ accountStatusLabel(account.status) }}</span>
               </td>
               <td>{{ account.last_transaction_at || '暂无流水' }}</td>
               <td>
-                <span class="pill">{{ account.idle_level || 'normal' }}</span>
+                <span class="pill">{{ idleLevelLabel(account.idle_level || 'normal') }}</span>
               </td>
               <td>
                 <div class="action-group">
@@ -628,11 +635,11 @@ onMounted(() => {
               <td>
                 {{ connection.bank_code }}<br /><span class="meta">{{ connection.bank_name }}</span>
               </td>
-              <td>{{ connection.connection_type }}</td>
+              <td>{{ connectionTypeLabel(connection.connection_type) }}</td>
               <td>{{ connection.account_name || '-' }}</td>
               <td>
                 <span v-if="connection.last_test_status" class="pill">{{
-                  connection.last_test_status
+                  taskStatusLabel(connection.last_test_status)
                 }}</span
                 ><br /><span class="meta">{{ connection.last_test_message || '尚未测试' }}</span>
               </td>
@@ -705,7 +712,7 @@ onMounted(() => {
             <tbody>
               <tr v-for="mapping in selectedTemplate.field_mappings" :key="mapping.header">
                 <td>{{ mapping.header }}</td>
-                <td>{{ mapping.field }}</td>
+                <td>{{ fieldNameLabel(mapping.field) }}</td>
               </tr>
             </tbody>
           </table>

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { loadDashboardOverview, type DashboardOverview } from '../services/dashboard'
 import { loadAccounts, type BankAccount } from '../services/bank'
 import { apiBase, useSession } from '../session'
+import { importJobStatusLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 const session = useSession()
 const overview = ref<DashboardOverview | null>(null)
@@ -82,7 +83,7 @@ onMounted(() => {
             ><span
               ><strong>{{ job.name }}</strong
               ><small class="meta">{{ job.message || '查看导入任务' }}</small></span
-            ><span class="pill">{{ job.status }}</span></RouterLink
+            ><span class="pill">{{ importJobStatusLabel(job.status) }}</span></RouterLink
           >
         </div>
         <p v-else class="empty-state">暂无导入任务。</p>

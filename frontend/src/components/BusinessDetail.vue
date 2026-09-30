@@ -1,4 +1,35 @@
 <script setup lang="ts">
+import {
+  RISK_LEVEL_LABELS,
+  accountStatusLabel,
+  allocationModeLabel,
+  auditActionLabel,
+  confidenceLevelLabel,
+  connectionTypeLabel,
+  contractStatusLabel,
+  directionLabel,
+  exceptionStatusLabel,
+  exceptionTypeLabel,
+  fieldNameLabel,
+  genericStatusLabel,
+  healthLevelLabel,
+  idleLevelLabel,
+  importJobStatusLabel,
+  industryTemplateLabel,
+  jobTypeLabel,
+  matchStatusLabel,
+  matchTypeLabel,
+  modelNameLabel,
+  projectStatusLabel,
+  receivableStatusLabel,
+  recordTypeLabel,
+  reportTypeLabel,
+  riskLevelLabel,
+  severityLabel,
+  taskStatusLabel,
+  userStatusLabel,
+} from '../utils/labels'
+
 defineProps<{ data: Record<string, unknown> }>()
 
 function entries(value: unknown) {
@@ -8,61 +39,91 @@ function entries(value: unknown) {
 }
 
 function label(key: string) {
-  return (
-    (
-      {
-        transaction_no: '流水号',
-        transaction_date: '交易日期',
-        direction: '方向',
-        amount: '金额',
-        balance_after: '余额',
-        counterparty_name: '对方户名',
-        summary: '摘要',
-        status: '状态',
-        match_status: '匹配状态',
-        contract_no: '合同编号',
-        project_name: '项目名称',
-        customer_name: '客户名称',
-        exception_type: '异常类型',
-        severity: '严重级别',
-        due_date: '到期日期',
-        exception_no: '异常编号',
-        source_type: '来源类型',
-        source_id: '来源编号',
-        record_no: '财务单号',
-        record_date: '财务日期',
-        bank_amount: '银行金额',
-        finance_amount: '财务金额',
-        forecast_date: '预测日期',
-        forecast_amount: '预测净现金流',
-        expected_receivable: '预计应收',
-        projected_balance: '预计余额',
-        actual_amount: '实际金额',
-        deviation_amount: '偏差',
-        risk_level: '风险等级',
-        risk_message: '风险说明',
-        job_id: '任务编号',
-        model_name: '模型名称',
-        model_version: '模型版本',
-        horizon: '预测天数',
-        window_size: '历史窗口',
-        attempt_count: '尝试次数',
-        input_start_date: '输入开始日期',
-        input_end_date: '输入结束日期',
-        finished_at: '完成时间',
-        evaluated_points: '评估点数',
-        mae: 'MAE',
-        rmse: 'RMSE',
-        mean_deviation: '平均偏差',
-      } as Record<string, string>
-    )[key] ?? key
-  )
+  return fieldNameLabel(key)
+}
+
+function riskLabel(value: string) {
+  return Object.prototype.hasOwnProperty.call(RISK_LEVEL_LABELS, value)
+    ? riskLevelLabel(value)
+    : healthLevelLabel(value)
+}
+
+const KEY_VALUE_LABELS: Record<string, (value: string) => string> = {
+  match_status: matchStatusLabel,
+  direction: directionLabel,
+  severity: severityLabel,
+  exception_type: exceptionTypeLabel,
+  risk_level: riskLabel,
+  confidence_level: confidenceLevelLabel,
+  record_type: recordTypeLabel,
+  report_type: reportTypeLabel,
+  job_type: jobTypeLabel,
+  connection_type: connectionTypeLabel,
+  idle_level: idleLevelLabel,
+  allocation_mode: allocationModeLabel,
+  match_type: matchTypeLabel,
+  project_status: projectStatusLabel,
+  health_level: healthLevelLabel,
+  model_name: modelNameLabel,
+  last_test_status: taskStatusLabel,
+  user_status: userStatusLabel,
+  industry_template: industryTemplateLabel,
+  action: auditActionLabel,
+}
+
+function statusValue(value: unknown, context: Record<string, unknown>) {
+  const text = String(value)
+  if ('idle_level' in context || 'account_no_last4' in context) return accountStatusLabel(text)
+  if ('exception_no' in context || 'exception_type' in context) return exceptionStatusLabel(text)
+  if ('plan_amount' in context && 'paid_amount' in context) return receivableStatusLabel(text)
+  if ('total_rows' in context || 'job_type' in context || 'preview_confirmed_at' in context)
+    return importJobStatusLabel(text)
+  if ('contract_no' in context) return contractStatusLabel(text)
+  if ('login_name' in context) return userStatusLabel(text)
+  if ('model_name' in context || 'horizon' in context) return taskStatusLabel(text)
+  return genericStatusLabel(text)
 }
 
 function display(value: unknown) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'object') return Array.isArray(value) ? `${value.length} 条记录` : '已关联'
   return String(value)
+}
+
+function displayValue(key: string, value: unknown, context: Record<string, unknown>) {
+  if (value === null || value === undefined || value === '') return '-'
+  if (typeof value === 'object') return Array.isArray(value) ? `${value.length} 条记录` : '已关联'
+  if (key === 'status') return statusValue(value, context)
+  const mapper = KEY_VALUE_LABELS[key]
+  if (mapper) return mapper(String(value))
+  return String(value)
+}
+
+function listItemStatus(item: Record<string, unknown>) {
+  const status = item.status ?? item.match_status
+  if (status === null || status === undefined || status === '') return null
+  const text = String(status)
+  if ('match_status' in item) return matchStatusLabel(text)
+  if ('plan_amount' in item) return receivableStatusLabel(text)
+  if ('exception_no' in item || 'exception_type' in item) return exceptionStatusLabel(text)
+  if ('contract_no' in item) return contractStatusLabel(text)
+  return genericStatusLabel(text)
+}
+
+function listItemTail(item: Record<string, unknown>) {
+  const mapped = listItemStatus(item)
+  if (mapped !== null) return mapped
+  return display(item.amount ?? item.description)
+}
+
+function timelineAction(item: Record<string, unknown>) {
+  const action = item.action ?? item.event
+  if (action === null || action === undefined || action === '') return '操作记录'
+  return auditActionLabel(String(action))
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>
 }
 
 function list(value: unknown) {
@@ -108,7 +169,7 @@ function list(value: unknown) {
         <dl class="detail-grid">
           <template v-for="[key, value] in entries(data[section])" :key="key"
             ><dt>{{ label(key) }}</dt>
-            <dd>{{ display(value) }}</dd></template
+            <dd>{{ displayValue(key, value, recordOf(data[section])) }}</dd></template
           >
         </dl>
       </section>
@@ -129,7 +190,7 @@ function list(value: unknown) {
       <dl class="detail-grid">
         <template v-for="[key, value] in entries(data)" :key="key"
           ><dt>{{ label(key) }}</dt>
-          <dd>{{ display(value) }}</dd></template
+          <dd>{{ displayValue(key, value, data) }}</dd></template
         >
       </dl>
     </section>
@@ -181,7 +242,7 @@ function list(value: unknown) {
               )
             }}</strong
             ><span v-if="key === 'timeline'" class="meta">{{ display(item.date) }}</span
-            ><span>{{ display(item.status ?? item.amount ?? item.description) }}</span>
+            ><span>{{ listItemTail(item) }}</span>
           </div>
         </div>
       </section></template
@@ -195,7 +256,7 @@ function list(value: unknown) {
         >
           <span class="timeline-dot" />
           <div>
-            <strong>{{ display(item.action ?? item.event ?? '操作记录') }}</strong>
+            <strong>{{ timelineAction(item) }}</strong>
             <p class="meta">{{ display(item.created_at ?? item.detail ?? item.text) }}</p>
           </div>
         </li>

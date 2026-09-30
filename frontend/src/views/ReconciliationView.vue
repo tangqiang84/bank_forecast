@@ -21,6 +21,13 @@ import {
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import {
+  exceptionStatusLabel,
+  exceptionTypeLabel,
+  importJobStatusLabel,
+  importRowStatusLabel,
+  recordTypeLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const route = useRoute()
@@ -228,13 +235,6 @@ function openDetail(item: ReconciliationResult) {
   selected.value = item
 }
 
-function differenceLabel(type: string) {
-  if (type === 'bank_unrecorded') return '银行未记账'
-  if (type === 'finance_unmatched') return '财务未在银行发生'
-  if (type === 'timing_difference') return '跨月时间差'
-  return type
-}
-
 const recordPage = ref(1)
 const recordPageSize = ref(20)
 const recordTotal = ref(0)
@@ -424,7 +424,7 @@ onMounted(() => {
             <tbody>
               <tr v-for="item in results" :key="item.id">
                 <td>
-                  <span class="pill">{{ differenceLabel(item.exception_type) }}</span>
+                  <span class="pill">{{ exceptionTypeLabel(item.exception_type) }}</span>
                 </td>
                 <td>{{ item.transaction_no || item.record_no || '-' }}</td>
                 <td>{{ item.transaction_date || item.record_date || '-' }}</td>
@@ -434,7 +434,7 @@ onMounted(() => {
                   <strong>{{ item.title }}</strong
                   ><br /><span class="meta">{{ item.description }}</span>
                 </td>
-                <td>{{ item.status }}</td>
+                <td>{{ exceptionStatusLabel(item.status) }}</td>
                 <td>
                   <button class="text-button" type="button" @click="openDetail(item)">
                     查看详情
@@ -468,7 +468,7 @@ onMounted(() => {
 
       <section v-if="preview">
         <h3>导入预览行</h3>
-        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ importJobStatusLabel(preview.status) }}</p>
         <div v-if="preview.preview_rows.length" class="table-scroll">
           <table>
             <thead>
@@ -488,13 +488,13 @@ onMounted(() => {
               <tr v-for="row in preview.preview_rows" :key="row.id">
                 <td>{{ row.row_no }}</td>
                 <td>{{ row.payload?.record_no || '-' }}</td>
-                <td>{{ row.payload?.record_type || '-' }}</td>
+                <td>{{ recordTypeLabel(row.payload?.record_type) }}</td>
                 <td>{{ row.payload?.record_date || '-' }}</td>
                 <td>{{ row.payload?.counterparty_name || '-' }}</td>
                 <td>{{ row.payload?.amount || '-' }}</td>
                 <td>{{ row.payload?.subject || '-' }}</td>
                 <td>
-                  <span class="pill">{{ row.status }}</span>
+                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
                 </td>
                 <td>{{ row.error_message || '-' }}</td>
               </tr>
@@ -520,10 +520,10 @@ onMounted(() => {
           <label
             >类型<select v-model="recordType">
               <option value="">全部类型</option>
-              <option value="receipt">receipt</option>
-              <option value="payment">payment</option>
-              <option value="voucher">voucher</option>
-              <option value="journal">journal</option>
+              <option value="receipt">收款单</option>
+              <option value="payment">付款单</option>
+              <option value="voucher">凭证</option>
+              <option value="journal">日记账</option>
             </select></label
           >
           <button class="small-primary-button" type="button" @click="applyRecordFilters">
@@ -547,7 +547,7 @@ onMounted(() => {
           <tbody>
             <tr v-for="record in records" :key="record.id">
               <td>{{ record.record_no }}</td>
-              <td>{{ record.record_type }}</td>
+              <td>{{ recordTypeLabel(record.record_type) }}</td>
               <td>{{ record.record_date }}</td>
               <td>{{ record.counterparty_name || '-' }}</td>
               <td>{{ formatCurrency(record.amount) }}</td>
