@@ -26,6 +26,7 @@ const visibleLinks = computed(() =>
 function active(path: string) {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
+const currentTitle = computed(() => links.find((link) => active(link.path))?.label ?? '资金工作台')
 function signOut() {
   session.signOut()
   router.push('/login')
@@ -36,27 +37,34 @@ function refresh() {
 </script>
 
 <template>
-  <main class="app-shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">银行资金智能连接器</p>
-        <h1>资金工作台</h1>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <p class="sidebar-brand-eyebrow">银行资金智能连接器</p>
+        <p class="sidebar-brand-title">资金工作台</p>
       </div>
-      <div class="user-actions">
-        <span>{{ session.user.value?.display_name }}</span
-        ><button class="ghost-button" type="button" @click="refresh">刷新数据</button
-        ><button class="ghost-button" type="button" @click="signOut">退出登录</button>
+      <nav class="sidebar-nav" aria-label="工作区导航">
+        <RouterLink
+          v-for="link in visibleLinks"
+          :key="link.path"
+          :to="link.path"
+          :class="{ active: active(link.path) }"
+          >{{ link.label }}</RouterLink
+        >
+      </nav>
+      <div class="sidebar-user">
+        <span class="sidebar-user-name">{{ session.user.value?.display_name }}</span
+        ><button class="sidebar-signout" type="button" @click="signOut">退出登录</button>
       </div>
-    </header>
-    <nav class="view-tabs" aria-label="工作区导航">
-      <RouterLink
-        v-for="link in visibleLinks"
-        :key="link.path"
-        :to="link.path"
-        :class="{ active: active(link.path) }"
-        >{{ link.label }}</RouterLink
-      >
-    </nav>
-    <RouterView />
-  </main>
+    </aside>
+    <main class="workspace-main">
+      <header class="workspace-topbar">
+        <p class="workspace-topbar-title">{{ currentTitle }}</p>
+        <button class="ghost-button" type="button" @click="refresh">刷新数据</button>
+      </header>
+      <div class="workspace-content">
+        <RouterView />
+      </div>
+    </main>
+  </div>
 </template>
