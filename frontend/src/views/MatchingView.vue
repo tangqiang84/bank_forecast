@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import MatchDetail from '../components/MatchDetail.vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import {
   confirmMatchResult,
   loadMatchResults,
@@ -11,7 +12,6 @@ import {
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const rows = ref<MatchResult[]>([])
@@ -32,6 +32,30 @@ const loading = ref(false)
 const message = ref('')
 const error = ref('')
 const actionId = ref<number | null>(null)
+const matchDetailId = ref<number | null>(null)
+const pendingAction = ref<{ type: 'confirm' | 'reject'; id: number } | null>(null)
+const rejectReason = ref('')
+
+function openMatch(id: number) {
+  matchDetailId.value = id
+}
+
+function closeMatch() {
+  matchDetailId.value = null
+}
+
+function askConfirm(id: number) {
+  pendingAction.value = { type: 'confirm', id }
+}
+
+function askReject(id: number) {
+  rejectReason.value = '人工复核后拒绝'
+  pendingAction.value = { type: 'reject', id }
+}
+
+function cancelAction() {
+  pendingAction.value = null
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
@@ -67,6 +91,7 @@ async function confirm(id: number) {
   try {
     await confirmMatchResult(base, session.token.value, session.user.value.tenant_id, id)
     message.value = '匹配组已确认，应收和流水状态已更新。'
+    pendingAction.value = null
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认匹配失败'
@@ -74,25 +99,31 @@ async function confirm(id: number) {
     actionId.value = null
   }
 }
-async function reject(id: number) {
+async function reject(id: number, reason: string) {
   if (!session.user.value || !session.token.value) return
-  const reason = window.prompt('请输入拒绝原因', '人工复核后拒绝')
-  if (!reason?.trim()) return
   actionId.value = id
   try {
-    await rejectMatchResult(
-      base,
-      session.token.value,
-      session.user.value.tenant_id,
-      id,
-      reason.trim(),
-    )
+    await rejectMatchResult(base, session.token.value, session.user.value.tenant_id, id, reason)
     message.value = '匹配组已拒绝。'
+    pendingAction.value = null
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '拒绝匹配失败'
   } finally {
     actionId.value = null
+  }
+}
+async function executeAction() {
+  const pending = pendingAction.value
+  if (!pending) return
+  if (pending.type === 'confirm') {
+    await confirm(pending.id)
+  } else {
+    if (!rejectReason.value.trim()) {
+      message.value = '请输入拒绝原因'
+      return
+    }
+    await reject(pending.id, rejectReason.value.trim())
   }
 }
 function changeSize() {
@@ -177,19 +208,14 @@ onMounted(() => {
               </td>
               <td>
                 <div class="action-group">
-                  <button
-                    class="text-button"
-                    type="button"
-                    @click="router.push(`/matching/${item.id}`)"
-                  >
-                    详情</button
+                  <button class="text-button" type="button" @click="openMatch(item.id)">详情</button
                   ><button
                     v-if="item.match_status === 'suggested'"
                     v-permission="'matching:confirm'"
                     class="small-primary-button"
                     :disabled="actionId !== null"
                     type="button"
-                    @click="confirm(item.id)"
+                    @click="askConfirm(item.id)"
                   >
                     确认组</button
                   ><button
@@ -198,7 +224,7 @@ onMounted(() => {
                     class="small-danger-button"
                     :disabled="actionId !== null"
                     type="button"
-                    @click="reject(item.id)"
+                    @click="askReject(item.id)"
                   >
                     拒绝组
                   </button>
@@ -231,5 +257,47 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <ModalPanel
+      v-if="pendingAction"
+      :title="pendingAction.type === 'confirm' ? '确认匹配组' : '拒绝匹配组'"
+      @close="cancelAction"
+    >
+      <p v-if="pendingAction.type === 'confirm'">
+        确认后应收计划和流水状态将更新为已匹配，是否继续？
+      </p>
+      <template v-else>
+        <p>拒绝后该匹配组将不再参与自动核销，可在异常事项中跟进。</p>
+        <label>拒绝原因<input v-model.trim="rejectReason" placeholder="请输入拒绝原因" /></label>
+      </template>
+      <template #footer>
+        <button class="ghost-button" type="button" @click="cancelAction">取消</button>
+        <button
+          v-if="pendingAction.type === 'confirm'"
+          class="primary-button"
+          :disabled="actionId !== null"
+          type="button"
+          @click="executeAction"
+        >
+          确认
+        </button>
+        <button
+          v-else
+          class="small-danger-button"
+          :disabled="actionId !== null || !rejectReason.trim()"
+          type="button"
+          @click="executeAction"
+        >
+          确认
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="matchDetailId !== null" title="匹配结果详情" @close="closeMatch">
+      <MatchDetail :id="matchDetailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeMatch">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

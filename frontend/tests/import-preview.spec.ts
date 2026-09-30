@@ -173,23 +173,26 @@ test('合同导入预览后确认导入', async ({ page }) => {
   await page.getByRole('link', { name: '合同应收' }).click()
   await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
+  const importDialog = page.getByRole('dialog', { name: '导入合同 / 应收计划' })
+  await importDialog.locator('input[type="file"]').setInputFiles({
     name: 'contracts.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from('合同编号,计划金额\nHT-2026-001,400.00\n'),
   })
-  await page.getByRole('button', { name: '预览导入' }).click()
-  await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  await importDialog.getByRole('button', { name: '预览导入' }).click()
+  await expect(importDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
   expect(previewRequested).toBe(true)
-  await expect(page.getByText('任务 #301', { exact: true })).toBeVisible()
-  await expect(page.getByText('有效 1')).toBeVisible()
-  await expect(page.getByText('失败 1')).toBeVisible()
-  await expect(page.getByText('HT-2026-001')).toBeVisible()
-  await expect(page.getByText('计划金额格式不正确')).toBeVisible()
+  await expect(importDialog.getByText('任务 #301', { exact: true })).toBeVisible()
+  await expect(importDialog.getByText('有效 1')).toBeVisible()
+  await expect(importDialog.getByText('失败 1')).toBeVisible()
+  await expect(importDialog.getByText('HT-2026-001')).toBeVisible()
+  await expect(importDialog.getByText('计划金额格式不正确')).toBeVisible()
 
-  await page.getByRole('button', { name: '确认导入' }).click()
-  await expect(page.getByText('导入已确认，应收计划已更新。')).toBeVisible()
+  await importDialog.getByRole('button', { name: '确认导入' }).click()
+  await expect(importDialog.getByText('导入已确认，应收计划已更新。')).toBeVisible()
   expect(confirmRequested).toBe(true)
+  await expect(importDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
 const financePreviewPayload = {
@@ -279,22 +282,24 @@ test('财务记录导入预览后确认导入', async ({ page }) => {
   await page.getByRole('link', { name: '财务对账' }).click()
   await expect(page.getByRole('heading', { name: '银行账 / 财务账对账' })).toBeVisible()
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.getByRole('button', { name: '对账', exact: true }).click()
+  const reconDialog = page.getByRole('dialog', { name: '银行账 / 财务账对账' })
+  await reconDialog.locator('input[type="file"]').setInputFiles({
     name: 'finance-records.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from('记录编号,金额\nFR-0001,500.00\n'),
   })
-  await page.getByRole('button', { name: '预览导入' }).click()
-  await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  await reconDialog.getByRole('button', { name: '预览导入' }).click()
+  await expect(reconDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
   expect(previewRequested).toBe(true)
-  await expect(page.getByText('任务 #302', { exact: true })).toBeVisible()
-  await expect(page.getByText('有效 1')).toBeVisible()
-  await expect(page.getByText('失败 1')).toBeVisible()
-  await expect(page.getByText('FR-0001')).toBeVisible()
-  await expect(page.getByText('记录日期缺失')).toBeVisible()
+  await expect(reconDialog.getByText('任务 #302', { exact: true })).toBeVisible()
+  await expect(reconDialog.getByText('有效 1')).toBeVisible()
+  await expect(reconDialog.getByText('失败 1')).toBeVisible()
+  await expect(reconDialog.getByText('FR-0001')).toBeVisible()
+  await expect(reconDialog.getByText('记录日期缺失')).toBeVisible()
 
-  await page.getByRole('button', { name: '确认导入' }).click()
-  await expect(page.getByText('导入已确认，财务记录已入库。')).toBeVisible()
+  await reconDialog.getByRole('button', { name: '确认导入' }).click()
+  await expect(reconDialog.getByText('导入已确认，财务记录已入库。')).toBeVisible()
   expect(confirmRequested).toBe(true)
 })
 
@@ -384,23 +389,26 @@ test('项目导入预览后确认导入', async ({ page }) => {
   await page.getByRole('link', { name: '项目资金' }).click()
   await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.getByRole('button', { name: '导入项目' }).click()
+  const importDialog = page.getByRole('dialog', { name: '导入项目' })
+  await importDialog.locator('input[type="file"]').setInputFiles({
     name: 'projects.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from('项目编号,项目名称\nPJ-2026-001,示例项目\n'),
   })
-  await page.getByRole('button', { name: '预览导入' }).click()
-  await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  await importDialog.getByRole('button', { name: '预览导入' }).click()
+  await expect(importDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
   expect(previewRequested).toBe(true)
-  await expect(page.getByText('任务 #303', { exact: true })).toBeVisible()
-  await expect(page.getByText('有效 1')).toBeVisible()
-  await expect(page.getByText('失败 1')).toBeVisible()
-  await expect(page.getByText('PJ-2026-001')).toBeVisible()
-  await expect(page.getByText('项目状态不合法')).toBeVisible()
+  await expect(importDialog.getByText('任务 #303', { exact: true })).toBeVisible()
+  await expect(importDialog.getByText('有效 1')).toBeVisible()
+  await expect(importDialog.getByText('失败 1')).toBeVisible()
+  await expect(importDialog.getByText('PJ-2026-001')).toBeVisible()
+  await expect(importDialog.getByText('项目状态不合法')).toBeVisible()
 
-  await page.getByRole('button', { name: '确认导入' }).click()
-  await expect(page.getByText('导入已确认，项目清单已更新。')).toBeVisible()
+  await importDialog.getByRole('button', { name: '确认导入' }).click()
+  await expect(importDialog.getByText('导入已确认，项目清单已更新。')).toBeVisible()
   expect(confirmRequested).toBe(true)
+  await expect(importDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
 const receiptPreviewPayload = {
@@ -505,9 +513,8 @@ test('回单导入预览后确认导入', async ({ page }) => {
   await page.getByRole('link', { name: '银行流水' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
-  const receiptPanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '导入回单', exact: true }),
-  })
+  await page.getByRole('button', { name: '导入回单' }).click()
+  const receiptPanel = page.getByRole('dialog', { name: '导入回单' })
   await receiptPanel.locator('input[type="file"]').setInputFiles({
     name: 'receipts.csv',
     mimeType: 'text/csv',
@@ -519,6 +526,7 @@ test('回单导入预览后确认导入', async ({ page }) => {
   await expect(page.getByText('任务 #304', { exact: true })).toBeVisible()
 
   await receiptPanel.getByRole('button', { name: '确认导入' }).click()
-  await expect(page.getByText('回单导入已确认。')).toBeVisible()
+  await expect(receiptPanel.getByText('回单导入已确认。')).toBeVisible()
   expect(confirmRequested).toBe(true)
+  await expect(receiptPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import ModalPanel from '../components/ModalPanel.vue'
+import ReportPreview from '../components/ReportPreview.vue'
 import {
   createReport,
   downloadReport,
@@ -11,13 +13,13 @@ import {
   type ReportTask,
 } from '../services/reports'
 import { apiBase, useSession } from '../session'
-import { formatCurrency } from '../utils/number'
 
 const session = useSession()
 const base = apiBase()
 const rows = ref<ReportTask[]>([])
 const selected = ref<ReportTask | null>(null)
 const audits = ref<ReportAuditLog[]>([])
+const latest = ref<Record<string, ReportTask | null>>({ weekly: null, daily: null, health: null })
 const page = ref(1)
 
 function prevPage() {
@@ -39,6 +41,41 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const message = ref('')
 const error = ref('')
+const generateModalOpen = ref(false)
+const generateDone = ref(false)
+const tasksModalOpen = ref(false)
+
+const latestTypes = [
+  { type: 'weekly', label: '最新周报' },
+  { type: 'daily', label: '最新日报' },
+  { type: 'health', label: '最新资金体检' },
+]
+
+const anyModalOpen = computed(
+  () => generateModalOpen.value || tasksModalOpen.value || selected.value !== null,
+)
+
+function openGenerateModal() {
+  message.value = ''
+  generateDone.value = false
+  generateModalOpen.value = true
+}
+
+function closeGenerateModal() {
+  generateModalOpen.value = false
+}
+
+function openTasksModal() {
+  tasksModalOpen.value = true
+}
+
+function closeTasksModal() {
+  tasksModalOpen.value = false
+}
+
+function closeDetail() {
+  selected.value = null
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
@@ -60,6 +97,33 @@ async function load() {
     error.value = cause instanceof Error ? cause.message : '报表任务加载失败'
   } finally {
     loading.value = false
+  }
+}
+async function loadLatest() {
+  if (!session.user.value || !session.token.value) return
+  try {
+    const result = await loadReports(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      1,
+      100,
+    )
+    for (const { type } of latestTypes) {
+      const task = result.data.items.find(
+        (item) => item.report_type === type && item.status === 'success',
+      )
+      if (!task) {
+        latest.value[type] = null
+        continue
+      }
+      latest.value[type] = task.result
+        ? task
+        : (await loadReportDetail(base, session.token.value, session.user.value.tenant_id, task.id))
+            .data
+    }
+  } catch {
+    latest.value = { weekly: null, daily: null, health: null }
   }
 }
 async function select(report: ReportTask) {
@@ -99,7 +163,9 @@ async function generate() {
       params,
     )
     message.value = '报表已生成。'
+    generateDone.value = true
     await load()
+    await loadLatest()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '报表生成失败'
   } finally {
@@ -151,6 +217,7 @@ function changeSize() {
 }
 onMounted(() => {
   load()
+  loadLatest()
   window.addEventListener('workspace-refresh', load)
 })
 </script>
@@ -162,30 +229,54 @@ onMounted(() => {
         <p class="eyebrow">报告中心</p>
         <h2>资金经营报告</h2>
         <p class="lead">
-          按 PRD 生成日报、月报和资金体检报告，查看经营指标、风险项、审计记录并导出结果。
+          展示最近生成的周报、日报和资金体检报告详情；生成与任务管理通过右上方入口操作。
         </p>
       </div>
       <span class="meta">共 {{ total }} 个报表任务</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
-    <section class="grid reconciliation-layout">
-      <article class="panel workflow-panel">
-        <h3>生成报告</h3>
-        <label
-          >报告类型<select v-model="reportType">
-            <option value="daily">日报</option>
-            <option value="weekly">周报</option>
-            <option value="monthly">月报</option>
-            <option value="health">资金体检报告</option>
-          </select></label
-        ><label v-if="reportType === 'monthly'"
-          >统计月份<input v-model="reportMonth" type="month" /></label
-        ><label v-if="reportType === 'daily'"
-          >统计日期<input v-model="reportDate" type="date" /></label
-        ><label v-if="reportType === 'weekly'"
-          >周内任意日期<input v-model="reportWeek" type="date" /></label
-        ><button
+    <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openGenerateModal">生成报告</button>
+      <button class="ghost-button" type="button" @click="openTasksModal">报表任务</button>
+    </div>
+
+    <section class="grid">
+      <article v-for="item in latestTypes" :key="item.type" class="panel">
+        <div class="section-heading">
+          <div>
+            <h3>{{ item.label }}</h3>
+            <span class="meta">{{
+              latest[item.type]
+                ? `任务 #${latest[item.type]!.id} · ${latest[item.type]!.created_at}`
+                : '暂无'
+            }}</span>
+          </div>
+        </div>
+        <ReportPreview v-if="latest[item.type]" :report="latest[item.type]!" />
+        <p v-else class="empty-state">
+          暂无已生成的{{ item.label.slice(2) }}，请先通过「生成报告」创建。
+        </p>
+      </article>
+    </section>
+
+    <ModalPanel v-if="generateModalOpen" title="生成报告" @close="closeGenerateModal">
+      <label
+        >报告类型<select v-model="reportType">
+          <option value="daily">日报</option>
+          <option value="weekly">周报</option>
+          <option value="monthly">月报</option>
+          <option value="health">资金体检报告</option>
+        </select></label
+      ><label v-if="reportType === 'monthly'"
+        >统计月份<input v-model="reportMonth" type="month" /></label
+      ><label v-if="reportType === 'daily'"
+        >统计日期<input v-model="reportDate" type="date" /></label
+      ><label v-if="reportType === 'weekly'"
+        >周内任意日期<input v-model="reportWeek" type="date"
+      /></label>
+      <div class="action-group">
+        <button
           v-permission="'report:generate'"
           class="primary-button"
           :disabled="loading"
@@ -194,168 +285,126 @@ onMounted(() => {
         >
           {{ loading ? '生成中...' : '生成报表' }}
         </button>
-        <p class="meta import-hint">
-          日报展示余额变化、收支和新增异常；周报展示回款、应付、账户活跃度和待办闭环；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。所有报表支持
-          CSV/Excel 下载和打印预览（浏览器另存 PDF）。
-        </p>
-      </article>
-      <article class="panel table-panel">
-        <div class="section-heading">
-          <div>
-            <h3>报表任务</h3>
-            <span class="meta">服务端分页</span>
-          </div>
-          <button class="ghost-button" type="button" @click="load">刷新</button>
-        </div>
-        <div v-if="rows.length" class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>报表类型</th>
-                <th>统计范围</th>
-                <th>状态</th>
-                <th>生成时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="report in rows"
-                :key="report.id"
-                :class="{ 'selected-row': selected?.id === report.id }"
-              >
-                <td>
-                  {{
-                    report.report_type === 'health'
-                      ? '资金体检'
-                      : report.report_type === 'monthly'
-                        ? '月报'
-                        : report.report_type === 'weekly'
-                          ? '周报'
-                          : '日报'
-                  }}
-                </td>
-                <td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td>
-                <td>
-                  <span class="pill">{{ report.status }}</span>
-                </td>
-                <td>{{ report.created_at }}</td>
-                <td>
-                  <div class="action-group">
-                    <button class="text-button" type="button" @click="select(report)">
-                      查看详情</button
-                    ><button
-                      v-if="report.status === 'success'"
-                      v-permission="'report:download'"
-                      class="text-button"
-                      type="button"
-                      @click="download(report, 'csv')"
-                    >
-                      下载 CSV</button
-                    ><button
-                      v-if="report.status === 'success'"
-                      v-permission="'report:download'"
-                      class="text-button"
-                      type="button"
-                      @click="download(report, 'xlsx')"
-                    >
-                      下载 Excel</button
-                    ><button
-                      v-if="report.status === 'success'"
-                      v-permission="'report:download'"
-                      class="text-button"
-                      type="button"
-                      @click="printPreview(report)"
-                    >
-                      打印/PDF
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="empty-state">暂无报表任务，请先生成报表。</p>
-        <div class="pagination-controls">
-          <span
-            >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
-            {{ total }} 条</span
-          ><label
-            >每页<select v-model.number="pageSize" @change="changeSize">
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option></select
-            >条</label
-          ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
-            上一页</button
-          ><button
-            class="ghost-button"
-            :disabled="page >= Math.ceil(total / pageSize)"
-            type="button"
-            @click="nextPage"
-          >
-            下一页
-          </button>
-        </div>
-      </article>
-    </section>
-    <section class="grid report-detail-grid">
-      <article class="panel report-preview">
-        <div class="section-heading">
-          <div>
-            <h3>报表详情与预览</h3>
-            <span class="meta">{{ selected ? `任务 #${selected.id}` : '请选择报表任务' }}</span>
-          </div>
-          <span v-if="detailLoading" class="meta">加载中...</span>
-        </div>
-        <template v-if="selected?.result"
-          ><div class="report-kpi-grid">
-            <div>
-              <span class="label">报表名称</span
-              ><strong>{{ selected.result.report_name || '-' }}</strong>
-            </div>
-            <div>
-              <span class="label">净现金流</span
-              ><strong>{{ formatCurrency(String(selected.result.net_cashflow ?? '0')) }}</strong>
-            </div>
-            <div v-if="selected.report_type === 'health'">
-              <span class="label">健康评分</span
-              ><strong class="health-score">{{ selected.result.health_score ?? '-' }}</strong>
-            </div>
-            <div v-if="selected.report_type === 'health'">
-              <span class="label">健康等级</span
-              ><strong>{{ selected.result.health_level ?? '-' }}</strong>
-            </div>
-          </div>
-          <div v-if="selected.report_type === 'health'" class="risk-list">
-            <h3>风险项</h3>
-            <div
-              v-for="risk in selected.result.risk_items as Array<Record<string, unknown>>"
-              v-if="Array.isArray(selected.result.risk_items) && selected.result.risk_items.length"
-              :key="String(risk.title)"
-              class="list-row"
-            >
-              <span>{{ risk.title }}：{{ risk.description }}</span
-              ><span class="pill">{{ risk.count }}</span>
-            </div>
-            <p v-else class="empty-state">当前未发现风险项。</p>
-          </div>
-          <div v-else class="report-summary-grid">
-            <span>收入 {{ formatCurrency(String(selected.result.income_total ?? '0')) }}</span
-            ><span>支出 {{ formatCurrency(String(selected.result.expense_total ?? '0')) }}</span
-            ><span>交易 {{ selected.result.transaction_count ?? 0 }} 笔</span
-            ><span>匹配率 {{ (Number(selected.result.match_rate ?? 0) * 100).toFixed(1) }}%</span>
-          </div></template
+      </div>
+      <p class="meta import-hint">
+        日报展示余额变化、收支和新增异常；周报展示回款、应付、账户活跃度和待办闭环；月报展示账户盘点、合同回款、项目健康和经营风险；资金体检展示健康评分和风险项。所有报表支持
+        CSV/Excel 下载和打印预览（浏览器另存 PDF）。
+      </p>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button
+          v-if="generateDone"
+          class="primary-button"
+          type="button"
+          @click="closeGenerateModal"
         >
-        <p v-else class="empty-state">请选择一条已生成的报表查看详情。</p>
-      </article>
-      <article class="panel">
-        <div class="section-heading">
-          <div>
-            <h3>报表审计记录</h3>
-            <span class="meta">{{ audits.length }} 条</span>
-          </div>
-        </div>
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="tasksModalOpen" title="报表任务" wide @close="closeTasksModal">
+      <div class="section-heading">
+        <span class="meta">服务端分页</span>
+        <button class="ghost-button" type="button" @click="load">刷新</button>
+      </div>
+      <div v-if="rows.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>报表类型</th>
+              <th>统计范围</th>
+              <th>状态</th>
+              <th>生成时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="report in rows" :key="report.id">
+              <td>
+                {{
+                  report.report_type === 'health'
+                    ? '资金体检'
+                    : report.report_type === 'monthly'
+                      ? '月报'
+                      : report.report_type === 'weekly'
+                        ? '周报'
+                        : '日报'
+                }}
+              </td>
+              <td>{{ report.date_from || '-' }} 至 {{ report.date_to || '-' }}</td>
+              <td>
+                <span class="pill">{{ report.status }}</span>
+              </td>
+              <td>{{ report.created_at }}</td>
+              <td>
+                <div class="action-group">
+                  <button class="text-button" type="button" @click="select(report)">查看详情</button
+                  ><button
+                    v-if="report.status === 'success'"
+                    v-permission="'report:download'"
+                    class="text-button"
+                    type="button"
+                    @click="download(report, 'csv')"
+                  >
+                    下载 CSV</button
+                  ><button
+                    v-if="report.status === 'success'"
+                    v-permission="'report:download'"
+                    class="text-button"
+                    type="button"
+                    @click="download(report, 'xlsx')"
+                  >
+                    下载 Excel</button
+                  ><button
+                    v-if="report.status === 'success'"
+                    v-permission="'report:download'"
+                    class="text-button"
+                    type="button"
+                    @click="printPreview(report)"
+                  >
+                    打印/PDF
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无报表任务，请先生成报表。</p>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <div class="pagination-controls">
+        <span
+          >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
+          {{ total }} 条</span
+        ><label
+          >每页<select v-model.number="pageSize" @change="changeSize">
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option></select
+          >条</label
+        ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+          上一页</button
+        ><button
+          class="ghost-button"
+          :disabled="page >= Math.ceil(total / pageSize)"
+          type="button"
+          @click="nextPage"
+        >
+          下一页
+        </button>
+      </div>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeTasksModal">关闭</button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="selected" :title="`报表任务详情 #${selected.id}`" @close="closeDetail">
+      <span v-if="detailLoading" class="meta">加载中...</span>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <ReportPreview :report="selected" />
+      <section class="detail-section">
+        <h3>报表审计记录</h3>
         <div v-if="audits.length" class="audit-list">
           <div v-for="audit in audits" :key="audit.id" class="audit-row">
             <div>
@@ -365,8 +414,11 @@ onMounted(() => {
             <span class="meta">{{ audit.created_at }}</span>
           </div>
         </div>
-        <p v-else class="empty-state">请选择报表任务查看审计记录。</p>
-      </article>
-    </section>
+        <p v-else class="empty-state">该报表暂无审计记录。</p>
+      </section>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeDetail">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

@@ -213,7 +213,11 @@ test('对账和现金预测拥有独立业务页面', async ({ page }) => {
 
   await page.getByRole('link', { name: '财务对账' }).click()
   await expect(page.getByRole('heading', { name: '银行账 / 财务账对账' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '差异结果' })).toBeVisible()
+  await page.getByRole('button', { name: '对账', exact: true }).click()
+  const reconDialog = page.getByRole('dialog', { name: '银行账 / 财务账对账' })
+  await expect(reconDialog.getByRole('heading', { name: '对账准备' })).toBeVisible()
+  await expect(reconDialog.getByRole('heading', { name: '差异结果' })).toBeVisible()
+  await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '现金预测' }).click()
   await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
@@ -225,16 +229,35 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await login(page)
 
   await page.getByRole('link', { name: '银行账户' }).click()
-  await expect(page.getByRole('heading', { name: '账户盘点与流水导入' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '预览导入' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '账户盘点' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导入银行流水' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增银行账户' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '银行接入配置' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '银行模板字典' })).toBeVisible()
+  await page.getByRole('button', { name: '导入银行流水' }).click()
+  await expect(
+    page.getByRole('dialog', { name: '导入银行流水' }).getByRole('button', { name: '预览导入' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '合同应收' }).click()
   await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '预览导入' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导入合同 / 应收计划' })).toBeVisible()
+  await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
+  await expect(
+    page
+      .getByRole('dialog', { name: '导入合同 / 应收计划' })
+      .getByRole('button', { name: '预览导入' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '项目资金' }).click()
   await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '项目风险规则' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导入项目' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '项目风险规则' })).toBeVisible()
+  await page.getByRole('button', { name: '项目风险规则' }).click()
+  await expect(page.getByRole('dialog', { name: '项目风险规则' })).toBeVisible()
+  await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '匹配结果' }).click()
   await expect(page.getByRole('heading', { name: '回款匹配工作台' })).toBeVisible()
@@ -245,5 +268,11 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
 
   await page.getByRole('link', { name: '报表中心' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '生成报表' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '生成报告' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '报表任务' })).toBeVisible()
+  await page.getByRole('button', { name: '生成报告' }).click()
+  await expect(
+    page.getByRole('dialog', { name: '生成报告' }).getByRole('button', { name: '生成报表' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '关闭弹层' }).click()
 })

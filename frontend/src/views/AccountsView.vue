@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ModalPanel from '../components/ModalPanel.vue'
 import {
   closeBankAccount,
   confirmImportPreview,
@@ -70,6 +71,45 @@ const selectedTemplate = ref<BankTemplate | null>(null)
 const selectedAccount = computed(() => accounts.value.find((item) => item.id === accountId.value))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
+type ModalName = 'import' | 'account' | 'connection' | 'template'
+const activeModal = ref<ModalName | null>(null)
+const importDone = ref(false)
+const accountDone = ref(false)
+const connectionDone = ref(false)
+
+function openModal(name: ModalName) {
+  if (name === 'import') {
+    file.value = null
+    preview.value = null
+    retryJson.value = ''
+    importMessage.value = ''
+    importDone.value = false
+  }
+  if (name === 'account') {
+    reset()
+    accountDone.value = false
+  }
+  if (name === 'connection') {
+    connectionForm.value = { bank_code: '', bank_name: '', bank_account_id: '' }
+    connectionMessage.value = ''
+    connectionDone.value = false
+  }
+  if (name === 'template') {
+    selectedTemplate.value = null
+  }
+  activeModal.value = name
+}
+
+function closeModal() {
+  activeModal.value = null
+}
+
+function openEdit(account: BankAccount) {
+  edit(account)
+  accountDone.value = false
+  activeModal.value = 'account'
+}
+
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
@@ -138,6 +178,7 @@ async function confirm() {
       )
     ).data
     importMessage.value = '流水已确认入账。'
+    importDone.value = true
     await load()
   } catch (cause) {
     importMessage.value = cause instanceof Error ? cause.message : '确认入账失败'
@@ -191,6 +232,7 @@ async function createConnection() {
       bank_account_id: connectionForm.value.bank_account_id || undefined,
     })
     connectionMessage.value = '接入配置已保存。'
+    connectionDone.value = true
     connectionForm.value = { bank_code: '', bank_name: '', bank_account_id: '' }
     await load()
   } catch (cause) {
@@ -266,12 +308,13 @@ function reset() {
 async function save() {
   if (!session.user.value || !session.token.value) return
   try {
-    if (editingId.value)
+    const wasEditing = Boolean(editingId.value)
+    if (wasEditing)
       await updateBankAccount(
         base,
         session.token.value,
         session.user.value.tenant_id,
-        editingId.value,
+        editingId.value as number,
         accountForm.value,
       )
     else
@@ -281,8 +324,9 @@ async function save() {
         session.user.value.tenant_id,
         accountForm.value,
       )
-    accountMessage.value = editingId.value ? '账户已更新。' : '账户已新增。'
     reset()
+    accountMessage.value = wasEditing ? '账户已更新。' : '账户已新增。'
+    accountDone.value = true
     await load()
   } catch (cause) {
     accountMessage.value = cause instanceof Error ? cause.message : '账户保存失败'
@@ -329,100 +373,31 @@ onMounted(() => {
     <header class="hero-band">
       <div>
         <p class="eyebrow">银行账户</p>
-        <h2>账户盘点与流水导入</h2>
-        <p class="lead">维护账户、识别闲置账户，并从账户入口导入 CSV/XLSX 银行流水。</p>
+        <h2>账户盘点</h2>
+        <p class="lead">
+          维护账户、识别闲置账户；流水导入、新增账户、接入配置与模板字典通过右侧入口在弹层中操作。
+        </p>
       </div>
       <span class="meta">共 {{ total }} 个账户</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="accountMessage || importMessage" class="feedback-text">
+    <p v-if="(accountMessage || importMessage) && !activeModal" class="feedback-text">
       {{ accountMessage || importMessage }}
     </p>
-    <section class="grid transaction-layout">
-      <article class="panel workflow-panel">
-        <h3>导入银行流水</h3>
-        <label
-          >银行账户<select v-model="accountId">
-            <option v-for="account in accounts" :key="account.id" :value="account.id">
-              {{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}
-            </option>
-          </select></label
-        ><label
-          >CSV / Excel 文件<input
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            type="file"
-            @change="chooseFile"
-        /></label>
-        <p v-if="selectedAccount" class="meta">
-          当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
-        </p>
-        <button
-          v-permission="'transaction:import'"
-          class="primary-button"
-          :disabled="importLoading"
-          type="button"
-          @click="startPreview"
-        >
-          {{ importLoading ? '处理中...' : '预览导入' }}
-        </button>
-        <div v-if="preview" class="import-summary">
-          <strong>任务 #{{ preview.job_id }}</strong
-          ><span>有效 {{ preview.success_rows }}</span
-          ><span>失败 {{ preview.failed_rows }}</span
-          ><span>跳过 {{ preview.skipped_rows }}</span
-          ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`">任务详情</RouterLink>
-        </div>
-        <template v-if="preview?.failed_rows"
-          ><label
-            >失败行修正 JSON<textarea
-              v-model="retryJson"
-              rows="5"
-              :placeholder="retryPayload(preview.preview_rows)"
-            /></label
-          ><button
-            v-permission="'transaction:import'"
-            class="ghost-button"
-            type="button"
-            @click="retry"
-          >
-            重新校验失败行
-          </button></template
-        ><button
-          v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
-          v-permission="'transaction:import'"
-          class="primary-button"
-          :disabled="importLoading || preview.success_rows === 0"
-          type="button"
-          @click="confirm"
-        >
-          确认入账
-        </button>
-        <p class="meta import-hint">预览阶段不写入正式流水，确认后才入账。</p>
-      </article>
-      <article class="panel import-panel">
-        <div class="section-heading">
-          <h3>{{ editingId ? '编辑银行账户' : '新增银行账户' }}</h3>
-          <button v-if="editingId" class="ghost-button" type="button" @click="reset">
-            取消编辑
-          </button>
-        </div>
-        <label>银行代码<input v-model.trim="accountForm.bankCode" placeholder="例如 CMB" /></label
-        ><label>银行名称<input v-model.trim="accountForm.bankName" /></label
-        ><label>账户名称<input v-model.trim="accountForm.accountName" /></label
-        ><label>完整账号<input v-model.trim="accountForm.accountNo" inputmode="numeric" /></label
-        ><label>币种<input v-model.trim="accountForm.currency" /></label
-        ><label
-          >当前余额<input v-model="accountForm.currentBalance" type="number" step="0.01" /></label
-        ><button v-permission="'account:manage'" class="primary-button" type="button" @click="save">
-          {{ editingId ? '保存账户' : '新增账户' }}
-        </button>
-        <p class="meta import-hint">账号只在保存时提交，页面仅显示后四位。</p>
-      </article>
-    </section>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openModal('import')">导入银行流水</button>
+      <button class="ghost-button" type="button" @click="openModal('account')">新增银行账户</button>
+      <button class="ghost-button" type="button" @click="openModal('connection')">
+        银行接入配置
+      </button>
+      <button class="ghost-button" type="button" @click="openModal('template')">
+        银行模板字典
+      </button>
+    </div>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>
-          <h3>账户盘点</h3>
+          <h3>账户列表</h3>
           <span class="meta">服务端分页</span>
         </div>
         <button
@@ -471,7 +446,7 @@ onMounted(() => {
                     v-permission="'account:manage'"
                     class="text-button"
                     type="button"
-                    @click="edit(account)"
+                    @click="openEdit(account)"
                   >
                     编辑</button
                   ><button
@@ -510,13 +485,103 @@ onMounted(() => {
         </button>
       </div>
     </article>
-    <article class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>银行接入配置</h3>
-          <span class="meta">文件导入型接入；连接测试用样本文件 dry-run 模板识别，不入库</span>
-        </div>
+
+    <ModalPanel v-if="activeModal === 'import'" title="导入银行流水" @close="closeModal">
+      <label
+        >银行账户<select v-model="accountId">
+          <option v-for="account in accounts" :key="account.id" :value="account.id">
+            {{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}
+          </option>
+        </select></label
+      ><label
+        >CSV / Excel 文件<input
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          type="file"
+          @change="chooseFile"
+      /></label>
+      <p v-if="selectedAccount" class="meta">
+        当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
+      </p>
+      <button
+        v-permission="'transaction:import'"
+        class="primary-button"
+        :disabled="importLoading"
+        type="button"
+        @click="startPreview"
+      >
+        {{ importLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <div v-if="preview" class="import-summary">
+        <strong>任务 #{{ preview.job_id }}</strong
+        ><span>有效 {{ preview.success_rows }}</span
+        ><span>失败 {{ preview.failed_rows }}</span
+        ><span>跳过 {{ preview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`">任务详情</RouterLink>
       </div>
+      <template v-if="preview?.failed_rows"
+        ><label
+          >失败行修正 JSON<textarea
+            v-model="retryJson"
+            rows="5"
+            :placeholder="retryPayload(preview.preview_rows)"
+          /></label
+        ><button
+          v-permission="'transaction:import'"
+          class="ghost-button"
+          type="button"
+          @click="retry"
+        >
+          重新校验失败行
+        </button></template
+      ><button
+        v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
+        v-permission="'transaction:import'"
+        class="primary-button"
+        :disabled="importLoading || preview.success_rows === 0"
+        type="button"
+        @click="confirm"
+      >
+        确认入账
+      </button>
+      <p class="meta import-hint">预览阶段不写入正式流水，确认后才入账。</p>
+      <p v-if="importMessage" class="feedback-text">{{ importMessage }}</p>
+      <template #footer>
+        <button v-if="importDone" class="primary-button" type="button" @click="closeModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="activeModal === 'account'"
+      :title="editingId ? '编辑银行账户' : '新增银行账户'"
+      @close="closeModal"
+    >
+      <label>银行代码<input v-model.trim="accountForm.bankCode" placeholder="例如 CMB" /></label
+      ><label>银行名称<input v-model.trim="accountForm.bankName" /></label
+      ><label>账户名称<input v-model.trim="accountForm.accountName" /></label
+      ><label>完整账号<input v-model.trim="accountForm.accountNo" inputmode="numeric" /></label
+      ><label>币种<input v-model.trim="accountForm.currency" /></label
+      ><label
+        >当前余额<input v-model="accountForm.currentBalance" type="number" step="0.01"
+      /></label>
+      <div class="action-group">
+        <button v-permission="'account:manage'" class="primary-button" type="button" @click="save">
+          {{ editingId ? '保存账户' : '新增账户' }}
+        </button>
+        <button v-if="editingId" class="ghost-button" type="button" @click="reset">取消编辑</button>
+      </div>
+      <p class="meta import-hint">账号只在保存时提交，页面仅显示后四位。</p>
+      <p v-if="accountMessage" class="feedback-text">{{ accountMessage }}</p>
+      <template #footer>
+        <button v-if="accountDone" class="primary-button" type="button" @click="closeModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="activeModal === 'connection'" title="银行接入配置" @close="closeModal">
+      <p class="meta">文件导入型接入；连接测试用样本文件 dry-run 模板识别，不入库</p>
       <div class="filter-bar">
         <label
           >银行编码<input v-model.trim="connectionForm.bank_code" placeholder="如 BOC"
@@ -605,14 +670,15 @@ onMounted(() => {
         </table>
       </div>
       <p v-else class="empty-state">暂无接入配置，请先新建文件导入型接入。</p>
-    </article>
-    <article class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>银行模板字典</h3>
-          <span class="meta">六家支持银行的表头映射规则（只读，来自解析器实际规则）</span>
-        </div>
-      </div>
+      <template #footer>
+        <button v-if="connectionDone" class="primary-button" type="button" @click="closeModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="activeModal === 'template'" title="银行模板字典" @close="closeModal">
+      <p class="meta">六家支持银行的表头映射规则（只读，来自解析器实际规则）</p>
       <div class="mini-list">
         <div v-for="template in templates" :key="template.bank_code" class="mini-row">
           <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>
@@ -642,6 +708,9 @@ onMounted(() => {
         </div>
         <button class="ghost-button" type="button" @click="selectedTemplate = null">收起</button>
       </div>
-    </article>
+      <template #footer>
+        <button class="ghost-button" type="button" @click="closeModal">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

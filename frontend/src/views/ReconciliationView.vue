@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BusinessDetail from '../components/BusinessDetail.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import {
   previewFinanceRecords,
   loadFinanceRecords,
@@ -55,6 +56,15 @@ const loading = ref(false)
 const importLoading = ref(false)
 const error = ref('')
 const message = ref('')
+const reconModalOpen = ref(false)
+
+function openRecon() {
+  reconModalOpen.value = true
+}
+
+function closeRecon() {
+  reconModalOpen.value = false
+}
 
 const jobId = computed(() => {
   const raw = route.params.jobId
@@ -271,6 +281,7 @@ function recordChangeSize() {
 }
 
 onMounted(() => {
+  if (route.params.jobId) reconModalOpen.value = true
   loadResults()
   loadRecords()
 })
@@ -293,12 +304,17 @@ onMounted(() => {
       >
     </header>
 
-    <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
+    <p v-if="error && !reconModalOpen" class="error-banner">{{ error }}</p>
+    <p v-if="message && !reconModalOpen" class="feedback-text">{{ message }}</p>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openRecon">对账</button>
+    </div>
 
-    <section class="grid reconciliation-layout">
-      <article class="panel workflow-panel">
+    <ModalPanel v-if="reconModalOpen" title="银行账 / 财务账对账" wide @close="closeRecon">
+      <section>
         <h3>对账准备</h3>
+        <p v-if="error" class="error-banner">{{ error }}</p>
+        <p v-if="message" class="feedback-text">{{ message }}</p>
         <label>财务记录 CSV<input type="file" accept=".csv,text/csv" @change="chooseFile" /></label>
         <button
           v-permission="'reconciliation:run'"
@@ -376,9 +392,9 @@ onMounted(() => {
             <span>财务未发生</span><strong>{{ summary.finance_unmatched }}</strong>
           </div>
         </div>
-      </article>
+      </section>
 
-      <article class="panel table-panel">
+      <section>
         <div class="section-heading">
           <div>
             <h3>差异结果</h3>
@@ -448,8 +464,50 @@ onMounted(() => {
             下一页
           </button>
         </div>
-      </article>
-    </section>
+      </section>
+
+      <section v-if="preview">
+        <h3>导入预览行</h3>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <div v-if="preview.preview_rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>行号</th>
+                <th>记录编号</th>
+                <th>类型</th>
+                <th>记录日期</th>
+                <th>对手方</th>
+                <th>金额</th>
+                <th>科目</th>
+                <th>状态</th>
+                <th>错误原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in preview.preview_rows" :key="row.id">
+                <td>{{ row.row_no }}</td>
+                <td>{{ row.payload?.record_no || '-' }}</td>
+                <td>{{ row.payload?.record_type || '-' }}</td>
+                <td>{{ row.payload?.record_date || '-' }}</td>
+                <td>{{ row.payload?.counterparty_name || '-' }}</td>
+                <td>{{ row.payload?.amount || '-' }}</td>
+                <td>{{ row.payload?.subject || '-' }}</td>
+                <td>
+                  <span class="pill">{{ row.status }}</span>
+                </td>
+                <td>{{ row.error_message || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">本次预览没有可展示的行。</p>
+      </section>
+
+      <template #footer>
+        <button class="ghost-button" type="button" @click="closeRecon">关闭</button>
+      </template>
+    </ModalPanel>
 
     <article class="panel table-panel">
       <div class="section-heading">
@@ -526,48 +584,6 @@ onMounted(() => {
           下一页
         </button>
       </div>
-    </article>
-
-    <article v-if="preview" class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>导入预览行</h3>
-          <span class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</span>
-        </div>
-      </div>
-      <div v-if="preview.preview_rows.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>行号</th>
-              <th>记录编号</th>
-              <th>类型</th>
-              <th>记录日期</th>
-              <th>对手方</th>
-              <th>金额</th>
-              <th>科目</th>
-              <th>状态</th>
-              <th>错误原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in preview.preview_rows" :key="row.id">
-              <td>{{ row.row_no }}</td>
-              <td>{{ row.payload?.record_no || '-' }}</td>
-              <td>{{ row.payload?.record_type || '-' }}</td>
-              <td>{{ row.payload?.record_date || '-' }}</td>
-              <td>{{ row.payload?.counterparty_name || '-' }}</td>
-              <td>{{ row.payload?.amount || '-' }}</td>
-              <td>{{ row.payload?.subject || '-' }}</td>
-              <td>
-                <span class="pill">{{ row.status }}</span>
-              </td>
-              <td>{{ row.error_message || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">本次预览没有可展示的行。</p>
     </article>
 
     <DetailDrawer v-if="selected" title="对账差异详情" @close="selected = null"

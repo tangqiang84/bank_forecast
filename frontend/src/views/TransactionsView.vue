@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import ModalPanel from '../components/ModalPanel.vue'
+import TransactionDetail from '../components/TransactionDetail.vue'
 import {
   batchClassifyTransactions,
   batchUnlinkTransactions,
@@ -25,7 +26,6 @@ import {
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const accounts = ref<BankAccount[]>([])
@@ -55,6 +55,42 @@ const receiptPreview = ref<GenericImportPreview<ReceiptImportPayload> | null>(nu
 const receiptRetryJson = ref('')
 const receiptLoading = ref(false)
 const receiptMessage = ref('')
+type ModalName = 'import' | 'receipt'
+const activeModal = ref<ModalName | null>(null)
+const importDone = ref(false)
+const receiptDone = ref(false)
+
+function openModal(name: ModalName) {
+  if (name === 'import') {
+    file.value = null
+    preview.value = null
+    retryJson.value = ''
+    message.value = ''
+    importDone.value = false
+  }
+  if (name === 'receipt') {
+    receiptFile.value = null
+    receiptPreview.value = null
+    receiptRetryJson.value = ''
+    receiptMessage.value = ''
+    receiptDone.value = false
+  }
+  activeModal.value = name
+}
+
+function closeModal() {
+  activeModal.value = null
+}
+
+const detailId = ref<number | null>(null)
+
+function openDetail(id: number) {
+  detailId.value = id
+}
+
+function closeDetail() {
+  detailId.value = null
+}
 const filterKeyword = ref('')
 const filterAmountMin = ref('')
 const filterAmountMax = ref('')
@@ -213,6 +249,7 @@ async function confirm() {
       )
     ).data
     message.value = '已确认入账。'
+    importDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认失败'
@@ -306,6 +343,7 @@ async function confirmReceiptPreview() {
       )
     ).data
     receiptMessage.value = '回单导入已确认。'
+    receiptDone.value = true
   } catch (cause) {
     receiptMessage.value = cause instanceof Error ? cause.message : '确认导入失败'
   } finally {
@@ -357,252 +395,267 @@ onMounted(() => {
       <div>
         <p class="eyebrow">银行流水</p>
         <h2>流水列表</h2>
-        <p class="lead">先预览导入，再进入独立任务页确认入账。</p>
+        <p class="lead">
+          流水明细支持筛选、批量操作与导出；流水导入和回单导入通过右上方入口在弹层中操作。
+        </p>
       </div>
       <span class="meta">共 {{ total }} 条</span>
     </header>
-    <section class="grid transaction-layout">
-      <article class="panel import-panel">
-        <h3>导入流水</h3>
-        <label
-          >银行账户<select v-model="accountId">
-            <option v-for="account in accounts" :key="account.id" :value="account.id">
-              {{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}
-            </option>
-          </select></label
+    <p v-if="message && !activeModal" class="feedback-text">{{ message }}</p>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openModal('import')">导入流水</button>
+      <button class="ghost-button" type="button" @click="openModal('receipt')">导入回单</button>
+    </div>
+    <ModalPanel v-if="activeModal === 'import'" title="导入流水" @close="closeModal">
+      <label
+        >银行账户<select v-model="accountId">
+          <option v-for="account in accounts" :key="account.id" :value="account.id">
+            {{ account.bank_name }} · {{ account.account_name }} · {{ account.account_no_last4 }}
+          </option>
+        </select></label
+      ><label
+        >CSV / Excel 文件<input
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          type="file"
+          @change="chooseFile"
+      /></label>
+      <p v-if="selectedAccount" class="meta">
+        当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
+      </p>
+      <button
+        v-permission="'transaction:import'"
+        class="primary-button"
+        :disabled="loading"
+        type="button"
+        @click="startPreview"
+      >
+        {{ loading ? '处理中...' : '预览导入' }}
+      </button>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <div v-if="preview" class="import-summary">
+        <strong>任务 #{{ preview.job_id }}</strong
+        ><span>有效 {{ preview.success_rows }}</span
+        ><span>失败 {{ preview.failed_rows }}</span
+        ><span>跳过 {{ preview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
+          >打开任务详情</RouterLink
+        >
+      </div>
+      <template v-if="preview?.failed_rows"
         ><label
-          >CSV / Excel 文件<input
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            type="file"
-            @change="chooseFile"
-        /></label>
-        <p v-if="selectedAccount" class="meta">
-          当前余额 {{ formatCurrency(selectedAccount.current_balance) }}
-        </p>
-        <button
+          >失败行修正 JSON<textarea
+            v-model="retryJson"
+            rows="5"
+            :placeholder="payload(preview.preview_rows)"
+          /></label
+        ><button
           v-permission="'transaction:import'"
-          class="primary-button"
-          :disabled="loading"
+          class="ghost-button"
           type="button"
-          @click="startPreview"
+          @click="retry"
         >
-          {{ loading ? '处理中...' : '预览导入' }}
+          重新校验失败行
+        </button></template
+      ><button
+        v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
+        v-permission="'transaction:import'"
+        class="primary-button"
+        :disabled="loading || preview.success_rows === 0"
+        type="button"
+        @click="confirm"
+      >
+        确认入账
+      </button>
+      <template #footer>
+        <button v-if="importDone" class="primary-button" type="button" @click="closeModal">
+          关闭
         </button>
-        <p v-if="message" class="feedback-text">{{ message }}</p>
-        <div v-if="preview" class="import-summary">
-          <strong>任务 #{{ preview.job_id }}</strong
-          ><span>有效 {{ preview.success_rows }}</span
-          ><span>失败 {{ preview.failed_rows }}</span
-          ><span>跳过 {{ preview.skipped_rows }}</span
-          ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
-            >打开任务详情</RouterLink
-          >
+      </template>
+    </ModalPanel>
+    <ModalPanel v-if="activeModal === 'receipt'" title="导入回单" @close="closeModal">
+      <label
+        >回单 CSV 文件<input accept=".csv,text/csv" type="file" @change="chooseReceiptFile"
+      /></label>
+      <p v-if="receiptFile" class="meta">已选择：{{ receiptFile.name }}</p>
+      <button
+        v-permission="'receipt:import'"
+        class="primary-button"
+        :disabled="receiptLoading"
+        type="button"
+        @click="startReceiptPreview"
+      >
+        {{ receiptLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <p v-if="receiptMessage" class="feedback-text">{{ receiptMessage }}</p>
+      <div v-if="receiptPreview" class="import-summary">
+        <strong>任务 #{{ receiptPreview.job_id }}</strong
+        ><span>有效 {{ receiptPreview.success_rows }}</span
+        ><span>失败 {{ receiptPreview.failed_rows }}</span
+        ><span>跳过 {{ receiptPreview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${receiptPreview.job_id}`"
+          >打开任务详情</RouterLink
+        >
+      </div>
+      <template v-if="receiptPreview && receiptPreviewActionable && receiptPreview.failed_rows"
+        ><label
+          >失败行修正 JSON<textarea
+            v-model="receiptRetryJson"
+            rows="5"
+            :placeholder="receiptRetryPlaceholder(receiptPreview.preview_rows)"
+          /></label
+        ><button
+          v-permission="'receipt:import'"
+          class="ghost-button"
+          type="button"
+          @click="retryReceiptErrors"
+        >
+          重新校验失败行
+        </button></template
+      ><button
+        v-if="receiptPreview && receiptPreviewActionable"
+        v-permission="'receipt:import'"
+        class="primary-button"
+        :disabled="receiptLoading || receiptPreview.success_rows === 0"
+        type="button"
+        @click="confirmReceiptPreview"
+      >
+        确认导入
+      </button>
+      <p class="meta import-hint">
+        回单号、交易日期、金额必填；填写交易流水号时必须匹配已导入流水，重复回单号自动跳过；影像文件在流水详情页逐条上传。
+      </p>
+      <template #footer>
+        <button v-if="receiptDone" class="primary-button" type="button" @click="closeModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>流水明细</h3>
+          <span class="meta">服务端分页，支持关键字、金额区间和日期筛选</span>
         </div>
-        <template v-if="preview?.failed_rows"
-          ><label
-            >失败行修正 JSON<textarea
-              v-model="retryJson"
-              rows="5"
-              :placeholder="payload(preview.preview_rows)"
-            /></label
-          ><button
-            v-permission="'transaction:import'"
+        <div class="action-group">
+          <button
+            v-permission="'transaction:export'"
             class="ghost-button"
             type="button"
-            @click="retry"
+            @click="exportFile('csv')"
           >
-            重新校验失败行
-          </button></template
-        ><button
-          v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
-          v-permission="'transaction:import'"
-          class="primary-button"
-          :disabled="loading || preview.success_rows === 0"
-          type="button"
-          @click="confirm"
-        >
-          确认入账
-        </button>
-      </article>
-      <article class="panel import-panel">
-        <h3>导入回单</h3>
+            导出 CSV</button
+          ><button
+            v-permission="'transaction:export'"
+            class="ghost-button"
+            type="button"
+            @click="exportFile('xlsx')"
+          >
+            导出 Excel
+          </button>
+        </div>
+      </div>
+      <div class="filter-bar">
         <label
-          >回单 CSV 文件<input accept=".csv,text/csv" type="file" @change="chooseReceiptFile"
+          >关键字<input
+            v-model.trim="filterKeyword"
+            placeholder="流水号/对方户名/摘要/合同编号/项目名称"
         /></label>
-        <p v-if="receiptFile" class="meta">已选择：{{ receiptFile.name }}</p>
+        <label>金额下限<input v-model.trim="filterAmountMin" type="number" step="0.01" /></label>
+        <label>金额上限<input v-model.trim="filterAmountMax" type="number" step="0.01" /></label>
+        <label>开始日期<input v-model="filterDateFrom" type="date" /></label>
+        <label>结束日期<input v-model="filterDateTo" type="date" /></label>
+        <button class="small-primary-button" type="button" @click="applyFilters">查询</button>
+        <button class="ghost-button" type="button" @click="resetFilters">重置</button>
+      </div>
+      <div v-if="selected.length" class="filter-bar">
+        <span class="meta">已选 {{ selected.length }} 条</span>
+        <label>分类<input v-model.trim="batchCategory" placeholder="如：客户回款" /></label>
+        <label>用途<input v-model.trim="batchPurpose" placeholder="选填" /></label>
         <button
-          v-permission="'receipt:import'"
-          class="primary-button"
-          :disabled="receiptLoading"
+          v-permission="'transaction:import'"
+          class="small-primary-button"
+          :disabled="batchLoading"
           type="button"
-          @click="startReceiptPreview"
+          @click="batchClassify"
         >
-          {{ receiptLoading ? '处理中...' : '预览导入' }}
+          批量分类</button
+        ><label>解除原因<input v-model.trim="batchReason" placeholder="必填" /></label>
+        <button
+          v-permission="'transaction:import'"
+          class="ghost-button"
+          :disabled="batchLoading"
+          type="button"
+          @click="batchUnlink"
+        >
+          批量解除关联
         </button>
-        <p v-if="receiptMessage" class="feedback-text">{{ receiptMessage }}</p>
-        <div v-if="receiptPreview" class="import-summary">
-          <strong>任务 #{{ receiptPreview.job_id }}</strong
-          ><span>有效 {{ receiptPreview.success_rows }}</span
-          ><span>失败 {{ receiptPreview.failed_rows }}</span
-          ><span>跳过 {{ receiptPreview.skipped_rows }}</span
-          ><RouterLink class="text-button" :to="`/imports/${receiptPreview.job_id}`"
-            >打开任务详情</RouterLink
-          >
-        </div>
-        <template v-if="receiptPreview && receiptPreviewActionable && receiptPreview.failed_rows"
-          ><label
-            >失败行修正 JSON<textarea
-              v-model="receiptRetryJson"
-              rows="5"
-              :placeholder="receiptRetryPlaceholder(receiptPreview.preview_rows)"
-            /></label
-          ><button
-            v-permission="'receipt:import'"
-            class="ghost-button"
-            type="button"
-            @click="retryReceiptErrors"
-          >
-            重新校验失败行
-          </button></template
+      </div>
+      <div v-if="transactions.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>选择</th>
+              <th>交易日期</th>
+              <th>银行/账户</th>
+              <th>方向</th>
+              <th>金额</th>
+              <th>对方户名</th>
+              <th>摘要</th>
+              <th>分类</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in transactions" :key="item.id">
+              <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
+              <td>{{ item.transaction_date }}</td>
+              <td>{{ item.bank_name || '-' }}·{{ item.account_no_last4 || '-' }}</td>
+              <td>{{ item.direction }}</td>
+              <td :class="item.direction === 'expense' ? 'expense-amount' : 'income-amount'">
+                {{ formatCurrency(item.amount) }}
+              </td>
+              <td>{{ item.counterparty_name || '-' }}</td>
+              <td>{{ item.summary || '-' }}</td>
+              <td>{{ item.category || '-' }}</td>
+              <td>
+                <span class="pill">{{ item.match_status }}</span>
+              </td>
+              <td>
+                <button class="text-button" type="button" @click="openDetail(item.id)">
+                  查看详情
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无流水。</p>
+      <div class="pagination-controls">
+        <span>第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页</span
+        ><label class="page-size-control"
+          >每页<select v-model.number="pageSize" @change="changePageSize">
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option></select
+          >条</label
+        ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+          上一页</button
         ><button
-          v-if="receiptPreview && receiptPreviewActionable"
-          v-permission="'receipt:import'"
-          class="primary-button"
-          :disabled="receiptLoading || receiptPreview.success_rows === 0"
+          class="ghost-button"
+          :disabled="page >= Math.ceil(total / pageSize)"
           type="button"
-          @click="confirmReceiptPreview"
+          @click="nextPage"
         >
-          确认导入
+          下一页
         </button>
-        <p class="meta import-hint">
-          回单号、交易日期、金额必填；填写交易流水号时必须匹配已导入流水，重复回单号自动跳过；影像文件在流水详情页逐条上传。
-        </p>
-      </article>
-      <article class="panel table-panel">
-        <div class="section-heading">
-          <div>
-            <h3>流水明细</h3>
-            <span class="meta">服务端分页，支持关键字、金额区间和日期筛选</span>
-          </div>
-          <div class="action-group">
-            <button
-              v-permission="'transaction:export'"
-              class="ghost-button"
-              type="button"
-              @click="exportFile('csv')"
-            >
-              导出 CSV</button
-            ><button
-              v-permission="'transaction:export'"
-              class="ghost-button"
-              type="button"
-              @click="exportFile('xlsx')"
-            >
-              导出 Excel
-            </button>
-          </div>
-        </div>
-        <div class="filter-bar">
-          <label
-            >关键字<input
-              v-model.trim="filterKeyword"
-              placeholder="流水号/对方户名/摘要/合同编号/项目名称"
-          /></label>
-          <label>金额下限<input v-model.trim="filterAmountMin" type="number" step="0.01" /></label>
-          <label>金额上限<input v-model.trim="filterAmountMax" type="number" step="0.01" /></label>
-          <label>开始日期<input v-model="filterDateFrom" type="date" /></label>
-          <label>结束日期<input v-model="filterDateTo" type="date" /></label>
-          <button class="small-primary-button" type="button" @click="applyFilters">查询</button>
-          <button class="ghost-button" type="button" @click="resetFilters">重置</button>
-        </div>
-        <div v-if="selected.length" class="filter-bar">
-          <span class="meta">已选 {{ selected.length }} 条</span>
-          <label>分类<input v-model.trim="batchCategory" placeholder="如：客户回款" /></label>
-          <label>用途<input v-model.trim="batchPurpose" placeholder="选填" /></label>
-          <button
-            v-permission="'transaction:import'"
-            class="small-primary-button"
-            :disabled="batchLoading"
-            type="button"
-            @click="batchClassify"
-          >
-            批量分类</button
-          ><label>解除原因<input v-model.trim="batchReason" placeholder="必填" /></label>
-          <button
-            v-permission="'transaction:import'"
-            class="ghost-button"
-            :disabled="batchLoading"
-            type="button"
-            @click="batchUnlink"
-          >
-            批量解除关联
-          </button>
-        </div>
-        <div v-if="transactions.length" class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>选择</th>
-                <th>交易日期</th>
-                <th>银行/账户</th>
-                <th>方向</th>
-                <th>金额</th>
-                <th>对方户名</th>
-                <th>摘要</th>
-                <th>分类</th>
-                <th>状态</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in transactions" :key="item.id">
-                <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
-                <td>{{ item.transaction_date }}</td>
-                <td>{{ item.bank_name || '-' }}·{{ item.account_no_last4 || '-' }}</td>
-                <td>{{ item.direction }}</td>
-                <td :class="item.direction === 'expense' ? 'expense-amount' : 'income-amount'">
-                  {{ formatCurrency(item.amount) }}
-                </td>
-                <td>{{ item.counterparty_name || '-' }}</td>
-                <td>{{ item.summary || '-' }}</td>
-                <td>{{ item.category || '-' }}</td>
-                <td>
-                  <span class="pill">{{ item.match_status }}</span>
-                </td>
-                <td>
-                  <button
-                    class="text-button"
-                    type="button"
-                    @click="router.push(`/transactions/${item.id}`)"
-                  >
-                    查看详情
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="empty-state">暂无流水。</p>
-        <div class="pagination-controls">
-          <span>第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页</span
-          ><label class="page-size-control"
-            >每页<select v-model.number="pageSize" @change="changePageSize">
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option></select
-            >条</label
-          ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
-            上一页</button
-          ><button
-            class="ghost-button"
-            :disabled="page >= Math.ceil(total / pageSize)"
-            type="button"
-            @click="nextPage"
-          >
-            下一页
-          </button>
-        </div>
-      </article>
-    </section>
+      </div>
+    </article>
+    <ModalPanel v-if="detailId !== null" title="流水详情" @close="closeDetail">
+      <TransactionDetail :id="detailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeDetail">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

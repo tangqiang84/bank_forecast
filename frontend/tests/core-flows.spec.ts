@@ -180,9 +180,8 @@ test('导入预览后确认入账', async ({ page }) => {
   await page.getByRole('link', { name: '银行流水' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
-  const statementPanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '导入流水', exact: true }),
-  })
+  await page.getByRole('button', { name: '导入流水' }).click()
+  const statementPanel = page.getByRole('dialog', { name: '导入流水' })
   await statementPanel.locator('input[type="file"]').setInputFiles({
     name: 'statement.csv',
     mimeType: 'text/csv',
@@ -195,9 +194,10 @@ test('导入预览后确认入账', async ({ page }) => {
   await expect(page.getByText('有效 2')).toBeVisible()
   await expect(page.getByText('失败 1')).toBeVisible()
 
-  await page.getByRole('button', { name: '确认入账' }).click()
-  await expect(page.getByText('已确认入账。')).toBeVisible()
+  await statementPanel.getByRole('button', { name: '确认入账' }).click()
+  await expect(statementPanel.getByText('已确认入账。')).toBeVisible()
   expect(confirmRequested).toBe(true)
+  await expect(statementPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
 function matchResult(id: number, transactionNo: string, status: string) {
@@ -272,13 +272,20 @@ test('匹配结果确认与拒绝', async ({ page }) => {
 
   const confirmRow = page.locator('tr', { hasText: 'TXN-9001' })
   await confirmRow.getByRole('button', { name: '确认组' }).click()
+  const confirmDialog = page.getByRole('dialog', { name: '确认匹配组' })
+  await confirmDialog.getByRole('button', { name: '取消' }).click()
+  expect(confirmRequested).toBe(false)
+  await confirmRow.getByRole('button', { name: '确认组' }).click()
+  await confirmDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByText('匹配组已确认，应收和流水状态已更新。')).toBeVisible()
   expect(confirmRequested).toBe(true)
   await expect(confirmRow.locator('.pill')).toHaveText('confirmed')
 
   const rejectRow = page.locator('tr', { hasText: 'TXN-9002' })
-  page.once('dialog', (dialog) => void dialog.accept('人工复核后拒绝'))
   await rejectRow.getByRole('button', { name: '拒绝组' }).click()
+  const rejectDialog = page.getByRole('dialog', { name: '拒绝匹配组' })
+  await rejectDialog.getByLabel('拒绝原因').fill('人工复核后拒绝')
+  await rejectDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByText('匹配组已拒绝。')).toBeVisible()
   expect(rejectReason).toBe('人工复核后拒绝')
   await expect(rejectRow.locator('.pill')).toHaveText('rejected')
@@ -342,15 +349,20 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await expect(row.getByText('未知收款待确认')).toBeVisible()
   await expect(row.locator('.pill')).toHaveText('new')
 
-  const answers = ['已联系客户确认回款时间', '客户已回款，处理完成']
-  page.on('dialog', (dialog) => void dialog.accept(answers.shift() ?? '人工处理记录'))
-
   await row.getByRole('button', { name: '备注' }).click()
-  await expect(page.getByText('异常事项操作已完成。')).toBeVisible()
+  const commentDialog = page.getByRole('dialog', { name: '备注：EXC-0001' })
+  await commentDialog.getByLabel('处理说明').fill('已联系客户确认回款时间')
+  await commentDialog.getByRole('button', { name: '确认', exact: true }).click()
+  await expect(commentDialog.getByText('异常事项操作已完成。')).toBeVisible()
   expect(commentText).toBe('已联系客户确认回款时间')
+  await commentDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
   await row.getByRole('button', { name: '处理完成' }).click()
+  const resolveDialog = page.getByRole('dialog', { name: '处理完成：EXC-0001' })
+  await resolveDialog.getByLabel('处理说明').fill('客户已回款，处理完成')
+  await resolveDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect.poll(() => resolveText).toBe('客户已回款，处理完成')
+  await resolveDialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(row.locator('.pill')).toHaveText('resolved')
   await expect(row.getByRole('button', { name: '关闭' })).toBeVisible()
 })
@@ -398,21 +410,26 @@ test('生成报表并下载 CSV', async ({ page }) => {
   await page.getByRole('link', { name: '报表中心' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
 
-  await page.getByRole('button', { name: '生成报表' }).click()
-  await expect(page.getByText('报表已生成。')).toBeVisible()
+  await page.getByRole('button', { name: '生成报告' }).click()
+  const genDialog = page.getByRole('dialog', { name: '生成报告' })
+  await genDialog.getByRole('button', { name: '生成报表' }).click()
+  await expect(genDialog.getByText('报表已生成。')).toBeVisible()
   expect(createBody.report_type).toBe('monthly')
   expect(String((createBody.params_json as Record<string, string>)?.month ?? '')).toMatch(
     /^\d{4}-\d{2}$/,
   )
+  await genDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
-  const row = page.locator('tr', { hasText: '月报' })
+  await page.getByRole('button', { name: '报表任务' }).click()
+  const taskDialog = page.getByRole('dialog', { name: '报表任务' })
+  const row = taskDialog.locator('tr', { hasText: '月报' })
   await expect(row.locator('.pill')).toHaveText('success')
 
   const downloadPromise = page.waitForEvent('download')
   await row.getByRole('button', { name: '下载 CSV' }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe('monthly-2026-09.csv')
-  await expect(page.getByText('报表 CSV 已导出。')).toBeVisible()
+  await expect(taskDialog.getByText('报表 CSV 已导出。')).toBeVisible()
 })
 
 const failedJob = {
@@ -656,11 +673,13 @@ test('财务对账展示跨月时间差和财务记录科目', async ({ page }) 
   await login(page)
   await page.getByRole('link', { name: '财务对账' }).click()
   await expect(page.getByRole('heading', { name: '银行账 / 财务账对账' })).toBeVisible()
-  await expect(page.getByText('跨月时间差/在途：FR-601')).toBeVisible()
-  await expect(page.getByText('应收账款').first()).toBeVisible()
+  await page.getByRole('button', { name: '对账', exact: true }).click()
+  const reconDialog = page.getByRole('dialog', { name: '银行账 / 财务账对账' })
+  await expect(reconDialog.getByText('跨月时间差/在途：FR-601')).toBeVisible()
+  await expect(reconDialog.getByText('应收账款').first()).toBeVisible()
 
-  await page.getByRole('button', { name: '运行对账' }).click()
-  await expect(page.getByText(/多对多匹配 1 组，跨月时间差 1 条/)).toBeVisible()
+  await reconDialog.getByRole('button', { name: '运行对账' }).click()
+  await expect(reconDialog.getByText(/多对多匹配 1 组，跨月时间差 1 条/)).toBeVisible()
   expect(runRequested).toBe(true)
 })
 
@@ -896,21 +915,29 @@ test('生成周报并下载 Excel 与打印预览', async ({ page }) => {
   await login(page)
   await page.getByRole('link', { name: '报表中心' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
-  await expect(page.locator('td', { hasText: '周报' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '最新周报' })).toBeVisible()
+  await expect(page.getByText('资金周报').first()).toBeVisible()
 
-  await page.locator('select').first().selectOption('weekly')
-  await page.getByLabel('周内任意日期').fill('2026-09-10')
-  await page.getByRole('button', { name: '生成报表' }).click()
-  await expect(page.getByText('报表已生成。')).toBeVisible()
+  await page.getByRole('button', { name: '生成报告' }).click()
+  const genDialog = page.getByRole('dialog', { name: '生成报告' })
+  await genDialog.locator('select').first().selectOption('weekly')
+  await genDialog.getByLabel('周内任意日期').fill('2026-09-10')
+  await genDialog.getByRole('button', { name: '生成报表' }).click()
+  await expect(genDialog.getByText('报表已生成。')).toBeVisible()
   expect(createBody).toMatchObject({
     report_type: 'weekly',
     params_json: { week: '2026-09-10' },
   })
+  await genDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await page.getByRole('button', { name: '报表任务' }).click()
+  const taskDialog = page.getByRole('dialog', { name: '报表任务' })
+  await expect(taskDialog.locator('td', { hasText: '周报' })).toBeVisible()
 
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: '下载 Excel' }).click()
+  await taskDialog.getByRole('button', { name: '下载 Excel' }).click()
   expect((await download).suggestedFilename()).toBe('weekly-cash-report-20260907-20260913.xlsx')
-  await expect(page.getByRole('button', { name: '打印/PDF' })).toBeVisible()
+  await expect(taskDialog.getByRole('button', { name: '打印/PDF' })).toBeVisible()
 })
 
 test('项目负责人筛选与详情付款事实/资金时间线', async ({ page }) => {
@@ -1089,22 +1116,30 @@ test('系统管理新建用户与角色权限编辑', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '用户、角色与数据范围' })).toBeVisible()
   await expect(page.getByText('admin01')).toBeVisible()
 
-  await page.getByLabel('登录名').fill('cashier02')
-  await page.getByLabel('姓名').fill('出纳乙')
-  await page.getByLabel('密码').fill('Passw0rd!23')
-  await page.getByLabel('角色').selectOption('CASHIER')
   await page.getByRole('button', { name: '新建用户' }).click()
-  await expect(page.getByText('用户 cashier02 已创建。')).toBeVisible()
+  const userDialog = page.getByRole('dialog', { name: '新建用户' })
+  await userDialog.getByLabel('登录名').fill('cashier02')
+  await userDialog.getByLabel('姓名').fill('出纳乙')
+  await userDialog.getByLabel('密码').fill('Passw0rd!23')
+  await userDialog.getByLabel('角色').selectOption('CASHIER')
+  await userDialog.getByRole('button', { name: '确认新建' }).click()
+  await expect(userDialog.getByText('用户 cashier02 已创建。')).toBeVisible()
   expect(createBody).toMatchObject({ login_name: 'cashier02', role_codes: ['CASHIER'] })
+  await expect(userDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
+  await userDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByRole('button', { name: '编辑权限' }).click()
-  await expect(page.getByRole('heading', { name: '编辑角色权限：出纳资金专员' })).toBeVisible()
-  await page.getByLabel(/下载报表/).check()
-  await page.getByRole('button', { name: '保存权限' }).click()
-  await expect(page.getByText('角色 出纳资金专员 的权限已更新。')).toBeVisible()
+  const roleDialog = page.getByRole('dialog', { name: '编辑角色权限：出纳资金专员' })
+  await expect(
+    roleDialog.getByRole('heading', { name: '编辑角色权限：出纳资金专员' }),
+  ).toBeVisible()
+  await roleDialog.getByLabel(/下载报表/).check()
+  await roleDialog.getByRole('button', { name: '保存权限' }).click()
+  await expect(roleDialog.getByText('角色 出纳资金专员 的权限已更新。')).toBeVisible()
   expect(permissionBody).toMatchObject({
     permission_codes: ['dashboard:view', 'report:download'],
   })
+  await expect(roleDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
 test('银行接入配置新建、模板字典与连接测试', async ({ page }) => {
@@ -1200,22 +1235,23 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
 
   await login(page)
   await page.getByRole('link', { name: '银行账户' }).click()
-  await expect(page.getByRole('heading', { name: '银行接入配置' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '银行模板字典' })).toBeVisible()
-  await expect(page.getByText('中国银行（BOC）')).toBeVisible()
 
-  const connectionPanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '银行接入配置', exact: true }),
-  })
-  await connectionPanel.getByLabel('银行编码').fill('BOC')
-  await connectionPanel.getByLabel('银行名称').fill('中国银行')
-  await connectionPanel.getByRole('button', { name: '新建接入配置' }).click()
-  await expect(page.getByText('接入配置已保存。')).toBeVisible()
+  await page.getByRole('button', { name: '银行模板字典' }).click()
+  const templateDialog = page.getByRole('dialog', { name: '银行模板字典' })
+  await expect(templateDialog.getByText('中国银行（BOC）')).toBeVisible()
+  await templateDialog.getByRole('button', { name: '关闭弹层' }).click()
+
+  await page.getByRole('button', { name: '银行接入配置' }).click()
+  const connectionDialog = page.getByRole('dialog', { name: '银行接入配置' })
+  await connectionDialog.getByLabel('银行编码').fill('BOC')
+  await connectionDialog.getByLabel('银行名称').fill('中国银行')
+  await connectionDialog.getByRole('button', { name: '新建接入配置' }).click()
+  await expect(connectionDialog.getByText('接入配置已保存。')).toBeVisible()
   expect(createBody).toMatchObject({ bank_code: 'BOC', bank_name: '中国银行' })
+  await expect(connectionDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 
-  await page.getByText('选择样本').first().click()
-  await page
-    .locator('article', { hasText: '银行接入配置' })
+  await connectionDialog.getByText('选择样本').first().click()
+  await connectionDialog
     .locator('input[type="file"]')
     .first()
     .setInputFiles({
@@ -1223,7 +1259,7 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
       mimeType: 'text/csv',
       buffer: Buffer.from('交易日期,金额\n2026-09-01,100.00\n'),
     })
-  await page.getByRole('button', { name: '连接测试' }).click()
-  await expect(page.getByText(/连接测试成功/)).toBeVisible()
+  await connectionDialog.getByRole('button', { name: '连接测试' }).click()
+  await expect(connectionDialog.getByText(/连接测试成功/)).toBeVisible()
   expect(tested).toBe(true)
 })

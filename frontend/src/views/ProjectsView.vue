@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import ModalPanel from '../components/ModalPanel.vue'
+import ProjectDetail from '../components/ProjectDetail.vue'
 import {
   batchUpdateProjectStatus,
   loadProjectRiskRules,
@@ -21,7 +22,6 @@ import {
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const rows = ref<Project[]>([])
@@ -48,6 +48,55 @@ const total = ref(0)
 const error = ref('')
 const message = ref('')
 const edit = ref<Project | null>(null)
+const editDone = ref(false)
+const importModalOpen = ref(false)
+const importDone = ref(false)
+const rulesModalOpen = ref(false)
+const ruleDone = ref(false)
+const projectDetailId = ref<number | null>(null)
+const anyModalOpen = computed(
+  () =>
+    importModalOpen.value ||
+    rulesModalOpen.value ||
+    edit.value !== null ||
+    projectDetailId.value !== null,
+)
+
+function openImportModal() {
+  file.value = null
+  preview.value = null
+  retryJson.value = ''
+  message.value = ''
+  importDone.value = false
+  importModalOpen.value = true
+}
+
+function closeImportModal() {
+  importModalOpen.value = false
+}
+
+function openRulesModal() {
+  message.value = ''
+  ruleDone.value = false
+  rulesModalOpen.value = true
+}
+
+function closeRulesModal() {
+  rulesModalOpen.value = false
+}
+
+function openProject(id: number) {
+  projectDetailId.value = id
+}
+
+function closeProject() {
+  projectDetailId.value = null
+}
+
+function closeEdit() {
+  edit.value = null
+  editDone.value = false
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   try {
@@ -58,7 +107,9 @@ async function load() {
         session.user.value.tenant_id,
         page.value,
         pageSize.value,
-        { project_manager: managerFilter.value },
+        {
+          project_manager: managerFilter.value,
+        },
       ),
       loadProjectRiskRules(base, session.token.value, session.user.value.tenant_id),
     ])
@@ -71,6 +122,8 @@ async function load() {
 }
 function begin(item: Project) {
   edit.value = { ...item }
+  editDone.value = false
+  message.value = ''
 }
 function choose(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -115,6 +168,7 @@ async function confirmPreview() {
       )
     ).data
     message.value = '导入已确认，项目清单已更新。'
+    importDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认导入失败'
@@ -174,7 +228,7 @@ async function saveEdit() {
       remark: edit.value.remark,
     })
     message.value = '项目已更新。'
-    edit.value = null
+    editDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '项目更新失败'
@@ -213,6 +267,7 @@ async function saveRule(rule: ProjectRiskRule) {
       },
     )
     message.value = `风险规则 ${rule.rule_code} 已保存。`
+    ruleDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '风险规则保存失败'
@@ -243,133 +298,16 @@ onMounted(() => {
       <div>
         <p class="eyebrow">项目资金</p>
         <h2>项目资金与风险</h2>
-        <p class="lead">查看项目回款健康度，编辑项目责任信息，并维护风险规则阈值。</p>
+        <p class="lead">查看项目回款健康度；导入项目、风险规则维护、项目编辑与详情通过弹层操作。</p>
       </div>
       <span class="meta">共 {{ total }} 个项目</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
-    <article class="panel workflow-panel">
-      <h3>导入项目</h3>
-      <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
-      <p v-if="file" class="meta">已选择：{{ file.name }}</p>
-      <button
-        v-permission="'project:import'"
-        class="primary-button"
-        :disabled="importLoading"
-        type="button"
-        @click="startPreview"
-      >
-        {{ importLoading ? '处理中...' : '预览导入' }}
-      </button>
-      <div v-if="preview" class="import-summary">
-        <strong>任务 #{{ preview.job_id }}</strong
-        ><span>有效 {{ preview.success_rows }}</span
-        ><span>失败 {{ preview.failed_rows }}</span
-        ><span>跳过 {{ preview.skipped_rows }}</span
-        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
-          >打开任务详情</RouterLink
-        >
-      </div>
-      <template v-if="preview && previewActionable && preview.failed_rows">
-        <label
-          >失败行修正 JSON<textarea
-            v-model="retryJson"
-            rows="5"
-            :placeholder="retryPlaceholder(preview.preview_rows)"
-          />
-        </label>
-        <button
-          v-permission="'project:import'"
-          class="ghost-button"
-          type="button"
-          @click="retryErrors"
-        >
-          重新校验失败行
-        </button>
-      </template>
-      <button
-        v-if="preview && previewActionable"
-        v-permission="'project:import'"
-        class="primary-button"
-        :disabled="importLoading || preview.success_rows === 0"
-        type="button"
-        @click="confirmPreview"
-      >
-        确认导入
-      </button>
-      <p class="meta import-hint">
-        模板字段：项目编号、项目名称、客户名称、项目负责人、项目状态、开始/交付/验收日期、备注；同一项目编号重复导入时自动跳过。
-      </p>
-    </article>
-    <article v-if="preview" class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>导入预览行</h3>
-          <span class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</span>
-        </div>
-      </div>
-      <div v-if="preview.preview_rows.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>行号</th>
-              <th>项目编号</th>
-              <th>项目名称</th>
-              <th>客户</th>
-              <th>负责人</th>
-              <th>状态</th>
-              <th>开始日期</th>
-              <th>行状态</th>
-              <th>错误原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in preview.preview_rows" :key="row.id">
-              <td>{{ row.row_no }}</td>
-              <td>{{ row.payload?.project_no || '-' }}</td>
-              <td>{{ row.payload?.project_name || '-' }}</td>
-              <td>{{ row.payload?.customer_name || '-' }}</td>
-              <td>{{ row.payload?.project_manager || '-' }}</td>
-              <td>{{ row.payload?.project_status || '-' }}</td>
-              <td>{{ row.payload?.start_date || '-' }}</td>
-              <td>
-                <span class="pill">{{ row.status }}</span>
-              </td>
-              <td>{{ row.error_message || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">本次预览没有可展示的行。</p>
-    </article>
-    <article v-if="edit" class="panel inline-edit-form">
-      <h3>编辑项目</h3>
-      <label>项目名称<input v-model.trim="edit.project_name" /></label
-      ><label>客户名称<input v-model.trim="edit.customer_name" /></label
-      ><label>负责人<input v-model.trim="edit.project_manager" /></label
-      ><label
-        >状态<select v-model="edit.project_status">
-          <option value="active">active</option>
-          <option value="paused">paused</option>
-          <option value="completed">completed</option>
-          <option value="cancelled">cancelled</option>
-        </select></label
-      ><label>开始日期<input v-model="edit.start_date" type="date" /></label
-      ><label>交付日期<input v-model="edit.delivery_date" type="date" /></label
-      ><label>验收日期<input v-model="edit.acceptance_date" type="date" /></label
-      ><label>备注<input v-model.trim="edit.remark" /></label>
-      <div class="action-group">
-        <button
-          v-permission="'project:manage'"
-          class="primary-button"
-          type="button"
-          @click="saveEdit"
-        >
-          保存项目</button
-        ><button class="ghost-button" type="button" @click="edit = null">取消</button>
-      </div>
-    </article>
+    <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openImportModal">导入项目</button>
+      <button class="ghost-button" type="button" @click="openRulesModal">项目风险规则</button>
+    </div>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>
@@ -458,11 +396,7 @@ onMounted(() => {
                     @click="begin(item)"
                   >
                     编辑</button
-                  ><button
-                    class="text-button"
-                    type="button"
-                    @click="router.push(`/projects/${item.id}`)"
-                  >
+                  ><button class="text-button" type="button" @click="openProject(item.id)">
                     详情
                   </button>
                 </div>
@@ -471,7 +405,9 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
-      <p v-else class="empty-state">暂无项目数据，请先在上方导入项目 CSV 或从合同导入带入项目。</p>
+      <p v-else class="empty-state">
+        暂无项目数据，请通过上方「导入项目」按钮导入 CSV 或从合同导入带入项目。
+      </p>
       <div class="pagination-controls">
         <span
           >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
@@ -494,13 +430,105 @@ onMounted(() => {
         </button>
       </div>
     </article>
-    <article class="panel risk-rule-editor">
-      <div class="section-heading">
-        <div>
-          <h3>项目风险规则</h3>
-          <span class="meta">规则引擎计算项目健康度，保存后作用于后续项目汇总</span>
-        </div>
+
+    <ModalPanel v-if="importModalOpen" title="导入项目" @close="closeImportModal">
+      <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
+      <p v-if="file" class="meta">已选择：{{ file.name }}</p>
+      <button
+        v-permission="'project:import'"
+        class="primary-button"
+        :disabled="importLoading"
+        type="button"
+        @click="startPreview"
+      >
+        {{ importLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <div v-if="preview" class="import-summary">
+        <strong>任务 #{{ preview.job_id }}</strong
+        ><span>有效 {{ preview.success_rows }}</span
+        ><span>失败 {{ preview.failed_rows }}</span
+        ><span>跳过 {{ preview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
+          >打开任务详情</RouterLink
+        >
       </div>
+      <template v-if="preview && previewActionable && preview.failed_rows">
+        <label
+          >失败行修正 JSON<textarea
+            v-model="retryJson"
+            rows="5"
+            :placeholder="retryPlaceholder(preview.preview_rows)"
+          />
+        </label>
+        <button
+          v-permission="'project:import'"
+          class="ghost-button"
+          type="button"
+          @click="retryErrors"
+        >
+          重新校验失败行
+        </button>
+      </template>
+      <button
+        v-if="preview && previewActionable"
+        v-permission="'project:import'"
+        class="primary-button"
+        :disabled="importLoading || preview.success_rows === 0"
+        type="button"
+        @click="confirmPreview"
+      >
+        确认导入
+      </button>
+      <template v-if="preview">
+        <h3>导入预览行</h3>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <div v-if="preview.preview_rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>行号</th>
+                <th>项目编号</th>
+                <th>项目名称</th>
+                <th>客户</th>
+                <th>负责人</th>
+                <th>状态</th>
+                <th>开始日期</th>
+                <th>行状态</th>
+                <th>错误原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in preview.preview_rows" :key="row.id">
+                <td>{{ row.row_no }}</td>
+                <td>{{ row.payload?.project_no || '-' }}</td>
+                <td>{{ row.payload?.project_name || '-' }}</td>
+                <td>{{ row.payload?.customer_name || '-' }}</td>
+                <td>{{ row.payload?.project_manager || '-' }}</td>
+                <td>{{ row.payload?.project_status || '-' }}</td>
+                <td>{{ row.payload?.start_date || '-' }}</td>
+                <td>
+                  <span class="pill">{{ row.status }}</span>
+                </td>
+                <td>{{ row.error_message || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">本次预览没有可展示的行。</p>
+      </template>
+      <p class="meta import-hint">
+        模板字段：项目编号、项目名称、客户名称、项目负责人、项目状态、开始/交付/验收日期、备注；同一项目编号重复导入时自动跳过。
+      </p>
+      <template #footer>
+        <button v-if="importDone" class="primary-button" type="button" @click="closeImportModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="rulesModalOpen" title="项目风险规则" @close="closeRulesModal">
+      <p class="meta">规则引擎计算项目健康度，保存后作用于后续项目汇总</p>
       <div v-for="rule in rules" v-if="rules.length" :key="rule.rule_code" class="rule-row">
         <strong>{{ rule.rule_code }}</strong
         ><label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label
@@ -516,6 +544,52 @@ onMounted(() => {
         </button>
       </div>
       <p v-else class="empty-state">暂无风险规则。</p>
-    </article>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="ruleDone" class="primary-button" type="button" @click="closeRulesModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="edit" title="编辑项目" @close="closeEdit">
+      <label>项目名称<input v-model.trim="edit.project_name" /></label
+      ><label>客户名称<input v-model.trim="edit.customer_name" /></label
+      ><label>负责人<input v-model.trim="edit.project_manager" /></label
+      ><label
+        >状态<select v-model="edit.project_status">
+          <option value="active">active</option>
+          <option value="paused">paused</option>
+          <option value="completed">completed</option>
+          <option value="cancelled">cancelled</option>
+        </select></label
+      ><label>开始日期<input v-model="edit.start_date" type="date" /></label
+      ><label>交付日期<input v-model="edit.delivery_date" type="date" /></label
+      ><label>验收日期<input v-model="edit.acceptance_date" type="date" /></label
+      ><label>备注<input v-model.trim="edit.remark" /></label>
+      <div class="action-group">
+        <button
+          v-permission="'project:manage'"
+          class="primary-button"
+          type="button"
+          @click="saveEdit"
+        >
+          保存项目</button
+        ><button class="ghost-button" type="button" @click="closeEdit">取消</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="editDone" class="primary-button" type="button" @click="closeEdit">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="projectDetailId !== null" title="项目详情" @close="closeProject">
+      <ProjectDetail :id="projectDetailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeProject">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

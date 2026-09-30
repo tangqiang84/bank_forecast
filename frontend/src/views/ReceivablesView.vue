@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import ContractDetail from '../components/ContractDetail.vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import {
   previewContracts,
   loadReceivables,
@@ -17,7 +18,6 @@ import {
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const rows = ref<Receivable[]>([])
@@ -41,6 +41,30 @@ const total = ref(0)
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
+const importModalOpen = ref(false)
+const importDone = ref(false)
+const contractDetailId = ref<number | null>(null)
+
+function openImportModal() {
+  file.value = null
+  preview.value = null
+  retryJson.value = ''
+  message.value = ''
+  importDone.value = false
+  importModalOpen.value = true
+}
+
+function closeImportModal() {
+  importModalOpen.value = false
+}
+
+function openContract(id: number) {
+  contractDetailId.value = id
+}
+
+function closeContract() {
+  contractDetailId.value = null
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
@@ -103,6 +127,7 @@ async function confirmPreview() {
       )
     ).data
     message.value = '导入已确认，应收计划已更新。'
+    importDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认导入失败'
@@ -171,117 +196,26 @@ onMounted(() => {
       <div>
         <p class="eyebrow">合同应收</p>
         <h2>合同回款计划</h2>
-        <p class="lead">导入合同主数据或独立应收计划，核对节点后运行回款匹配。</p>
+        <p class="lead">应收计划核对与回款匹配；合同 / 应收计划导入通过右上方入口在弹层中操作。</p>
       </div>
       <span class="meta">共 {{ total }} 个节点</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
-    <section class="grid receivable-layout">
-      <article class="panel workflow-panel">
-        <h3>导入合同 / 应收计划</h3>
-        <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
-        <p v-if="file" class="meta">已选择：{{ file.name }}</p>
-        <button
-          v-permission="'contract:import'"
-          class="primary-button"
-          :disabled="importLoading"
-          type="button"
-          @click="startPreview"
-        >
-          {{ importLoading ? '处理中...' : '预览导入' }}
-        </button>
-        <div v-if="preview" class="import-summary">
-          <strong>任务 #{{ preview.job_id }}</strong
-          ><span>有效 {{ preview.success_rows }}</span
-          ><span>失败 {{ preview.failed_rows }}</span
-          ><span>跳过 {{ preview.skipped_rows }}</span
-          ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
-            >打开任务详情</RouterLink
-          >
-        </div>
-        <template v-if="preview && previewActionable && preview.failed_rows">
-          <label
-            >失败行修正 JSON<textarea
-              v-model="retryJson"
-              rows="5"
-              :placeholder="retryPlaceholder(preview.preview_rows)"
-            />
-          </label>
-          <button
-            v-permission="'contract:import'"
-            class="ghost-button"
-            type="button"
-            @click="retryErrors"
-          >
-            重新校验失败行
-          </button>
-        </template>
-        <button
-          v-if="preview && previewActionable"
-          v-permission="'contract:import'"
-          class="primary-button"
-          :disabled="importLoading || preview.success_rows === 0"
-          type="button"
-          @click="confirmPreview"
-        >
-          确认导入
-        </button>
-        <p class="meta import-hint">
-          支持合同主数据、合同应收计划和独立应收计划模板；先预览校验，修正失败行后再确认导入。
-        </p>
-        <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
-          运行回款匹配
-        </button>
-      </article>
-      <article class="panel">
-        <h3>业务口径</h3>
-        <div class="detail-section">
-          <p>未到期、按期足额、逾期未收、部分收款和超额收款由系统根据应收日期及已收金额计算。</p>
-          <p class="meta">低置信度结果进入匹配结果页人工确认，未知收款进入异常事项页处理。</p>
-        </div>
-      </article>
-    </section>
-    <article v-if="preview" class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>导入预览行</h3>
-          <span class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</span>
-        </div>
+    <p v-if="message && !importModalOpen" class="feedback-text">{{ message }}</p>
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openImportModal">
+        导入合同 / 应收计划
+      </button>
+      <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
+        运行回款匹配
+      </button>
+    </div>
+    <article class="panel">
+      <h3>业务口径</h3>
+      <div class="detail-section">
+        <p>未到期、按期足额、逾期未收、部分收款和超额收款由系统根据应收日期及已收金额计算。</p>
+        <p class="meta">低置信度结果进入匹配结果页人工确认，未知收款进入异常事项页处理。</p>
       </div>
-      <div v-if="preview.preview_rows.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>行号</th>
-              <th>合同编号</th>
-              <th>合同名称</th>
-              <th>客户</th>
-              <th>节点</th>
-              <th>应收日期</th>
-              <th>计划金额</th>
-              <th>状态</th>
-              <th>错误原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in preview.preview_rows" :key="row.id">
-              <td>{{ row.row_no }}</td>
-              <td>{{ row.payload?.contract_no || '-' }}</td>
-              <td>{{ row.payload?.contract_name || '-' }}</td>
-              <td>{{ row.payload?.customer_name || '-' }}</td>
-              <td>{{ row.payload?.node_name || '-' }}</td>
-              <td>{{ row.payload?.due_date || '-' }}</td>
-              <td>{{ row.payload?.plan_amount || '-' }}</td>
-              <td>
-                <span class="pill">{{ row.status }}</span>
-              </td>
-              <td>{{ row.error_message || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">本次预览没有可展示的行。</p>
     </article>
     <article class="panel table-panel">
       <div class="section-heading">
@@ -319,11 +253,7 @@ onMounted(() => {
                 <span class="pill">{{ item.status }}</span>
               </td>
               <td>
-                <button
-                  class="text-button"
-                  type="button"
-                  @click="router.push(`/contracts/${item.contract_id}`)"
-                >
+                <button class="text-button" type="button" @click="openContract(item.contract_id)">
                   查看合同
                 </button>
               </td>
@@ -354,5 +284,108 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <ModalPanel v-if="importModalOpen" title="导入合同 / 应收计划" @close="closeImportModal">
+      <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>
+      <p v-if="file" class="meta">已选择：{{ file.name }}</p>
+      <button
+        v-permission="'contract:import'"
+        class="primary-button"
+        :disabled="importLoading"
+        type="button"
+        @click="startPreview"
+      >
+        {{ importLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <div v-if="preview" class="import-summary">
+        <strong>任务 #{{ preview.job_id }}</strong
+        ><span>有效 {{ preview.success_rows }}</span
+        ><span>失败 {{ preview.failed_rows }}</span
+        ><span>跳过 {{ preview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`"
+          >打开任务详情</RouterLink
+        >
+      </div>
+      <template v-if="preview && previewActionable && preview.failed_rows">
+        <label
+          >失败行修正 JSON<textarea
+            v-model="retryJson"
+            rows="5"
+            :placeholder="retryPlaceholder(preview.preview_rows)"
+          />
+        </label>
+        <button
+          v-permission="'contract:import'"
+          class="ghost-button"
+          type="button"
+          @click="retryErrors"
+        >
+          重新校验失败行
+        </button>
+      </template>
+      <button
+        v-if="preview && previewActionable"
+        v-permission="'contract:import'"
+        class="primary-button"
+        :disabled="importLoading || preview.success_rows === 0"
+        type="button"
+        @click="confirmPreview"
+      >
+        确认导入
+      </button>
+      <template v-if="preview">
+        <h3>导入预览行</h3>
+        <p class="meta">任务 #{{ preview.job_id }} · {{ preview.status }}</p>
+        <div v-if="preview.preview_rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>行号</th>
+                <th>合同编号</th>
+                <th>合同名称</th>
+                <th>客户</th>
+                <th>节点</th>
+                <th>应收日期</th>
+                <th>计划金额</th>
+                <th>状态</th>
+                <th>错误原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in preview.preview_rows" :key="row.id">
+                <td>{{ row.row_no }}</td>
+                <td>{{ row.payload?.contract_no || '-' }}</td>
+                <td>{{ row.payload?.contract_name || '-' }}</td>
+                <td>{{ row.payload?.customer_name || '-' }}</td>
+                <td>{{ row.payload?.node_name || '-' }}</td>
+                <td>{{ row.payload?.due_date || '-' }}</td>
+                <td>{{ row.payload?.plan_amount || '-' }}</td>
+                <td>
+                  <span class="pill">{{ row.status }}</span>
+                </td>
+                <td>{{ row.error_message || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">本次预览没有可展示的行。</p>
+      </template>
+      <p class="meta import-hint">
+        支持合同主数据、合同应收计划和独立应收计划模板；先预览校验，修正失败行后再确认导入。
+      </p>
+      <template #footer>
+        <button v-if="importDone" class="primary-button" type="button" @click="closeImportModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="contractDetailId !== null" title="合同详情" @close="closeContract">
+      <ContractDetail :id="contractDetailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeContract">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

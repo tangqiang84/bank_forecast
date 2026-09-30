@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import { loadProjects, type Project } from '../services/projects'
 import {
   createSystemUser,
@@ -25,9 +26,17 @@ const permissions = ref<PermissionPoint[]>([])
 const projects = ref<Project[]>([])
 const selectedRole = ref<SystemRole | null>(null)
 const roleChecked = ref<string[]>([])
+const roleDone = ref(false)
 const scopeUser = ref<SystemUser | null>(null)
 const scopeChecked = ref<number[]>([])
+const scopeDone = ref(false)
 const newUser = ref({ login_name: '', display_name: '', password: '', role_codes: [] as string[] })
+const userModalOpen = ref(false)
+const userDone = ref(false)
+const resetTarget = ref<SystemUser | null>(null)
+const resetPwd = ref('')
+const resetDone = ref(false)
+const disableTarget = ref<SystemUser | null>(null)
 const loading = ref(false)
 const error = ref('')
 const message = ref('')
@@ -40,6 +49,66 @@ const permissionsByModule = computed(() => {
   }
   return grouped
 })
+
+const anyModalOpen = computed(
+  () =>
+    userModalOpen.value ||
+    resetTarget.value !== null ||
+    disableTarget.value !== null ||
+    scopeUser.value !== null ||
+    selectedRole.value !== null,
+)
+
+function openUserModal() {
+  newUser.value = { login_name: '', display_name: '', password: '', role_codes: [] }
+  message.value = ''
+  userDone.value = false
+  userModalOpen.value = true
+}
+
+function closeUserModal() {
+  userModalOpen.value = false
+}
+
+function openReset(user: SystemUser) {
+  resetTarget.value = user
+  resetPwd.value = ''
+  resetDone.value = false
+  message.value = ''
+}
+
+function closeReset() {
+  resetTarget.value = null
+}
+
+function askDisable(user: SystemUser) {
+  if (user.status === 'active') {
+    disableTarget.value = user
+    return
+  }
+  toggleStatus(user)
+}
+
+function cancelDisable() {
+  disableTarget.value = null
+}
+
+async function confirmDisable() {
+  const target = disableTarget.value
+  if (!target) return
+  disableTarget.value = null
+  await toggleStatus(target)
+}
+
+function closeScope() {
+  scopeUser.value = null
+  scopeDone.value = false
+}
+
+function closeRole() {
+  selectedRole.value = null
+  roleDone.value = false
+}
 
 async function load() {
   if (!session.user.value || !session.token.value) return
@@ -74,6 +143,7 @@ async function createUser() {
     await createSystemUser(base, session.token.value, session.user.value.tenant_id, newUser.value)
     message.value = `用户 ${newUser.value.login_name} 已创建。`
     newUser.value = { login_name: '', display_name: '', password: '', role_codes: [] }
+    userDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '用户创建失败'
@@ -94,19 +164,22 @@ async function toggleStatus(user: SystemUser) {
   }
 }
 
-async function resetPassword(user: SystemUser) {
-  if (!session.user.value || !session.token.value) return
-  const password = window.prompt(`为用户 ${user.login_name} 设置新密码（至少 8 位）`)
-  if (!password?.trim()) return
+async function resetPassword() {
+  if (!session.user.value || !session.token.value || !resetTarget.value) return
+  if (!resetPwd.value.trim()) {
+    message.value = '请输入新密码'
+    return
+  }
   try {
     await resetUserPassword(
       base,
       session.token.value,
       session.user.value.tenant_id,
-      user.id,
-      password.trim(),
+      resetTarget.value.id,
+      resetPwd.value.trim(),
     )
-    message.value = `用户 ${user.login_name} 密码已重置。`
+    message.value = `用户 ${resetTarget.value.login_name} 密码已重置。`
+    resetDone.value = true
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '密码重置失败'
   }
@@ -118,6 +191,8 @@ async function editScope(user: SystemUser) {
     scopeChecked.value = (
       await loadUserProjectScope(base, session.token.value, session.user.value.tenant_id, user.id)
     ).data
+    scopeDone.value = false
+    message.value = ''
     scopeUser.value = user
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '项目范围加载失败'
@@ -135,7 +210,7 @@ async function saveScope() {
       scopeChecked.value,
     )
     message.value = `用户 ${scopeUser.value.login_name} 的项目数据范围已更新。`
-    scopeUser.value = null
+    scopeDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '项目范围保存失败'
@@ -145,6 +220,8 @@ async function saveScope() {
 function editRole(role: SystemRole) {
   selectedRole.value = role
   roleChecked.value = [...(role.permission_codes ?? [])]
+  roleDone.value = false
+  message.value = ''
 }
 
 async function saveRolePermissions() {
@@ -158,7 +235,7 @@ async function saveRolePermissions() {
       roleChecked.value,
     )
     message.value = `角色 ${selectedRole.value.role_name} 的权限已更新。`
-    selectedRole.value = null
+    roleDone.value = true
     await load()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '角色权限保存失败'
@@ -179,7 +256,7 @@ onMounted(load)
       <span class="meta">共 {{ users.length }} 个用户</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
+    <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
 
     <article class="panel table-panel">
       <div class="section-heading">
@@ -187,22 +264,12 @@ onMounted(load)
           <h3>用户管理</h3>
           <span class="meta">新建用户、分配角色、启停和重置密码</span>
         </div>
-        <span v-if="loading" class="meta">加载中...</span>
-      </div>
-      <div class="filter-bar">
-        <label>登录名<input v-model.trim="newUser.login_name" placeholder="如 cashier02" /></label>
-        <label>姓名<input v-model.trim="newUser.display_name" placeholder="如 出纳乙" /></label>
-        <label
-          >密码<input v-model="newUser.password" type="password" placeholder="至少 8 位"
-        /></label>
-        <label
-          >角色<select v-model="newUser.role_codes" multiple>
-            <option v-for="role in roles" :key="role.role_code" :value="role.role_code">
-              {{ role.role_name }}
-            </option>
-          </select></label
-        >
-        <button class="small-primary-button" type="button" @click="createUser">新建用户</button>
+        <div class="action-group">
+          <span v-if="loading" class="meta">加载中...</span>
+          <button class="small-primary-button" type="button" @click="openUserModal">
+            新建用户
+          </button>
+        </div>
       </div>
       <div v-if="users.length" class="table-scroll">
         <table>
@@ -229,9 +296,9 @@ onMounted(load)
               <td>{{ user.last_login_at || '-' }}</td>
               <td>
                 <div class="action-group">
-                  <button class="text-button" type="button" @click="toggleStatus(user)">
+                  <button class="text-button" type="button" @click="askDisable(user)">
                     {{ user.status === 'active' ? '停用' : '启用' }}</button
-                  ><button class="text-button" type="button" @click="resetPassword(user)">
+                  ><button class="text-button" type="button" @click="openReset(user)">
                     重置密码</button
                   ><button class="text-button" type="button" @click="editScope(user)">
                     项目范围
@@ -243,21 +310,6 @@ onMounted(load)
         </table>
       </div>
       <p v-else class="empty-state">暂无用户。</p>
-    </article>
-
-    <article v-if="scopeUser" class="panel inline-edit-form">
-      <h3>项目数据范围：{{ scopeUser.display_name }}</h3>
-      <p class="meta">仅对 BUSINESS 角色用户生效；勾选该用户可见的项目。</p>
-      <div class="mini-list">
-        <label v-for="project in projects" :key="project.id" class="checkbox-label">
-          <input v-model="scopeChecked" type="checkbox" :value="project.id" />
-          {{ project.project_no }} · {{ project.project_name }}
-        </label>
-      </div>
-      <div class="action-group">
-        <button class="primary-button" type="button" @click="saveScope">保存范围</button
-        ><button class="ghost-button" type="button" @click="scopeUser = null">取消</button>
-      </div>
     </article>
 
     <article class="panel table-panel">
@@ -291,8 +343,87 @@ onMounted(load)
       </div>
     </article>
 
-    <article v-if="selectedRole" class="panel inline-edit-form">
-      <h3>编辑角色权限：{{ selectedRole.role_name }}</h3>
+    <ModalPanel v-if="userModalOpen" title="新建用户" @close="closeUserModal">
+      <label>登录名<input v-model.trim="newUser.login_name" placeholder="如 cashier02" /></label>
+      <label>姓名<input v-model.trim="newUser.display_name" placeholder="如 出纳乙" /></label>
+      <label
+        >密码<input v-model="newUser.password" type="password" placeholder="至少 8 位"
+      /></label>
+      <label
+        >角色<select v-model="newUser.role_codes" multiple>
+          <option v-for="role in roles" :key="role.role_code" :value="role.role_code">
+            {{ role.role_name }}
+          </option>
+        </select></label
+      >
+      <div class="action-group">
+        <button class="primary-button" type="button" @click="createUser">确认新建</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="userDone" class="primary-button" type="button" @click="closeUserModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="resetTarget"
+      :title="`重置密码：${resetTarget.login_name}`"
+      @close="closeReset"
+    >
+      <label>新密码<input v-model="resetPwd" type="password" placeholder="至少 8 位" /></label>
+      <div class="action-group">
+        <button class="primary-button" type="button" @click="resetPassword">确认重置</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="resetDone" class="primary-button" type="button" @click="closeReset">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="disableTarget"
+      :title="`停用用户：${disableTarget.login_name}`"
+      @close="cancelDisable"
+    >
+      <p>停用后该用户将无法登录系统，是否继续？</p>
+      <template #footer>
+        <button class="ghost-button" type="button" @click="cancelDisable">取消</button>
+        <button class="small-danger-button" type="button" @click="confirmDisable">确认</button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="scopeUser"
+      :title="`项目数据范围：${scopeUser.display_name}`"
+      @close="closeScope"
+    >
+      <p class="meta">仅对 BUSINESS 角色用户生效；勾选该用户可见的项目。</p>
+      <div class="mini-list">
+        <label v-for="project in projects" :key="project.id" class="checkbox-label">
+          <input v-model="scopeChecked" type="checkbox" :value="project.id" />
+          {{ project.project_no }} · {{ project.project_name }}
+        </label>
+      </div>
+      <div class="action-group">
+        <button class="primary-button" type="button" @click="saveScope">保存范围</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="scopeDone" class="primary-button" type="button" @click="closeScope">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="selectedRole"
+      :title="`编辑角色权限：${selectedRole.role_name}`"
+      @close="closeRole"
+    >
       <div v-for="(points, module) in permissionsByModule" :key="module" class="detail-section">
         <h3>{{ module }}</h3>
         <label v-for="point in points" :key="point.permission_code" class="checkbox-label">
@@ -301,9 +432,14 @@ onMounted(load)
         </label>
       </div>
       <div class="action-group">
-        <button class="primary-button" type="button" @click="saveRolePermissions">保存权限</button
-        ><button class="ghost-button" type="button" @click="selectedRole = null">取消</button>
+        <button class="primary-button" type="button" @click="saveRolePermissions">保存权限</button>
       </div>
-    </article>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="roleDone" class="primary-button" type="button" @click="closeRole">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
   </section>
 </template>

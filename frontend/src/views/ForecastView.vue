@@ -148,38 +148,44 @@ onMounted(load)
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>
-    <section class="grid forecast-layout">
+    <section class="grid">
       <article class="panel workflow-panel">
         <h3>生成预测</h3>
-        <label>预测天数<input v-model.number="horizon" min="1" max="90" type="number" /></label
-        ><label>历史窗口<input v-model.number="windowSize" min="1" max="30" type="number" /></label
-        ><button
-          v-permission="'forecast:run'"
-          class="primary-button"
-          :disabled="loading"
-          type="button"
-          @click="run"
-        >
-          {{ loading ? '处理中...' : '生成预测' }}</button
-        ><button
-          v-if="forecast.job?.status === 'failed'"
-          v-permission="'forecast:run'"
-          class="ghost-button"
-          :disabled="loading"
-          type="button"
-          @click="retryJob"
-        >
-          重试失败任务</button
-        ><button
-          v-if="forecast.job?.status === 'success'"
-          v-permission="'forecast:run'"
-          class="ghost-button"
-          :disabled="loading"
-          type="button"
-          @click="backfill"
-        >
-          回填实际金额
-        </button>
+        <div class="filter-bar">
+          <label>预测天数<input v-model.number="horizon" min="1" max="90" type="number" /></label>
+          <label
+            >历史窗口<input v-model.number="windowSize" min="1" max="30" type="number"
+          /></label>
+        </div>
+        <div class="action-group">
+          <button
+            v-permission="'forecast:run'"
+            class="primary-button"
+            :disabled="loading"
+            type="button"
+            @click="run"
+          >
+            {{ loading ? '处理中...' : '生成预测' }}</button
+          ><button
+            v-if="forecast.job?.status === 'failed'"
+            v-permission="'forecast:run'"
+            class="ghost-button"
+            :disabled="loading"
+            type="button"
+            @click="retryJob"
+          >
+            重试失败任务</button
+          ><button
+            v-if="forecast.job?.status === 'success'"
+            v-permission="'forecast:run'"
+            class="ghost-button"
+            :disabled="loading"
+            type="button"
+            @click="backfill"
+          >
+            回填实际金额
+          </button>
+        </div>
         <section class="detail-section">
           <h3>模型版本</h3>
           <div v-for="model in models" :key="model.version" class="mini-row">

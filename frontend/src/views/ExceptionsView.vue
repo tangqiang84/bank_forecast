@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import ExceptionDetail from '../components/ExceptionDetail.vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import {
   assignException,
   batchExceptionAction,
@@ -17,7 +18,6 @@ import {
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const rows = ref<ExceptionCase[]>([])
@@ -41,6 +41,48 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 const message = ref('')
+const exceptionDetailId = ref<number | null>(null)
+const assignTarget = ref<ExceptionCase | null>(null)
+const actionTarget = ref<{
+  item: ExceptionCase
+  name: 'comment' | 'resolve' | 'false_positive'
+} | null>(null)
+const actionText = ref('')
+const actionDone = ref(false)
+
+const actionTitles = { comment: '备注', resolve: '处理完成', false_positive: '标记误报' } as const
+
+const anyModalOpen = computed(
+  () =>
+    exceptionDetailId.value !== null || assignTarget.value !== null || actionTarget.value !== null,
+)
+
+function openException(id: number) {
+  exceptionDetailId.value = id
+}
+
+function closeExceptionDetail() {
+  exceptionDetailId.value = null
+}
+
+function askAssign(item: ExceptionCase) {
+  assignTarget.value = item
+}
+
+function cancelAssign() {
+  assignTarget.value = null
+}
+
+function askTextAction(item: ExceptionCase, name: 'comment' | 'resolve' | 'false_positive') {
+  actionTarget.value = { item, name }
+  actionText.value = '人工处理记录'
+  actionDone.value = false
+  message.value = ''
+}
+
+function cancelTextAction() {
+  actionTarget.value = null
+}
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
@@ -85,51 +127,54 @@ async function matching() {
     message.value = cause instanceof Error ? cause.message : '匹配运行失败'
   }
 }
-async function action(
-  item: ExceptionCase,
-  name: 'assign' | 'comment' | 'resolve' | 'close' | 'false_positive',
-) {
-  if (!session.user.value || !session.token.value) return
-  const text =
-    name === 'assign'
-      ? ''
-      : window.prompt('请输入处理说明', name === 'close' ? '已完成异常闭环' : '人工处理记录')
-  if (name !== 'assign' && !text?.trim()) return
+async function confirmAssign() {
+  if (!session.user.value || !session.token.value || !assignTarget.value) return
+  const target = assignTarget.value
   try {
-    if (name === 'assign')
-      await assignException(base, session.token.value, session.user.value.tenant_id, item.id)
+    await assignException(base, session.token.value, session.user.value.tenant_id, target.id)
+    message.value = '异常事项操作已完成。'
+    assignTarget.value = null
+    await load()
+    await loadStats()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
+  }
+}
+async function submitTextAction() {
+  if (!session.user.value || !session.token.value || !actionTarget.value) return
+  const text = actionText.value.trim()
+  if (!text) {
+    message.value = '请输入处理说明'
+    return
+  }
+  const { item, name } = actionTarget.value
+  try {
     if (name === 'comment')
-      await commentException(
-        base,
-        session.token.value,
-        session.user.value.tenant_id,
-        item.id,
-        text!.trim(),
-      )
+      await commentException(base, session.token.value, session.user.value.tenant_id, item.id, text)
     if (name === 'resolve')
-      await resolveException(
-        base,
-        session.token.value,
-        session.user.value.tenant_id,
-        item.id,
-        text!.trim(),
-      )
-    if (name === 'close')
-      await closeException(
-        base,
-        session.token.value,
-        session.user.value.tenant_id,
-        item.id,
-        text!.trim(),
-      )
+      await resolveException(base, session.token.value, session.user.value.tenant_id, item.id, text)
     if (name === 'false_positive')
       await markFalsePositive(
         base,
         session.token.value,
         session.user.value.tenant_id,
         item.id,
-        text!.trim(),
+        text,
       )
+    message.value = '异常事项操作已完成。'
+    actionDone.value = true
+    await load()
+    await loadStats()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
+  }
+}
+async function close(item: ExceptionCase) {
+  if (!session.user.value || !session.token.value) return
+  const text = window.prompt('请输入处理说明', '已完成异常闭环')
+  if (!text?.trim()) return
+  try {
+    await closeException(base, session.token.value, session.user.value.tenant_id, item.id, text)
     message.value = '异常事项操作已完成。'
     await load()
     await loadStats()
@@ -197,36 +242,9 @@ onMounted(() => {
           按责任人和状态推进应收未收、未知收款、财务差异及账户闲置异常，保留备注、附件和闭环记录。
         </p>
       </div>
-      <div class="action-group">
-        <button
-          v-permission="'matching:run'"
-          class="primary-button"
-          :disabled="loading"
-          type="button"
-          @click="matching"
-        >
-          运行回款匹配</button
-        ><button
-          v-permission="'exception:handle'"
-          class="small-danger-button"
-          :disabled="!selected.length"
-          type="button"
-          @click="batch('false_positive')"
-        >
-          批量标记误报</button
-        ><button
-          v-permission="'exception:assign'"
-          class="small-primary-button"
-          :disabled="!selected.length"
-          type="button"
-          @click="batch('assign')"
-        >
-          批量分派
-        </button>
-      </div>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message" class="feedback-text">{{ message }}</p>
+    <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
     <article v-if="stats" class="panel">
       <div class="summary-grid compact-summary">
         <div>
@@ -261,6 +279,33 @@ onMounted(() => {
         </div>
       </div>
     </article>
+    <div class="page-toolbar">
+      <button
+        v-permission="'matching:run'"
+        class="ghost-button"
+        :disabled="loading"
+        type="button"
+        @click="matching"
+      >
+        运行回款匹配</button
+      ><button
+        v-permission="'exception:handle'"
+        class="ghost-button"
+        :disabled="!selected.length"
+        type="button"
+        @click="batch('false_positive')"
+      >
+        批量标记误报</button
+      ><button
+        v-permission="'exception:assign'"
+        class="ghost-button"
+        :disabled="!selected.length"
+        type="button"
+        @click="batch('assign')"
+      >
+        批量分派
+      </button>
+    </div>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>
@@ -311,12 +356,7 @@ onMounted(() => {
           <div class="exception-actions">
             <span class="pill">{{ item.stage || item.status }}</span>
             <div class="action-group">
-              <button
-                class="text-button"
-                type="button"
-                @click="router.push(`/exceptions/${item.id}`)"
-              >
-                详情</button
+              <button class="text-button" type="button" @click="openException(item.id)">详情</button
               ><button
                 v-if="
                   !item.owner_user_id &&
@@ -326,7 +366,7 @@ onMounted(() => {
                 v-permission="'exception:assign'"
                 class="small-primary-button"
                 type="button"
-                @click="action(item, 'assign')"
+                @click="askAssign(item)"
               >
                 分派给我</button
               ><button
@@ -334,7 +374,7 @@ onMounted(() => {
                 v-permission="'exception:handle'"
                 class="text-button"
                 type="button"
-                @click="action(item, 'comment')"
+                @click="askTextAction(item, 'comment')"
               >
                 备注</button
               ><button
@@ -342,7 +382,7 @@ onMounted(() => {
                 v-permission="'exception:handle'"
                 class="small-primary-button"
                 type="button"
-                @click="action(item, 'resolve')"
+                @click="askTextAction(item, 'resolve')"
               >
                 处理完成</button
               ><button
@@ -350,7 +390,7 @@ onMounted(() => {
                 v-permission="'exception:handle'"
                 class="small-danger-button"
                 type="button"
-                @click="action(item, 'close')"
+                @click="close(item)"
               >
                 关闭</button
               ><button
@@ -358,7 +398,7 @@ onMounted(() => {
                 v-permission="'exception:handle'"
                 class="small-danger-button"
                 type="button"
-                @click="action(item, 'false_positive')"
+                @click="askTextAction(item, 'false_positive')"
               >
                 标记误报</button
               ><label
@@ -394,5 +434,46 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <ModalPanel
+      v-if="assignTarget"
+      :title="`分派给我：${assignTarget.exception_no}`"
+      @close="cancelAssign"
+    >
+      <p>确认将该异常事项分派给自己处理？</p>
+      <template #footer>
+        <button class="ghost-button" type="button" @click="cancelAssign">取消</button>
+        <button class="primary-button" type="button" @click="confirmAssign">确认</button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="actionTarget"
+      :title="`${actionTitles[actionTarget.name]}：${actionTarget.item.exception_no}`"
+      @close="cancelTextAction"
+    >
+      <label>处理说明<textarea v-model="actionText" rows="3" placeholder="请输入处理说明" /></label>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <template v-if="actionDone">
+          <button class="primary-button" type="button" @click="cancelTextAction">关闭</button>
+        </template>
+        <template v-else>
+          <button class="ghost-button" type="button" @click="cancelTextAction">取消</button>
+          <button class="primary-button" type="button" @click="submitTextAction">确认</button>
+        </template>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel
+      v-if="exceptionDetailId !== null"
+      title="异常事项详情"
+      @close="closeExceptionDetail"
+    >
+      <ExceptionDetail :id="exceptionDetailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeExceptionDetail">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>
