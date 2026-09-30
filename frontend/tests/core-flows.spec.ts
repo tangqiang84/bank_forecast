@@ -265,6 +265,32 @@ test('匹配结果确认与拒绝', async ({ page }) => {
       body: ok(matchResult(502, 'TXN-9002', 'rejected')),
     })
   })
+  await page.route('**/api/v1/matching/results/501', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        result: matchResult(501, 'TXN-9001', 'confirmed'),
+        transaction: {
+          transaction_no: 'TXN-9001',
+          transaction_date: '2026-09-01',
+          direction: 'income',
+          amount: '100.00',
+        },
+        allocations: [],
+        audit_logs: [
+          {
+            id: 1,
+            action: 'CONFIRM_MATCH_RESULT',
+            detail: '人工确认',
+            created_at: '2026-09-29 10:00:00',
+          },
+        ],
+        exceptions: [],
+      }),
+    })
+  })
 
   await login(page)
   await page.getByRole('link', { name: '匹配结果' }).click()
@@ -289,6 +315,15 @@ test('匹配结果确认与拒绝', async ({ page }) => {
   await expect(page.getByText('匹配组已拒绝。')).toBeVisible()
   expect(rejectReason).toBe('人工复核后拒绝')
   await expect(rejectRow.locator('.pill')).toHaveText('已拒绝')
+
+  await confirmRow.getByRole('button', { name: '详情' }).click()
+  const matchDialog = page.getByRole('dialog', { name: '匹配结果详情' })
+  await expect(matchDialog.getByText('匹配理由')).toBeVisible()
+  await expect(matchDialog.getByText('对方户名与合同客户一致')).toBeVisible()
+  await expect(matchDialog.getByText('已确认').first()).toBeVisible()
+  await expect(matchDialog.getByText('处理时间轴')).toBeVisible()
+  await expect(matchDialog.getByText('确认匹配结果')).toBeVisible()
+  await matchDialog.getByRole('button', { name: '关闭', exact: true }).click()
 })
 
 function exceptionCase(status: string) {
@@ -340,6 +375,26 @@ test('异常事项备注并处理完成', async ({ page }) => {
       body: ok(exceptionCase('resolved')),
     })
   })
+  await page.route('**/api/v1/matching/exceptions/601', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        exception: exceptionCase(state.resolved ? 'resolved' : 'new'),
+        logs: [
+          {
+            id: 1,
+            action_type: 'COMMENT',
+            action_text: '已联系客户确认回款时间',
+            action_at: '2026-09-29 11:00:00',
+          },
+        ],
+        attachments: [],
+        source: [],
+      }),
+    })
+  })
 
   await login(page)
   await page.getByRole('link', { name: '异常事项' }).click()
@@ -365,6 +420,17 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await resolveDialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(row.locator('.pill')).toHaveText('已解决')
   await expect(row.getByRole('button', { name: '关闭' })).toBeVisible()
+
+  await row.getByRole('button', { name: '详情' }).click()
+  const exceptionDialog = page.getByRole('dialog', { name: '异常事项详情' })
+  await expect(exceptionDialog.getByText('标题')).toBeVisible()
+  await expect(exceptionDialog.getByText('严重级别')).toBeVisible()
+  await expect(exceptionDialog.getByText('处理时间轴')).toBeVisible()
+  await expect(
+    exceptionDialog.locator('.timeline').getByText('备注', { exact: true }),
+  ).toBeVisible()
+  await expect(exceptionDialog.getByText('已联系客户确认回款时间')).toBeVisible()
+  await exceptionDialog.getByRole('button', { name: '关闭', exact: true }).click()
 })
 
 const reportTask = {
@@ -1029,12 +1095,18 @@ test('项目负责人筛选与详情付款事实/资金时间线', async ({ page
   await expect.poll(() => lastListUrl).toContain('project_manager')
 
   await page.getByRole('button', { name: '详情' }).click()
+  const projectDialog = page.getByRole('dialog', { name: '项目详情' })
   await expect(page.getByRole('heading', { name: '项目详情' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '付款事实' })).toBeVisible()
   await expect(page.getByText('供应商甲')).toBeVisible()
   await expect(page.getByRole('heading', { name: '资金时间线' })).toBeVisible()
   await expect(page.getByText('项目启动')).toBeVisible()
   await expect(page.getByText('应收节点：验收款')).toBeVisible()
+  await expect(projectDialog.getByText('项目经理')).toBeVisible()
+  await expect(projectDialog.getByText('项目状态')).toBeVisible()
+  await expect(projectDialog.getByText('进行中')).toBeVisible()
+  await expect(projectDialog.getByText('流出金额')).toBeVisible()
+  await expect(projectDialog.getByText('未收款')).toBeVisible()
 })
 
 test('系统管理新建用户与角色权限编辑', async ({ page }) => {
@@ -1232,6 +1304,26 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
       }),
     })
   })
+  await page.route('**/api/v1/bank-accounts/1', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        id: 1,
+        bank_code: 'ICBC',
+        bank_name: '工商银行',
+        account_name: '基本户',
+        account_no_last4: '1234',
+        currency: 'CNY',
+        status: 'active',
+        current_balance: '100.00',
+        last_transaction_at: null,
+        idle_days: null,
+        idle_level: null,
+      }),
+    })
+  })
 
   await login(page)
   await page.getByRole('link', { name: '银行账户' }).click()
@@ -1262,4 +1354,12 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
   await connectionDialog.getByRole('button', { name: '连接测试' }).click()
   await expect(connectionDialog.getByText(/连接测试成功/)).toBeVisible()
   expect(tested).toBe(true)
+  await connectionDialog.getByRole('button', { name: '关闭弹层' }).click()
+
+  await page.getByRole('button', { name: '详情', exact: true }).click()
+  const accountDialog = page.getByRole('dialog', { name: '账户详情' })
+  await expect(accountDialog.getByText('银行代码')).toBeVisible()
+  await expect(accountDialog.getByText('账号后四位')).toBeVisible()
+  await expect(accountDialog.getByText('当前余额')).toBeVisible()
+  await accountDialog.getByRole('button', { name: '关闭', exact: true }).click()
 })
