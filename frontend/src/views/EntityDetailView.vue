@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AccountDetail from '../components/AccountDetail.vue'
 import BusinessDetail from '../components/BusinessDetail.vue'
 import ContractDetail from '../components/ContractDetail.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
@@ -8,7 +9,6 @@ import ExceptionDetail from '../components/ExceptionDetail.vue'
 import MatchDetail from '../components/MatchDetail.vue'
 import ProjectDetail from '../components/ProjectDetail.vue'
 import TransactionDetail from '../components/TransactionDetail.vue'
-import { loadAccountDetail } from '../services/bank'
 import { loadReportDetail } from '../services/reports'
 import { apiBase, useSession } from '../session'
 type Kind = 'account' | 'transaction' | 'contract' | 'project' | 'match' | 'exception' | 'report'
@@ -30,7 +30,7 @@ const titles: Record<Kind, string> = {
 }
 async function load() {
   if (!session.user.value || !session.token.value || props.kind === 'transaction') return
-  if (['contract', 'project', 'match', 'exception'].includes(props.kind)) return
+  if (['account', 'contract', 'project', 'match', 'exception'].includes(props.kind)) return
   loading.value = true
   error.value = ''
   try {
@@ -38,11 +38,6 @@ async function load() {
     const token = session.token.value
     const tenant = session.user.value.tenant_id
     const id = Number(route.params.id)
-    if (props.kind === 'account')
-      data.value = (await loadAccountDetail(base, token, tenant, id)).data as Record<
-        string,
-        unknown
-      >
     if (props.kind === 'report')
       data.value = (await loadReportDetail(base, token, tenant, id)).data as Record<string, unknown>
   } catch (cause) {
@@ -64,7 +59,8 @@ onMounted(load)
       <RouterLink class="ghost-button" to="/dashboard">返回驾驶舱</RouterLink>
     </header>
     <DetailDrawer :title="titles[kind]" :loading="loading" :error="error" @close="router.back()"
-      ><TransactionDetail v-if="kind === 'transaction'" :id="Number(route.params.id)" />
+      ><AccountDetail v-if="kind === 'account'" :id="Number(route.params.id)" />
+      <TransactionDetail v-else-if="kind === 'transaction'" :id="Number(route.params.id)" />
       <ContractDetail v-else-if="kind === 'contract'" :id="Number(route.params.id)" />
       <ProjectDetail v-else-if="kind === 'project'" :id="Number(route.params.id)" />
       <MatchDetail v-else-if="kind === 'match'" :id="Number(route.params.id)" />

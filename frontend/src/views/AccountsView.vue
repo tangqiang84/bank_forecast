@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import AccountDetail from '../components/AccountDetail.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   closeBankAccount,
@@ -26,7 +26,6 @@ import {
 import { apiBase, useSession } from '../session'
 import { formatCurrency } from '../utils/number'
 
-const router = useRouter()
 const session = useSession()
 const base = apiBase()
 const accounts = ref<BankAccount[]>([])
@@ -73,6 +72,15 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.v
 
 type ModalName = 'import' | 'account' | 'connection' | 'template'
 const activeModal = ref<ModalName | null>(null)
+const accountDetailId = ref<number | null>(null)
+
+function openAccountDetail(id: number) {
+  accountDetailId.value = id
+}
+
+function closeAccountDetail() {
+  accountDetailId.value = null
+}
 const importDone = ref(false)
 const accountDone = ref(false)
 const connectionDone = ref(false)
@@ -436,11 +444,7 @@ onMounted(() => {
               </td>
               <td>
                 <div class="action-group">
-                  <button
-                    class="text-button"
-                    type="button"
-                    @click="router.push(`/accounts/${account.id}`)"
-                  >
+                  <button class="text-button" type="button" @click="openAccountDetail(account.id)">
                     详情</button
                   ><button
                     v-permission="'account:manage'"
@@ -710,6 +714,12 @@ onMounted(() => {
       </div>
       <template #footer>
         <button class="ghost-button" type="button" @click="closeModal">关闭</button>
+      </template>
+    </ModalPanel>
+    <ModalPanel v-if="accountDetailId !== null" title="账户详情" @close="closeAccountDetail">
+      <AccountDetail :id="accountDetailId" />
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeAccountDetail">关闭</button>
       </template>
     </ModalPanel>
   </section>
