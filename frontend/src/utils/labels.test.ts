@@ -278,6 +278,9 @@ describe('labels', () => {
     expect(auditActionLabel('APPLY_INDUSTRY_TEMPLATE')).toBe('应用行业模板')
     expect(auditActionLabel('ROLLBACK_PROJECT_RISK_RULE')).toBe('回滚风险规则')
     expect(auditActionLabel('UPDATE_RULE_CONFIG')).toBe('更新规则配置')
+    expect(auditActionLabel('CREATE_TEMPLATE_MAPPING')).toBe('新建模板映射')
+    expect(auditActionLabel('UPDATE_TEMPLATE_MAPPING')).toBe('更新模板映射')
+    expect(auditActionLabel('DELETE_TEMPLATE_MAPPING')).toBe('删除模板映射')
   })
 
   it('maps exception action_type codes used in the timeline', () => {

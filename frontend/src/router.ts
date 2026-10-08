@@ -18,6 +18,7 @@ import MatchingView from './views/MatchingView.vue'
 import ExceptionsView from './views/ExceptionsView.vue'
 import ReportsView from './views/ReportsView.vue'
 import RulesView from './views/RulesView.vue'
+import TemplatesView from './views/TemplatesView.vue'
 import SystemView from './views/SystemView.vue'
 
 const router = createRouter({
@@ -102,6 +103,12 @@ const router = createRouter({
           name: 'rules',
           component: RulesView,
           meta: { permission: 'project:rule' },
+        },
+        {
+          path: 'templates',
+          name: 'templates',
+          component: TemplatesView,
+          meta: { permission: 'template:manage' },
         },
         {
           path: 'system',

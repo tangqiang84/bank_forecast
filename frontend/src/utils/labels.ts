@@ -291,7 +291,7 @@ export function modelNameLabel(value: LabelValue): string {
   return fromMap(MODEL_NAME_LABELS, value)
 }
 
-// 与 backend `auditService.record(` 全部动作码一致（2026-09-30 核对，共 62 个）；
+// 与 backend `auditService.record(` 全部动作码一致（2026-10-08 核对，共 66 个）；
 // 末尾 ASSIGN/COMMENT/RESOLVE/CLOSE/FALSE_POSITIVE 为异常处理日志 exception_action_log.action_type。
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ACTIVATE_FORECAST_MODEL: '启用预测模型',
@@ -314,9 +314,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   CREATE_BANK_ACCOUNT: '新建银行账户',
   CREATE_BANK_CONNECTION: '新建接入配置',
   CREATE_REPORT: '生成报表',
+  CREATE_TEMPLATE_MAPPING: '新建模板映射',
   CREATE_USER: '新建用户',
   DELETE_BANK_CONNECTION: '删除接入配置',
   DELETE_EXCEPTION_ATTACHMENT: '删除异常附件',
+  DELETE_TEMPLATE_MAPPING: '删除模板映射',
   DOWNLOAD_EXCEPTION_ATTACHMENT: '下载异常附件',
   DOWNLOAD_REPORT: '下载报表',
   FALSE_POSITIVE_EXCEPTION: '标记误报',
@@ -353,6 +355,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   UPDATE_PROJECT_SCOPE: '更新项目数据范围',
   UPDATE_ROLE_PERMISSIONS: '更新角色权限',
   UPDATE_RULE_CONFIG: '更新规则配置',
+  UPDATE_TEMPLATE_MAPPING: '更新模板映射',
   UPDATE_USER: '更新用户',
   UPLOAD_EXCEPTION_ATTACHMENT: '上传异常附件',
   UPLOAD_RECEIPT_IMAGE: '上传回单影像',
@@ -492,6 +495,7 @@ export const FIELD_NAME_LABELS: Record<string, string> = {
   date_from: '开始日期',
   date_to: '结束日期',
   file_name: '文件名',
+  header: '源表头',
   error_message: '错误信息',
   finance_subject: '财务科目',
   match_group_id: '匹配组',

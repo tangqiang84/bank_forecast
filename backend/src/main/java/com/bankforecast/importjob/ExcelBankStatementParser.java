@@ -36,6 +36,11 @@ public class ExcelBankStatementParser {
   public ExcelBankStatementParser(ObjectMapper objectMapper) { this.objectMapper = objectMapper; }
 
   public ExcelParseResult parse(InputStream inputStream, int maxRows) {
+    return parse(inputStream, maxRows, Collections.<String, String>emptyMap());
+  }
+
+  /** aliases：租户级表头映射（归一化表头 → 标准字段），优先于内置别名。 */
+  public ExcelParseResult parse(InputStream inputStream, int maxRows, Map<String, String> aliases) {
     try {
       File temp = File.createTempFile("bank-statement-", ".xlsx");
       temp.deleteOnExit();
@@ -50,7 +55,7 @@ public class ExcelBankStatementParser {
         for (SheetRef sheet : sheets) {
           Document document = parseXml(readEntry(zip, sheet.path));
           String bankName = detectBank(sheet.name);
-          Header header = findHeader(document, sharedStrings);
+          Header header = findHeader(document, sharedStrings, aliases);
           if (header == null) {
             templates.add(template(sheet.name, bankName, "unsupported", "未找到交易日期和金额表头"));
             continue;
@@ -70,7 +75,7 @@ public class ExcelBankStatementParser {
             totalRows++;
             if (totalRows > maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
             int rowNo = rowIndex + 1;
-            if (isMetadataRow(raw) || isRepeatedHeader(raw) || isFooterRow(raw)) continue;
+            if (isMetadataRow(raw) || isRepeatedHeader(raw, aliases) || isFooterRow(raw)) continue;
             try { rows.add(toRow(rowNo, raw, bankName, sheet.name)); }
             catch (BusinessException ex) { errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw))); }
           }
@@ -106,7 +111,7 @@ public class ExcelBankStatementParser {
     } catch (Exception ex) { throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行原始字段保存失败"); }
   }
 
-  private Header findHeader(Document document, List<String> sharedStrings) {
+  private Header findHeader(Document document, List<String> sharedStrings, Map<String, String> aliases) {
     NodeList rowNodes = document.getElementsByTagNameNS(MAIN_NS, "row");
     for (int i = 0; i < rowNodes.getLength() && i <= 60; i++) {
       Element row = (Element) rowNodes.item(i);
@@ -114,7 +119,7 @@ public class ExcelBankStatementParser {
       NodeList cells = row.getElementsByTagNameNS(MAIN_NS, "c");
       for (int j = 0; j < cells.getLength(); j++) {
         Element cell = (Element) cells.item(j);
-        String key = canonicalHeader(cellText(cell, sharedStrings));
+        String key = canonicalHeader(cellText(cell, sharedStrings), aliases);
         if (!key.isEmpty()) indexes.put(key, columnIndex(cell.getAttribute("r")));
       }
       if (indexes.containsKey("transaction_date") && (indexes.containsKey("debit_amount") || indexes.containsKey("credit_amount"))) return new Header(parseInt(row.getAttribute("r"), i + 1) - 1, indexes);
@@ -178,14 +183,15 @@ public class ExcelBankStatementParser {
   private String textOf(Element element, String name) { NodeList nodes = element.getElementsByTagNameNS(MAIN_NS, name); return nodes.getLength() == 0 ? "" : nodes.item(0).getTextContent().trim(); }
   private int columnIndex(String reference) { int result = 0; for (int i = 0; i < reference.length() && Character.isLetter(reference.charAt(i)); i++) result = result * 26 + Character.toUpperCase(reference.charAt(i)) - 'A' + 1; return result - 1; }
   private int parseInt(String value, int fallback) { try { return Integer.parseInt(value); } catch (Exception ex) { return fallback; } }
-  public String canonicalHeader(String value) { String normalized = CsvImportSupport.normalizeHeader(value); if (normalized.contains("交易日期") || normalized.equals("交易日") || normalized.equals("日期") || normalized.equals("记账日期") || normalized.equals("起息日") || normalized.equals("入账日期")) return "transaction_date"; if (normalized.contains("凭证号") || normalized.contains("交易流水号") || normalized.equals("流水号")) return "transaction_no"; if (normalized.contains("借方金额") || normalized.contains("借方发生额") || normalized.contains("支出金额")) return "debit_amount"; if (normalized.contains("贷方金额") || normalized.contains("贷方发生额") || normalized.contains("收入金额")) return "credit_amount"; if (normalized.equals("余额") || normalized.contains("交易后余额")) return "balance_after"; if (normalized.contains("对方户名") || normalized.contains("对方名称") || normalized.equals("对手方")) return "counterparty_name"; if (normalized.contains("摘要") || normalized.contains("交易用途") || normalized.equals("用途") || normalized.contains("附言") || normalized.equals("备注")) return "summary"; if (normalized.contains("币种") || normalized.equals("currency")) return "currency"; return normalized; }
+  public String canonicalHeader(String value) { return canonicalHeader(value, Collections.<String, String>emptyMap()); }
+  private String canonicalHeader(String value, Map<String, String> aliases) { String normalized = CsvImportSupport.normalizeHeader(value); String override = aliases.get(normalized); if (override != null) return override; if (normalized.contains("交易日期") || normalized.equals("交易日") || normalized.equals("日期") || normalized.equals("记账日期") || normalized.equals("起息日") || normalized.equals("入账日期")) return "transaction_date"; if (normalized.contains("凭证号") || normalized.contains("交易流水号") || normalized.equals("流水号")) return "transaction_no"; if (normalized.contains("借方金额") || normalized.contains("借方发生额") || normalized.contains("支出金额")) return "debit_amount"; if (normalized.contains("贷方金额") || normalized.contains("贷方发生额") || normalized.contains("收入金额")) return "credit_amount"; if (normalized.equals("余额") || normalized.contains("交易后余额")) return "balance_after"; if (normalized.contains("对方户名") || normalized.contains("对方名称") || normalized.equals("对手方")) return "counterparty_name"; if (normalized.contains("摘要") || normalized.contains("交易用途") || normalized.equals("用途") || normalized.contains("附言") || normalized.equals("备注")) return "summary"; if (normalized.contains("币种") || normalized.equals("currency")) return "currency"; return normalized; }
   private String detectBank(String sheetName) { for (String bank : SUPPORTED_BANKS) if (sheetName != null && sheetName.contains(bank)) return bank; return null; }
   private Map<String, Object> template(String sheetName, String bankName, String status, String message) { Map<String, Object> item = new LinkedHashMap<>(); item.put("sheet_name", sheetName); item.put("bank_name", bankName); item.put("status", status); item.put("message", message); return item; }
   private String first(Map<String, String> raw, String... keys) { for (String key : keys) { String value = raw.get(key); if (value != null && !value.trim().isEmpty()) return value.trim(); } return null; }
   private String required(Map<String, String> raw, String key, int rowNo) { String value = raw.get(key); if (value == null || value.trim().isEmpty()) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 " + key + " 不能为空"); return value.trim(); }
   private BigDecimal decimalOrNull(String value, String key, int rowNo) { if (value == null || value.trim().isEmpty()) return null; try { return new BigDecimal(CsvImportSupport.normalizeAmount(value)); } catch (NumberFormatException ex) { throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 " + key + " 格式错误"); } }
   private LocalDate parseDate(String value, int rowNo) { try { return CsvImportSupport.parseFlexibleDate(value); } catch (DateTimeParseException ex) { throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行日期格式错误"); } }
-  private boolean isRepeatedHeader(Map<String, String> raw) { String date = raw.get("transaction_date"); return date != null && "transaction_date".equals(canonicalHeader(date)); }
+  private boolean isRepeatedHeader(Map<String, String> raw, Map<String, String> aliases) { String date = raw.get("transaction_date"); return date != null && "transaction_date".equals(canonicalHeader(date, aliases)); }
   private boolean isFooterRow(Map<String, String> raw) { String date = raw.get("transaction_date"); if (date == null) return false; String text = date.trim(); return "合计".equals(text) || "总计".equals(text) || "小计".equals(text); }
   private boolean isBlank(Map<String, String> raw) { for (String value : raw.values()) if (value != null && !value.trim().isEmpty()) return false; return true; }
   private boolean isMetadataRow(Map<String, String> raw) { String date = raw.get("transaction_date"); if (date == null || date.trim().isEmpty()) return false; if (first(raw, "debit_amount", "credit_amount") != null) return false; for (String key : new String[] {"transaction_no", "balance_after", "counterparty_name", "summary"}) if (first(raw, key) != null) return false; return !isDate(date); }

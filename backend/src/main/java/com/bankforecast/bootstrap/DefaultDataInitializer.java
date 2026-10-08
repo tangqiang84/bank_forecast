@@ -21,7 +21,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
 
   private static final List<String> ALL_PERMISSIONS = Arrays.asList(
       "dashboard:view",
-      "account:view", "account:manage", "account:scan",
+      "account:view", "account:manage", "account:scan", "template:manage",
       "transaction:view", "transaction:import", "transaction:export",
       "import:view",
       "contract:view", "contract:import",

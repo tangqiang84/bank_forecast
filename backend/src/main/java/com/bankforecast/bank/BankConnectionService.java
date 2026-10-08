@@ -28,19 +28,22 @@ public class BankConnectionService {
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
   private final BankTemplateCatalog templateCatalog;
+  private final BankTemplateMappingService templateMappingService;
   private final ExcelBankStatementParser excelParser;
   private final CsvBankStatementParser csvParser;
   private final int maxRows;
   private final long maxFileSize;
 
   public BankConnectionService(JdbcTemplate jdbcTemplate, AuditService auditService,
-      BankTemplateCatalog templateCatalog, ExcelBankStatementParser excelParser,
+      BankTemplateCatalog templateCatalog, BankTemplateMappingService templateMappingService,
+      ExcelBankStatementParser excelParser,
       CsvBankStatementParser csvParser,
       @Value("${bank-forecast.import.max-rows}") int maxRows,
       @Value("${bank-forecast.import.max-file-size-bytes}") long maxFileSize) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
     this.templateCatalog = templateCatalog;
+    this.templateMappingService = templateMappingService;
     this.excelParser = excelParser;
     this.csvParser = csvParser;
     this.maxRows = maxRows;
@@ -122,15 +125,16 @@ public class BankConnectionService {
     result.put("connection_id", id);
     result.put("bank_code", connection.get("bank_code"));
     try {
+      java.util.Map<String, String> aliases = templateMappingService.aliases(tenantId);
       if (fileName.endsWith(".xlsx")) {
-        ExcelBankStatementParser.ExcelParseResult parsed = excelParser.parse(open(file), maxRows);
+        ExcelBankStatementParser.ExcelParseResult parsed = excelParser.parse(open(file), maxRows, aliases);
         result.put("recognized_templates", parsed.getTemplates());
         result.put("parsed_rows", parsed.getRows().size());
         result.put("error_rows", parsed.getErrors().size());
         result.put("status", "success");
         result.put("message", "模板识别成功，解析出 " + parsed.getRows().size() + " 条流水");
       } else if (fileName.endsWith(".csv")) {
-        CsvParseResult<CsvBankStatementRow> parsed = csvParser.parse(open(file), maxRows);
+        CsvParseResult<CsvBankStatementRow> parsed = csvParser.parse(open(file), maxRows, aliases);
         result.put("parsed_rows", parsed.getRows().size());
         result.put("error_rows", parsed.getErrors().size());
         boolean success = !parsed.getRows().isEmpty();

@@ -2,6 +2,7 @@ package com.bankforecast.importjob;
 
 import com.bankforecast.audit.AuditService;
 import com.bankforecast.bank.BankAccountRepository;
+import com.bankforecast.bank.BankTemplateMappingService;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
@@ -34,6 +35,7 @@ public class ImportJobService {
   private final CsvBankStatementParser parser;
   private final ExcelBankStatementParser excelParser;
   private final BankAccountRepository bankAccountRepository;
+  private final BankTemplateMappingService templateMappingService;
   private final AuditService auditService;
   private final PermissionRepository permissionRepository;
   private final int maxRows;
@@ -42,7 +44,8 @@ public class ImportJobService {
   private final BigDecimal maxAmount;
 
   public ImportJobService(JdbcTemplate jdbcTemplate, CsvBankStatementParser parser, ExcelBankStatementParser excelParser,
-      BankAccountRepository bankAccountRepository, AuditService auditService, PermissionRepository permissionRepository,
+      BankAccountRepository bankAccountRepository, BankTemplateMappingService templateMappingService,
+      AuditService auditService, PermissionRepository permissionRepository,
       @Value("${bank-forecast.import.max-rows}") int maxRows,
       @Value("${bank-forecast.import.max-file-size-bytes}") long maxFileSize,
       @Value("${bank-forecast.import.max-date-range-days}") int maxDateRangeDays,
@@ -51,6 +54,7 @@ public class ImportJobService {
     this.parser = parser;
     this.excelParser = excelParser;
     this.bankAccountRepository = bankAccountRepository;
+    this.templateMappingService = templateMappingService;
     this.auditService = auditService;
     this.permissionRepository = permissionRepository;
     this.maxRows = maxRows;
@@ -83,7 +87,7 @@ public class ImportJobService {
     int skippedRows = 0;
     String errorMessage = null;
 
-    ParsedFile parsedFile = parseFile(file, lowerFileName);
+    ParsedFile parsedFile = parseFile(file, lowerFileName, templateMappingService.aliases(principal.getTenantId()));
     CsvParseResult<CsvBankStatementRow> parsed = parsedFile.result;
     List<Map<String, Object>> templates = parsedFile.templates;
     for (CsvRowError rowError : parsed.getErrors()) {
@@ -126,7 +130,7 @@ public class ImportJobService {
     AuthPrincipal principal = requireAuth();
     validateFile(principal, bankAccountId, file);
     String fileName = file.getOriginalFilename() == null ? "bank_statement.csv" : file.getOriginalFilename();
-    ParsedFile parsedFile = parseFile(file, fileName.toLowerCase());
+    ParsedFile parsedFile = parseFile(file, fileName.toLowerCase(), templateMappingService.aliases(principal.getTenantId()));
     Long jobId = createJob(principal.getTenantId(), fileName);
     int failedRows = 0;
     String errorMessage = null;
@@ -233,15 +237,15 @@ public class ImportJobService {
     return getPreview(jobId, principal.getTenantId());
   }
 
-  private ParsedFile parseFile(MultipartFile file, String lowerFileName) {
+  private ParsedFile parseFile(MultipartFile file, String lowerFileName, Map<String, String> aliases) {
     CsvParseResult<CsvBankStatementRow> parsed;
     List<Map<String, Object>> templates = new ArrayList<>();
     if (lowerFileName.endsWith(".xlsx")) {
-      ExcelBankStatementParser.ExcelParseResult excel = excelParser.parse(open(file), maxRows);
+      ExcelBankStatementParser.ExcelParseResult excel = excelParser.parse(open(file), maxRows, aliases);
       parsed = new CsvParseResult<>(excel.getRows(), excel.getErrors(), excel.getTotalRows());
       templates = excel.getTemplates();
     } else {
-      parsed = parser.parse(open(file), maxRows);
+      parsed = parser.parse(open(file), maxRows, aliases);
     }
     return new ParsedFile(parsed, templates);
   }

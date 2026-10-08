@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** P2-1 真实文件回放：六家银行仿真导出文件，覆盖列名变体、跨页表头、空行、日期格式、多币种和异常编码。 */
@@ -109,6 +111,18 @@ class BankFileReplayTest {
     assertEquals("客户午", result.getRows().get(0).getCounterpartyName());
     assertEquals("采购", result.getRows().get(1).getSummary());
     assertTrue(result.getRows().get(1).getRawJson().contains("\"currency\":\"HKD\""));
+  }
+
+  @Test
+  void tenantAliasOverridesBuiltinHeaderMapping() throws Exception {
+    Map<String, String> aliases = new HashMap<>();
+    aliases.put(CsvImportSupport.normalizeHeader("摘要"), "counterparty_name");
+
+    ExcelBankStatementParser.ExcelParseResult result = new ExcelBankStatementParser(objectMapper)
+        .parse(resource("replay-boc-column-variants.xlsx"), 1000, aliases);
+
+    assertEquals(3, result.getRows().size());
+    assertEquals("货款支付", result.getRows().get(0).getCounterpartyName());
   }
 
   private ExcelBankStatementParser.ExcelParseResult parseXlsx(String name) {

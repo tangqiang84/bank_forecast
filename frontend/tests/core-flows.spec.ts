@@ -35,6 +35,7 @@ const ALL_PERMISSIONS = [
   'receipt:import',
   'system:manage',
   'audit:view',
+  'template:manage',
 ]
 
 const EMPTY_PAGE = { items: [], page: 1, page_size: 20, total: 0 }
@@ -1362,4 +1363,99 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
   await expect(accountDialog.getByText('账号后四位')).toBeVisible()
   await expect(accountDialog.getByText('当前余额')).toBeVisible()
   await accountDialog.getByRole('button', { name: '关闭', exact: true }).click()
+})
+
+test('模板配置中心映射管理', async ({ page }) => {
+  let createdBody: Record<string, unknown> | null = null
+  const banks = [
+    ['BOC', '中国银行'],
+    ['ICBC', '工商银行'],
+    ['CGB', '广发银行'],
+    ['PAB', '平安银行'],
+    ['BOSC', '上海银行'],
+    ['SUZB', '苏州银行'],
+  ] as const
+  const templates = banks.map(([bank_code, bank_name]) => ({
+    bank_code,
+    bank_name,
+    format: 'xlsx/csv',
+    recognition: '工作表名称包含银行名称 + 表头归一化映射',
+    field_mappings: [
+      { header: '交易日期', field: 'transaction_date' },
+      { header: '流水号', field: 'transaction_no' },
+    ],
+  }))
+  const fields = [
+    { field: 'transaction_no', label: '流水号' },
+    { field: 'transaction_date', label: '交易日期' },
+    { field: 'direction', label: '收支方向' },
+    { field: 'amount', label: '交易金额' },
+    { field: 'debit_amount', label: '借方金额（支出）' },
+    { field: 'credit_amount', label: '贷方金额（收入）' },
+    { field: 'balance_after', label: '余额' },
+    { field: 'counterparty_name', label: '对方户名' },
+    { field: 'summary', label: '摘要' },
+    { field: 'currency', label: '币种' },
+  ]
+  const mappings = [
+    {
+      id: 2,
+      header: '交易金额(元)',
+      field: 'amount',
+      created_at: '2026-09-20 10:00:00',
+      updated_at: '2026-09-20 10:00:00',
+    },
+  ]
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-templates', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ templates, fields, mappings }),
+    }),
+  )
+  await page.route('**/api/v1/bank-templates/mappings', async (route) => {
+    createdBody = postBody(route)
+    mappings.unshift({
+      id: 3,
+      header: String(createdBody.header),
+      field: String(createdBody.field),
+      created_at: '2026-10-08 10:00:00',
+      updated_at: '2026-10-08 10:00:00',
+    })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(mappings[0]),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '模板配置' }).click()
+  await expect(page.getByRole('heading', { name: '银行模板与表头映射' })).toBeVisible()
+
+  const bankPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '内置银行模板', exact: true }),
+  })
+  await expect(bankPanel.locator('.mini-row')).toHaveCount(6)
+  await expect(bankPanel.getByText('中国银行（BOC）')).toBeVisible()
+  await expect(bankPanel.getByText('苏州银行（SUZB）')).toBeVisible()
+
+  const mappingPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '自定义表头映射', exact: true }),
+  })
+  await expect(mappingPanel.getByText('交易金额(元)')).toBeVisible()
+  await expect(mappingPanel.getByText('交易金额', { exact: true })).toBeVisible()
+
+  await mappingPanel.getByRole('button', { name: '新增映射' }).click()
+  const mappingDialog = page.getByRole('dialog', { name: '新增表头映射' })
+  await mappingDialog.getByLabel('源表头').fill('交易流水编号')
+  await mappingDialog.getByLabel('标准字段').selectOption('transaction_no')
+  await mappingDialog.getByRole('button', { name: '新增映射' }).click()
+
+  await expect(page.getByText(/表头映射「交易流水编号」已新增/)).toBeVisible()
+  await expect(mappingPanel.getByText('交易流水编号')).toBeVisible()
+  await expect(mappingPanel.getByText('流水号', { exact: true })).toBeVisible()
+  expect(createdBody).toMatchObject({ header: '交易流水编号', field: 'transaction_no' })
 })

@@ -25,6 +25,12 @@ public class CsvBankStatementParser {
   }
 
   public CsvParseResult<CsvBankStatementRow> parse(InputStream inputStream, int maxRows) {
+    return parse(inputStream, maxRows, java.util.Collections.<String, String>emptyMap());
+  }
+
+  /** aliases：租户级表头映射（归一化表头 → 标准字段），优先于内置别名。 */
+  public CsvParseResult<CsvBankStatementRow> parse(InputStream inputStream, int maxRows,
+      Map<String, String> aliases) {
     try {
       BufferedReader reader = new BufferedReader(new StringReader(CsvImportSupport.readText(inputStream)));
       String headerLine = reader.readLine();
@@ -34,8 +40,8 @@ public class CsvBankStatementParser {
 
       char delimiter = CsvImportSupport.detectDelimiter(headerLine);
       List<String> headers = parseLine(headerLine, delimiter);
-      for (int i = 0; i < headers.size(); i++) headers.set(i, canonicalHeader(headers.get(i)));
-      Map<String, Integer> headerIndex = headerIndex(headers);
+      for (int i = 0; i < headers.size(); i++) headers.set(i, canonicalHeader(headers.get(i), aliases));
+      Map<String, Integer> headerIndex = headerIndex(headers, aliases);
       requireHeaders(headerIndex);
 
       List<CsvBankStatementRow> rows = new ArrayList<>();
@@ -49,7 +55,7 @@ public class CsvBankStatementParser {
           continue;
         }
         List<String> values = parseLine(line, delimiter);
-        if (isRepeatedHeader(values, headerIndex)) {
+        if (isRepeatedHeader(values, headerIndex, aliases)) {
           continue;
         }
         if (dataRows >= maxRows) {
@@ -127,10 +133,11 @@ public class CsvBankStatementParser {
     }
   }
 
-  private boolean isRepeatedHeader(List<String> values, Map<String, Integer> headerIndex) {
+  private boolean isRepeatedHeader(List<String> values, Map<String, Integer> headerIndex,
+      Map<String, String> aliases) {
     Integer dateIndex = headerIndex.get("transaction_date");
     if (dateIndex == null || dateIndex >= values.size()) return false;
-    return "transaction_date".equals(canonicalHeader(values.get(dateIndex)));
+    return "transaction_date".equals(canonicalHeader(values.get(dateIndex), aliases));
   }
 
   private BigDecimal decimal(Map<String, String> raw, String key, int rowNo) {
@@ -145,10 +152,10 @@ public class CsvBankStatementParser {
     }
   }
 
-  private Map<String, Integer> headerIndex(List<String> headers) {
+  private Map<String, Integer> headerIndex(List<String> headers, Map<String, String> aliases) {
     Map<String, Integer> map = new HashMap<>();
     for (int i = 0; i < headers.size(); i++) {
-      map.put(canonicalHeader(headers.get(i)), i);
+      map.put(canonicalHeader(headers.get(i), aliases), i);
     }
     return map;
   }
@@ -199,8 +206,10 @@ public class CsvBankStatementParser {
     return index < values.size() ? values.get(index).trim() : "";
   }
 
-  private String canonicalHeader(String header) {
+  private String canonicalHeader(String header, Map<String, String> overrides) {
     String normalized = CsvImportSupport.normalizeHeader(header);
+    String override = overrides.get(normalized);
+    if (override != null) return override;
     Map<String, String> aliases = new HashMap<>();
     aliases.put("transactionno", "transaction_no");
     aliases.put("transactiondate", "transaction_date");
