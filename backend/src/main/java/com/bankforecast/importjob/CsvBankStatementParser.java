@@ -8,8 +8,6 @@ import java.io.InputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -50,11 +48,14 @@ public class CsvBankStatementParser {
         if (line.trim().isEmpty()) {
           continue;
         }
+        List<String> values = parseLine(line, delimiter);
+        if (isRepeatedHeader(values, headerIndex)) {
+          continue;
+        }
         if (dataRows >= maxRows) {
           throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
         }
         dataRows++;
-        List<String> values = parseLine(line, delimiter);
         String rawJson = rawJson(headers, values);
         try {
           rows.add(toRow(rowNo, headers, headerIndex, values));
@@ -118,23 +119,18 @@ public class CsvBankStatementParser {
 
   private LocalDate parseDate(Map<String, String> raw, String key, int rowNo) {
     try {
-      String value = required(raw, key, rowNo);
-      for (DateTimeFormatter formatter : new DateTimeFormatter[] {
-          DateTimeFormatter.ISO_LOCAL_DATE,
-          DateTimeFormatter.ofPattern("yyyy/MM/dd"),
-          DateTimeFormatter.ofPattern("yyyyMMdd")}) {
-        try {
-          return LocalDate.parse(value, formatter);
-        } catch (DateTimeParseException ignored) {
-          // 尝试下一种银行导出日期格式
-        }
-      }
-      throw new DateTimeParseException("invalid date", value, 0);
+      return CsvImportSupport.parseFlexibleDate(required(raw, key, rowNo));
     } catch (BusinessException ex) {
       throw ex;
     } catch (Exception ex) {
       throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行日期格式错误");
     }
+  }
+
+  private boolean isRepeatedHeader(List<String> values, Map<String, Integer> headerIndex) {
+    Integer dateIndex = headerIndex.get("transaction_date");
+    if (dateIndex == null || dateIndex >= values.size()) return false;
+    return "transaction_date".equals(canonicalHeader(values.get(dateIndex)));
   }
 
   private BigDecimal decimal(Map<String, String> raw, String key, int rowNo) {
@@ -180,10 +176,11 @@ public class CsvBankStatementParser {
       return "income";
     }
     if ("expense".equals(direction) || "支出".equals(direction) || "out".equals(direction)
-        || "debit".equals(direction) || "借方".equals(direction)) {
+        || "debit".equals(direction) || "借方".equals(direction) || "借".equals(direction)) {
       return "expense";
     }
-    if ("in".equals(direction) || "credit".equals(direction) || "贷方".equals(direction)) {
+    if ("in".equals(direction) || "credit".equals(direction) || "贷方".equals(direction)
+        || "贷".equals(direction)) {
       return "income";
     }
     if ("transfer".equals(direction) || "内部转账".equals(direction)) {
@@ -217,10 +214,14 @@ public class CsvBankStatementParser {
     aliases.put("借贷标志", "direction");
     aliases.put("金额", "amount");
     aliases.put("交易金额", "amount");
+    aliases.put("发生额", "amount");
     aliases.put("余额", "balance_after");
     aliases.put("对方户名", "counterparty_name");
+    aliases.put("对方名称", "counterparty_name");
     aliases.put("摘要", "summary");
     aliases.put("备注", "summary");
+    aliases.put("用途", "summary");
+    aliases.put("币种", "currency");
     return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;
   }
 
