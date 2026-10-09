@@ -293,7 +293,7 @@ export function modelNameLabel(value: LabelValue): string {
   return fromMap(MODEL_NAME_LABELS, value)
 }
 
-// 与 backend `auditService.record(` 全部动作码一致（2026-10-08 核对，共 66 个）；
+// 与 backend `auditService.record(` 全部动作码一致（2026-10-09 核对，共 67 个）；
 // 末尾 ASSIGN/COMMENT/RESOLVE/CLOSE/FALSE_POSITIVE 为异常处理日志 exception_action_log.action_type。
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ACTIVATE_FORECAST_MODEL: '启用预测模型',
@@ -306,6 +306,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   CLASSIFY_BANK_TRANSACTION: '分类流水',
   CLOSE_BANK_ACCOUNT: '账户销户',
   CLOSE_EXCEPTION: '关闭异常',
+  COLLECT_METRIC_SNAPSHOT: '采集指标快照',
   COMMENT_EXCEPTION: '异常备注',
   CONFIRM_BANK_STATEMENT: '确认银行流水入账',
   CONFIRM_CONTRACT: '确认合同导入',

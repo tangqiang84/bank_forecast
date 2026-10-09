@@ -282,6 +282,7 @@ describe('labels', () => {
     expect(auditActionLabel('CREATE_TEMPLATE_MAPPING')).toBe('新建模板映射')
     expect(auditActionLabel('UPDATE_TEMPLATE_MAPPING')).toBe('更新模板映射')
     expect(auditActionLabel('DELETE_TEMPLATE_MAPPING')).toBe('删除模板映射')
+    expect(auditActionLabel('COLLECT_METRIC_SNAPSHOT')).toBe('采集指标快照')
   })
 
   it('maps exception action_type codes used in the timeline', () => {

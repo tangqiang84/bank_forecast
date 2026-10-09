@@ -91,6 +91,7 @@ public class ImportJobService {
     ParsedFile parsedFile = parseFile(file, lowerFileName, templateMappingService.aliases(principal.getTenantId()));
     CsvParseResult<CsvBankStatementRow> parsed = parsedFile.result;
     List<Map<String, Object>> templates = parsedFile.templates;
+    recordRecognizedTemplates(jobId, templates);
     for (CsvRowError rowError : parsed.getErrors()) {
       failedRows++;
       insertRawError(principal.getTenantId(), jobId, bankAccountId, rowError);
@@ -152,6 +153,7 @@ public class ImportJobService {
     String fileName = file.getOriginalFilename() == null ? "bank_statement.csv" : file.getOriginalFilename();
     ParsedFile parsedFile = parseFile(file, fileName.toLowerCase(), templateMappingService.aliases(principal.getTenantId()));
     Long jobId = createJob(principal.getTenantId(), fileName);
+    recordRecognizedTemplates(jobId, parsedFile.templates);
     int failedRows = 0;
     String errorMessage = null;
     for (CsvRowError rowError : parsedFile.result.getErrors()) {
@@ -320,6 +322,16 @@ public class ImportJobService {
       parsed = parser.parse(open(file), maxRows, aliases);
     }
     return new ParsedFile(parsed, templates);
+  }
+
+  private void recordRecognizedTemplates(Long jobId, List<Map<String, Object>> templates) {
+    if (templates.isEmpty()) return;
+    int recognized = 0;
+    for (Map<String, Object> item : templates) {
+      if ("recognized".equals(item.get("status"))) recognized++;
+    }
+    jdbcTemplate.update("update import_job set templates_recognized = ?, updated_at = current_timestamp where id = ?",
+        recognized, jobId);
   }
 
   private void validateFile(AuthPrincipal principal, Long bankAccountId, MultipartFile file) {

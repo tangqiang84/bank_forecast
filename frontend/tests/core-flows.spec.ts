@@ -1459,3 +1459,129 @@ test('模板配置中心映射管理', async ({ page }) => {
   await expect(mappingPanel.getByText('流水号', { exact: true })).toBeVisible()
   expect(createdBody).toMatchObject({ header: '交易流水编号', field: 'transaction_no' })
 })
+
+test('驾驶舱试点验收指标与快照采集', async ({ page }) => {
+  let collectRequested = false
+  const pilotPayload = {
+    as_of: '2026-10-09',
+    indicators: [
+      {
+        metric_code: 'import_success_rate',
+        label: '银行流水导入成功率',
+        value: 96.5,
+        threshold: 95,
+        pass: true,
+      },
+      {
+        metric_code: 'template_recognition_rate',
+        label: '模板识别成功率',
+        value: 88,
+        threshold: 90,
+        pass: false,
+      },
+      {
+        metric_code: 'auto_match_rate',
+        label: '自动匹配率',
+        value: 72.25,
+        threshold: 70,
+        pass: true,
+      },
+      {
+        metric_code: 'manual_confirm_rate',
+        label: '人工确认率',
+        value: null,
+        threshold: 80,
+        pass: false,
+      },
+      {
+        metric_code: 'exception_closure_rate',
+        label: '异常闭环率',
+        value: 91,
+        threshold: 90,
+        pass: true,
+      },
+      {
+        metric_code: 'report_success_rate',
+        label: '报表生成成功率',
+        value: 100,
+        threshold: 100,
+        pass: true,
+      },
+    ],
+    amounts: [
+      { metric_code: 'total_balance', label: '账户总余额', value: 125000.5 },
+      { metric_code: 'yesterday_net_inflow', label: '昨日净流入', value: 2300 },
+      { metric_code: 'receivable_total', label: '应收总额', value: 80000 },
+      { metric_code: 'received_total', label: '已收总额', value: 50000 },
+      { metric_code: 'overdue_receivable', label: '逾期未收', value: 2000 },
+      { metric_code: 'open_exception_count', label: '未闭环异常数', value: 3 },
+      { metric_code: 'match_rate', label: '流水匹配率', value: 66.67 },
+    ],
+    last_snapshot_date: '2026-10-08',
+  }
+  let lastSnapshotDate: string | null = '2026-10-08'
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/metrics/pilot-acceptance', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...pilotPayload, last_snapshot_date: lastSnapshotDate }),
+    }),
+  )
+  await page.route('**/api/v1/metrics/snapshots/collect', async (route) => {
+    collectRequested = true
+    lastSnapshotDate = '2026-10-09'
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ snapshot_date: '2026-10-09', collected: 13 }),
+    })
+  })
+  await page.route('**/api/v1/metrics/snapshots?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok([
+        { snapshot_date: '2026-10-08', metric_value: 95.5 },
+        { snapshot_date: '2026-10-09', metric_value: 96.5 },
+      ]),
+    }),
+  )
+
+  await login(page)
+  const pilotPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '试点验收指标', exact: true }),
+  })
+  await expect(pilotPanel).toBeVisible()
+  await expect(pilotPanel.getByText('最近快照 2026-10-08')).toBeVisible()
+
+  // 6 项验收指标与达标状态
+  await expect(pilotPanel.locator('tbody tr')).toHaveCount(6)
+  await expect(pilotPanel.getByText('银行流水导入成功率')).toBeVisible()
+  await expect(pilotPanel.getByText('96.5%')).toBeVisible()
+  await expect(pilotPanel.getByText('≥95%')).toBeVisible()
+  await expect(pilotPanel.getByText('达标', { exact: true })).toHaveCount(4)
+  await expect(pilotPanel.getByText('未达标', { exact: true })).toHaveCount(2)
+  await expect(pilotPanel.getByText('暂无数据')).toBeVisible()
+
+  // 金额/数量指标小字行
+  await expect(pilotPanel.getByText(/账户总余额 125,000\.50/)).toBeVisible()
+  await expect(pilotPanel.getByText(/流水匹配率 66\.67%/)).toBeVisible()
+  await expect(pilotPanel.getByText(/未闭环异常数 3/)).toBeVisible()
+
+  // 展开近 30 天趋势
+  await pilotPanel.getByRole('button', { name: '近 30 天趋势' }).first().click()
+  const trendRow = pilotPanel.locator('.mini-row').filter({ hasText: '2026-10-08' })
+  await expect(trendRow).toBeVisible()
+  await expect(trendRow.getByText('95.5%')).toBeVisible()
+
+  // 采集今日快照后刷新区块
+  await pilotPanel.getByRole('button', { name: '采集今日快照' }).click()
+  await expect(pilotPanel.getByText('已采集 2026-10-09 的 13 项指标快照。')).toBeVisible()
+  expect(collectRequested).toBe(true)
+  await expect(pilotPanel.getByText('最近快照 2026-10-09')).toBeVisible()
+})
