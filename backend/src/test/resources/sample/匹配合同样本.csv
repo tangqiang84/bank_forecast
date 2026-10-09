@@ -1,0 +1,3 @@
+contract_no,contract_name,customer_name,contract_amount,node_name,node_type,due_date,plan_amount
+MATCH-EXACT-001,匹配验收合同,匹配客户科技,100000.00,验收款,acceptance,2026-09-10,100000.00
+MATCH-PARTIAL-001,匹配部分合同,部分客户科技,80000.00,首付款,milestone,2026-09-10,80000.00

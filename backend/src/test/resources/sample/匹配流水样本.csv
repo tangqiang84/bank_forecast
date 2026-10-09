@@ -1,0 +1,4 @@
+transaction_no,transaction_date,direction,amount,balance_after,counterparty_name,summary
+MATCH-TX-EXACT-001,2026-09-10,income,100000.00,3000000.00,匹配客户科技,合同 MATCH-EXACT-001 验收款
+MATCH-TX-PARTIAL-001,2026-09-10,income,30000.00,3030000.00,部分客户科技,合同 MATCH-PARTIAL-001 首付款
+MATCH-TX-UNKNOWN-001,2026-09-10,income,999.00,3030999.00,不存在客户,未知来款
