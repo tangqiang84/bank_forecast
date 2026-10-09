@@ -90,9 +90,16 @@ public class ImportController {
     return ApiResponse.ok(importJobService.getPreview(jobId));
   }
 
+  @RequirePermission("import:view")
+  @GetMapping("/quality-summary")
+  public ApiResponse<Map<String, Object>> qualitySummary(@RequestParam(value = "days", required = false) Integer days) {
+    return ApiResponse.ok(importJobService.qualitySummary(days));
+  }
+
   @RequirePermission({"transaction:import", "contract:import", "reconciliation:run", "project:import", "receipt:import"})
   @PostMapping("/{jobId}/confirm")
-  public ApiResponse<Map<String, Object>> confirm(@PathVariable Long jobId) {
+  public ApiResponse<Map<String, Object>> confirm(@PathVariable Long jobId,
+      @RequestBody(required = false) Map<String, Object> request) {
     String jobType = importJobService.getJobType(jobId);
     if ("contract".equals(jobType)) {
       return ApiResponse.ok(contractImportService.confirmPreview(jobId));
@@ -107,7 +114,7 @@ public class ImportController {
       return ApiResponse.ok(receiptImportService.confirmPreview(jobId));
     }
     if ("bank_statement".equals(jobType)) {
-      return ApiResponse.ok(importJobService.confirmPreview(jobId));
+      return ApiResponse.ok(importJobService.confirmPreview(jobId, request));
     }
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "该导入任务类型不支持确认");
   }

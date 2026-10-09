@@ -168,6 +168,7 @@ describe('labels', () => {
     expect(importRowStatusLabel('skipped')).toBe('跳过')
     expect(importRowStatusLabel('retry_success')).toBe('重试成功')
     expect(importRowStatusLabel('confirmed')).toBe('已确认')
+    expect(importRowStatusLabel('duplicate_suspect')).toBe('疑似重复')
     expect(importRowStatusLabel('other')).toBe('other')
   })
 
@@ -331,6 +332,7 @@ describe('labels', () => {
   it('maps field names and falls back to the raw key', () => {
     expect(fieldNameLabel('transaction_no')).toBe('流水号')
     expect(fieldNameLabel('match_status')).toBe('匹配状态')
+    expect(fieldNameLabel('duplicate_suspected_rows')).toBe('疑似重复行数')
     expect(fieldNameLabel('unlisted_key')).toBe('unlisted_key')
   })
 

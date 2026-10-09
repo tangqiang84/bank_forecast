@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,10 +97,29 @@ public class ImportJobService {
       insertImportError(principal.getTenantId(), jobId, rowError);
       errorMessage = appendError(errorMessage, rowError.getMessage());
     }
+    Map<String, Integer> seenFingerprints = new HashMap<>();
+    int duplicateSuspectedRows = 0;
     for (CsvBankStatementRow row : parsed.getRows()) {
       try {
         validateDate(row);
         validateAmount(row.getAmount(), row.getRowNo(), "amount");
+        Integer strongDup = jdbcTemplate.queryForObject(
+            "select count(*) from bank_transaction where tenant_id = ? and bank_account_id = ? and transaction_no = ? and deleted_at is null",
+            Integer.class, principal.getTenantId(), bankAccountId, row.getTransactionNo());
+        if (strongDup != null && strongDup > 0) {
+          skippedRows++;
+          insertRaw(principal.getTenantId(), jobId, bankAccountId, row, "skipped", "重复流水号");
+          continue;
+        }
+        String fingerprint = WeakFingerprint.of(row);
+        String duplicateMessage = detectDuplicate(
+            principal.getTenantId(), bankAccountId, fingerprint, seenFingerprints);
+        seenFingerprints.putIfAbsent(fingerprint, row.getRowNo());
+        if (duplicateMessage != null) {
+          duplicateSuspectedRows++;
+          insertRaw(principal.getTenantId(), jobId, bankAccountId, row, "skipped", duplicateMessage);
+          continue;
+        }
         insertTransaction(principal.getTenantId(), jobId, bankAccountId, row);
         insertRaw(principal.getTenantId(), jobId, bankAccountId, row, "success", null);
         successRows++;
@@ -116,7 +136,7 @@ public class ImportJobService {
     }
 
     String status = failedRows == 0 ? "success" : (successRows == 0 ? "failed" : "partial_success");
-    finishJob(jobId, parsed.getTotalRows(), successRows, failedRows, skippedRows, status, errorMessage);
+    finishJob(jobId, parsed.getTotalRows(), successRows, failedRows, skippedRows, duplicateSuspectedRows, status, errorMessage);
     auditService.record("IMPORT_BANK_STATEMENT", "import_job", String.valueOf(jobId), "file=" + fileName);
     Map<String, Object> result = getJob(jobId, principal.getTenantId());
     result.put("error_details", listErrors(jobId, principal.getTenantId()));
@@ -140,21 +160,34 @@ public class ImportJobService {
       insertImportError(principal.getTenantId(), jobId, rowError);
       errorMessage = appendError(errorMessage, rowError.getMessage());
     }
+    Map<String, Integer> seenFingerprints = new HashMap<>();
+    int validRows = 0;
+    int duplicateSuspectedRows = 0;
     for (CsvBankStatementRow row : parsedFile.result.getRows()) {
       try {
         validateRow(row);
-        insertPreviewRow(principal.getTenantId(), jobId, bankAccountId, row, "valid", null);
+        String fingerprint = WeakFingerprint.of(row);
+        String duplicateMessage = detectDuplicate(
+            principal.getTenantId(), bankAccountId, fingerprint, seenFingerprints);
+        seenFingerprints.putIfAbsent(fingerprint, row.getRowNo());
+        if (duplicateMessage != null) {
+          duplicateSuspectedRows++;
+          insertPreviewRow(principal.getTenantId(), jobId, bankAccountId, row,
+              "duplicate_suspect", duplicateMessage, fingerprint);
+        } else {
+          validRows++;
+          insertPreviewRow(principal.getTenantId(), jobId, bankAccountId, row, "valid", null, fingerprint);
+        }
       } catch (BusinessException ex) {
         failedRows++;
-        insertPreviewRow(principal.getTenantId(), jobId, bankAccountId, row, "failed", ex.getMessage());
+        insertPreviewRow(principal.getTenantId(), jobId, bankAccountId, row, "failed", ex.getMessage(), null);
         insertImportError(principal.getTenantId(), jobId,
             new CsvRowError(row.getRowNo(), "row", ex.getMessage(), row.getRawJson()));
         errorMessage = appendError(errorMessage, ex.getMessage());
       }
     }
-    int validRows = parsedFile.result.getRows().size() - (failedRows - parsedFile.result.getErrors().size());
-    String status = validRows == 0 ? "preview_failed" : "preview_pending";
-    finishJob(jobId, parsedFile.result.getTotalRows(), validRows, failedRows, 0, status, errorMessage);
+    String status = (validRows == 0 && duplicateSuspectedRows == 0) ? "preview_failed" : "preview_pending";
+    finishJob(jobId, parsedFile.result.getTotalRows(), validRows, failedRows, 0, duplicateSuspectedRows, status, errorMessage);
     auditService.record("PREVIEW_BANK_STATEMENT", "import_job", String.valueOf(jobId), "file=" + fileName);
     Map<String, Object> result = getPreview(jobId, principal.getTenantId());
     result.put("file_format", fileName.toLowerCase().endsWith(".xlsx") ? "xlsx" : "csv");
@@ -169,6 +202,12 @@ public class ImportJobService {
 
   @Transactional
   public Map<String, Object> confirmPreview(Long jobId) {
+    return confirmPreview(jobId, null);
+  }
+
+  /** include_duplicates：用户勾选强制导入的疑似重复行号（预览行 row_no）。 */
+  @Transactional
+  public Map<String, Object> confirmPreview(Long jobId, Map<String, Object> request) {
     AuthPrincipal principal = requireAuth();
     requirePermission(principal, "transaction:import");
     Map<String, Object> job = getJob(jobId, principal.getTenantId());
@@ -197,11 +236,39 @@ public class ImportJobService {
         errorMessage = appendError(errorMessage, ex.getMessage());
       }
     }
+    int forcedDuplicates = 0;
+    for (Integer rowNo : parseIncludeDuplicates(request)) {
+      Map<String, Object> suspect = findPreviewRow(jobId, principal.getTenantId(), rowNo);
+      if (!"duplicate_suspect".equals(suspect.get("status"))) {
+        throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行不是疑似重复行");
+      }
+      CsvBankStatementRow statement = previewToRow(suspect);
+      Long bankAccountId = ((Number) suspect.get("bank_account_id")).longValue();
+      try {
+        insertTransaction(principal.getTenantId(), jobId, bankAccountId, statement);
+        insertRaw(principal.getTenantId(), jobId, bankAccountId, statement, "success", "疑似重复人工确认导入");
+        success++;
+        forcedDuplicates++;
+      } catch (DuplicateKeyException ex) {
+        insertRaw(principal.getTenantId(), jobId, bankAccountId, statement, "skipped", "重复流水号");
+        skipped++;
+      }
+      jdbcTemplate.update("update import_preview_row set status = 'confirmed', updated_at = current_timestamp where id = ? and tenant_id = ?", suspect.get("id"), principal.getTenantId());
+    }
     int failed = jdbcTemplate.queryForObject("select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status = 'failed' and deleted_at is null", Integer.class, principal.getTenantId(), jobId);
     String finalStatus = failed == 0 ? "success" : (success == 0 ? "failed" : "partial_success");
     jdbcTemplate.update("update import_job set status = ?, success_rows = ?, failed_rows = ?, skipped_rows = ?, error_message = coalesce(?, error_message), preview_confirmed_at = current_timestamp, finished_at = current_timestamp, updated_at = current_timestamp where id = ? and tenant_id = ?", finalStatus, success, failed, skipped, errorMessage, jobId, principal.getTenantId());
-    auditService.record("CONFIRM_BANK_STATEMENT", "import_job", String.valueOf(jobId), "success=" + success + ",skipped=" + skipped);
+    auditService.record("CONFIRM_BANK_STATEMENT", "import_job", String.valueOf(jobId), "success=" + success + ",skipped=" + skipped + ",forced_duplicates=" + forcedDuplicates);
     return getPreview(jobId, principal.getTenantId());
+  }
+
+  private java.util.Set<Integer> parseIncludeDuplicates(Map<String, Object> request) {
+    java.util.Set<Integer> result = new java.util.LinkedHashSet<>();
+    if (request == null || request.get("include_duplicates") == null) return result;
+    Object raw = request.get("include_duplicates");
+    if (!(raw instanceof List)) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "include_duplicates 必须是行号数组");
+    for (Object item : (List<?>) raw) result.add(integer(item, "include_duplicates"));
+    return result;
   }
 
   @Transactional
@@ -223,7 +290,12 @@ public class ImportJobService {
       try {
         CsvBankStatementRow row = retryToRow(input, rowNo, existing.get("raw_json"));
         validateRow(row);
-        updatePreviewRow(existing, row);
+        String fingerprint = WeakFingerprint.of(row);
+        Long bankAccountId = ((Number) existing.get("bank_account_id")).longValue();
+        String duplicateMessage = detectRetryDuplicate(
+            principal.getTenantId(), jobId, bankAccountId, ((Number) existing.get("id")).longValue(), fingerprint);
+        updatePreviewRow(existing, row, duplicateMessage == null ? "retry_success" : "duplicate_suspect",
+            duplicateMessage, fingerprint);
         succeeded++;
         jdbcTemplate.update("delete from import_row_error where tenant_id = ? and import_job_id = ? and row_no = ?", principal.getTenantId(), jobId, rowNo);
       } catch (BusinessException ex) {
@@ -232,7 +304,7 @@ public class ImportJobService {
         insertImportError(principal.getTenantId(), jobId, new CsvRowError(rowNo, "row", ex.getMessage(), String.valueOf(existing.get("raw_json"))));
       }
     }
-    jdbcTemplate.update("update import_job set status = 'preview_pending', failed_rows = (select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status = 'failed' and deleted_at is null), success_rows = (select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status in ('valid','retry_success')), updated_at = current_timestamp where id = ? and tenant_id = ?", principal.getTenantId(), jobId, principal.getTenantId(), jobId, jobId, principal.getTenantId());
+    jdbcTemplate.update("update import_job set status = 'preview_pending', failed_rows = (select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status = 'failed' and deleted_at is null), success_rows = (select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status in ('valid','retry_success')), duplicate_suspected_rows = (select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and status = 'duplicate_suspect' and deleted_at is null), updated_at = current_timestamp where id = ? and tenant_id = ?", principal.getTenantId(), jobId, principal.getTenantId(), jobId, principal.getTenantId(), jobId, jobId, principal.getTenantId());
     auditService.record("RETRY_BANK_STATEMENT_ERRORS", "import_job", String.valueOf(jobId), "retried=" + retried + ",succeeded=" + succeeded);
     return getPreview(jobId, principal.getTenantId());
   }
@@ -260,8 +332,8 @@ public class ImportJobService {
 
   private void validateRow(CsvBankStatementRow row) { validateDate(row); validateAmount(row.getAmount(), row.getRowNo(), "amount"); }
 
-  private void insertPreviewRow(Long tenantId, Long jobId, Long bankAccountId, CsvBankStatementRow row, String status, String error) {
-    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, status, error_message) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tenantId, jobId, bankAccountId, allocatePreviewRowNo(tenantId, jobId, row.getRowNo()), row.getRawJson(), row.getTransactionNo(), row.getTransactionDate() == null ? null : Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), status, error);
+  private void insertPreviewRow(Long tenantId, Long jobId, Long bankAccountId, CsvBankStatementRow row, String status, String error, String fingerprint) {
+    jdbcTemplate.update("insert into import_preview_row (tenant_id, import_job_id, bank_account_id, row_no, raw_json, transaction_no, transaction_date, direction, amount, balance_after, counterparty_name, summary, status, error_message, weak_fingerprint) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tenantId, jobId, bankAccountId, allocatePreviewRowNo(tenantId, jobId, row.getRowNo()), row.getRawJson(), row.getTransactionNo(), row.getTransactionDate() == null ? null : Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), status, error, fingerprint);
   }
 
   private void insertPreviewError(Long tenantId, Long jobId, Long bankAccountId, CsvRowError error) {
@@ -307,8 +379,34 @@ public class ImportJobService {
     return new CsvBankStatementRow(rowNo, transactionNo, date, direction, amount, balance, text(input.get("counterparty_name")), text(input.get("summary")), rawJson == null ? "{}" : String.valueOf(rawJson));
   }
 
-  private void updatePreviewRow(Map<String, Object> existing, CsvBankStatementRow row) {
-    jdbcTemplate.update("update import_preview_row set raw_json = ?, transaction_no = ?, transaction_date = ?, direction = ?, amount = ?, balance_after = ?, counterparty_name = ?, summary = ?, status = 'retry_success', error_message = null, updated_at = current_timestamp where id = ?", row.getRawJson(), row.getTransactionNo(), Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), existing.get("id"));
+  private void updatePreviewRow(Map<String, Object> existing, CsvBankStatementRow row, String status,
+      String errorMessage, String fingerprint) {
+    jdbcTemplate.update("update import_preview_row set raw_json = ?, transaction_no = ?, transaction_date = ?, direction = ?, amount = ?, balance_after = ?, counterparty_name = ?, summary = ?, status = ?, error_message = ?, weak_fingerprint = ?, updated_at = current_timestamp where id = ?", row.getRawJson(), row.getTransactionNo(), Date.valueOf(row.getTransactionDate()), row.getDirection(), row.getAmount(), row.getBalanceAfter(), row.getCounterpartyName(), row.getSummary(), status, errorMessage, fingerprint, existing.get("id"));
+  }
+
+  /** 预览/重试时的弱重复检测：先查本文件已见指纹，再查账户已有流水。 */
+  private String detectDuplicate(Long tenantId, Long bankAccountId, String fingerprint,
+      Map<String, Integer> seenFingerprints) {
+    Integer priorRow = seenFingerprints.get(fingerprint);
+    if (priorRow != null) return "与本文件第 " + priorRow + " 行疑似重复（弱指纹）";
+    return detectDuplicateInDb(tenantId, bankAccountId, fingerprint);
+  }
+
+  private String detectRetryDuplicate(Long tenantId, Long jobId, Long bankAccountId, long selfId,
+      String fingerprint) {
+    Integer sameJob = jdbcTemplate.queryForObject(
+        "select count(*) from import_preview_row where tenant_id = ? and import_job_id = ? and weak_fingerprint = ? and status in ('valid','retry_success','duplicate_suspect') and deleted_at is null and id <> ?",
+        Integer.class, tenantId, jobId, fingerprint, selfId);
+    if (sameJob != null && sameJob > 0) return "与本任务其他行疑似重复（弱指纹）";
+    return detectDuplicateInDb(tenantId, bankAccountId, fingerprint);
+  }
+
+  private String detectDuplicateInDb(Long tenantId, Long bankAccountId, String fingerprint) {
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from bank_transaction where tenant_id = ? and bank_account_id = ? and weak_fingerprint = ? and deleted_at is null",
+        Integer.class, tenantId, bankAccountId, fingerprint);
+    if (count != null && count > 0) return "与账户已有流水疑似重复（弱指纹）";
+    return null;
   }
 
   private int integer(Object value, String field) { try { return Integer.parseInt(String.valueOf(value)); } catch (Exception ex) { throw new BusinessException(ErrorCode.ROW_DATA_ERROR, field + " 格式不正确"); } }
@@ -334,6 +432,34 @@ public class ImportJobService {
   public Map<String, Object> getJob(Long jobId) {
     AuthPrincipal principal = requireAuth();
     return getJob(jobId, principal.getTenantId());
+  }
+
+  /** 银行流水导入质量汇总（P2-3）：近 N 天任务级指标和成功率/疑似重复率。 */
+  public Map<String, Object> qualitySummary(Integer days) {
+    AuthPrincipal principal = requireAuth();
+    int windowDays = days == null || days <= 0 ? 30 : Math.min(days, 365);
+    Map<String, Object> row = jdbcTemplate.queryForMap(
+        "select count(*) as job_count, coalesce(sum(total_rows), 0) as total_rows, coalesce(sum(success_rows), 0) as success_rows, coalesce(sum(failed_rows), 0) as failed_rows, coalesce(sum(skipped_rows), 0) as skipped_rows, coalesce(sum(duplicate_suspected_rows), 0) as duplicate_suspected_rows "
+            + "from import_job where tenant_id = ? and job_type = 'bank_statement' and deleted_at is null and created_at >= ?",
+        principal.getTenantId(), Timestamp.valueOf(LocalDateTime.now().minusDays(windowDays)));
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("days", windowDays);
+    result.put("job_count", row.get("job_count"));
+    result.put("total_rows", row.get("total_rows"));
+    result.put("success_rows", row.get("success_rows"));
+    result.put("failed_rows", row.get("failed_rows"));
+    result.put("skipped_rows", row.get("skipped_rows"));
+    result.put("duplicate_suspected_rows", row.get("duplicate_suspected_rows"));
+    long total = ((Number) row.get("total_rows")).longValue();
+    long success = ((Number) row.get("success_rows")).longValue();
+    long suspected = ((Number) row.get("duplicate_suspected_rows")).longValue();
+    result.put("success_rate", total == 0 ? null
+        : BigDecimal.valueOf(success).multiply(BigDecimal.valueOf(100))
+            .divide(BigDecimal.valueOf(total), 2, java.math.RoundingMode.HALF_UP));
+    result.put("duplicate_suspect_rate", total == 0 ? null
+        : BigDecimal.valueOf(suspected).multiply(BigDecimal.valueOf(100))
+            .divide(BigDecimal.valueOf(total), 2, java.math.RoundingMode.HALF_UP));
+    return result;
   }
 
   public String getJobType(Long jobId) {
@@ -368,14 +494,15 @@ public class ImportJobService {
   }
 
   private void finishJob(Long jobId, int totalRows, int successRows, int failedRows, int skippedRows,
-      String status, String errorMessage) {
+      int duplicateSuspectedRows, String status, String errorMessage) {
     jdbcTemplate.update(
-        "update import_job set status = ?, total_rows = ?, success_rows = ?, failed_rows = ?, skipped_rows = ?, error_message = ?, finished_at = ?, updated_at = ? where id = ?",
+        "update import_job set status = ?, total_rows = ?, success_rows = ?, failed_rows = ?, skipped_rows = ?, duplicate_suspected_rows = ?, error_message = ?, finished_at = ?, updated_at = ? where id = ?",
         status,
         totalRows,
         successRows,
         failedRows,
         skippedRows,
+        duplicateSuspectedRows,
         errorMessage,
         Timestamp.valueOf(LocalDateTime.now()),
         Timestamp.valueOf(LocalDateTime.now()),
@@ -409,8 +536,8 @@ public class ImportJobService {
 
   private void insertTransaction(Long tenantId, Long jobId, Long bankAccountId, CsvBankStatementRow row) {
     jdbcTemplate.update(
-        "insert into bank_transaction (tenant_id, bank_account_id, import_job_id, transaction_no, transaction_date, booking_date, direction, amount, balance_after, counterparty_name, summary, match_status) "
-            + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "insert into bank_transaction (tenant_id, bank_account_id, import_job_id, transaction_no, transaction_date, booking_date, direction, amount, balance_after, counterparty_name, summary, match_status, weak_fingerprint) "
+            + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tenantId,
         bankAccountId,
         jobId,
@@ -422,14 +549,15 @@ public class ImportJobService {
         row.getBalanceAfter(),
         row.getCounterpartyName(),
         row.getSummary(),
-        "unmatched");
+        "unmatched",
+        WeakFingerprint.of(row));
     jdbcTemplate.update("update bank_account set last_transaction_at = case when last_transaction_at is null or last_transaction_at < ? then ? else last_transaction_at end, updated_at = current_timestamp where id = ? and tenant_id = ?",
         Date.valueOf(row.getTransactionDate()), Date.valueOf(row.getTransactionDate()), bankAccountId, tenantId);
   }
 
   private Map<String, Object> getJob(Long jobId, Long tenantId) {
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
-        "select id as job_id, job_type, source_type, file_name, status, total_rows, success_rows, failed_rows, skipped_rows, error_message, started_at, finished_at, preview_confirmed_at "
+        "select id as job_id, job_type, source_type, file_name, status, total_rows, success_rows, failed_rows, skipped_rows, duplicate_suspected_rows, error_message, started_at, finished_at, preview_confirmed_at "
             + "from import_job where id = ? and tenant_id = ? and deleted_at is null",
         jobId,
         tenantId);

@@ -530,3 +530,186 @@ test('回单导入预览后确认导入', async ({ page }) => {
   expect(confirmRequested).toBe(true)
   await expect(receiptPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
+
+const statementDuplicatePreviewPayload = {
+  job_id: 105,
+  status: 'preview_pending',
+  total_rows: 2,
+  success_rows: 1,
+  failed_rows: 0,
+  skipped_rows: 0,
+  duplicate_suspected_rows: 1,
+  preview_rows: [
+    {
+      id: 1,
+      row_no: 1,
+      transaction_no: 'TXN-1',
+      transaction_date: '2026-09-01',
+      direction: 'income',
+      amount: '100.00',
+      balance_after: null,
+      counterparty_name: '示例客户',
+      summary: '回款',
+      status: 'valid',
+      error_message: null,
+    },
+    {
+      id: 2,
+      row_no: 2,
+      transaction_no: 'TXN-2',
+      transaction_date: '2026-09-01',
+      direction: 'income',
+      amount: '100.00',
+      balance_after: null,
+      counterparty_name: '示例客户',
+      summary: '回款',
+      status: 'duplicate_suspect',
+      error_message: '与账户已有流水疑似重复（弱指纹）',
+    },
+  ],
+  recognized_templates: [],
+}
+
+test('流水导入疑似重复行勾选后随确认入账', async ({ page }) => {
+  let confirmBody: Record<string, unknown> | null = null
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '100.00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/imports/bank-statements/preview', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(statementDuplicatePreviewPayload),
+    }),
+  )
+  await page.route('**/api/v1/imports/105/confirm', async (route) => {
+    const raw = route.request().postData()
+    confirmBody = raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...statementDuplicatePreviewPayload, status: 'confirmed', preview_rows: [] }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('button', { name: '导入流水' }).click()
+  const statementPanel = page.getByRole('dialog', { name: '导入流水' })
+  await statementPanel.locator('input[type="file"]').setInputFiles({
+    name: 'statement.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('交易日期,金额\n2026-09-01,100.00\n2026-09-01,100.00\n'),
+  })
+  await statementPanel.getByRole('button', { name: '预览导入' }).click()
+  await expect(statementPanel.getByText('预览完成，请核对后确认入账。')).toBeVisible()
+  await expect(statementPanel.getByText('疑似重复 1')).toBeVisible()
+  await expect(statementPanel.getByText('同时导入 1 条疑似重复流水')).toBeVisible()
+
+  // 不勾选时确认不带请求体，疑似重复行默认不入账
+  await statementPanel.getByRole('button', { name: '确认入账' }).click()
+  await expect(statementPanel.getByText('已确认入账。')).toBeVisible()
+  expect(confirmBody).toBeNull()
+})
+
+test('导入任务页展示疑似重复行并支持勾选强制导入', async ({ page }) => {
+  let confirmBody: Record<string, unknown> | null = null
+  const jobPayload = {
+    ...statementDuplicatePreviewPayload,
+    job_id: 106,
+    job_type: 'bank_statement',
+    error_details: [],
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/auth/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        id: 1,
+        tenant_id: 1,
+        login_name: 'finance01',
+        display_name: '财务负责人',
+        roles: ['CFO'],
+        permissions: ALL_PERMISSIONS,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/imports/quality-summary**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        days: 30,
+        job_count: 4,
+        total_rows: 100,
+        success_rows: 90,
+        failed_rows: 6,
+        skipped_rows: 2,
+        duplicate_suspected_rows: 2,
+        success_rate: 90,
+        duplicate_suspect_rate: 2,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/imports/106/preview', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(jobPayload) }),
+  )
+  await page.route('**/api/v1/imports/106/confirm', async (route) => {
+    const raw = route.request().postData()
+    confirmBody = raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...jobPayload, status: 'confirmed' }),
+    })
+  })
+
+  await login(page)
+  await page.goto('/#/imports/106')
+  await expect(page.getByRole('heading', { name: '任务 #106' })).toBeVisible()
+
+  // 近 30 天导入质量汇总卡
+  await expect(page.getByRole('heading', { name: '近 30 天导入质量' })).toBeVisible()
+  await expect(page.getByText('任务数 4')).toBeVisible()
+  await expect(page.getByText('成功率 90%')).toBeVisible()
+  await expect(page.getByText('疑似重复率 2%')).toBeVisible()
+  await expect(page.getByText('失败行数 6')).toBeVisible()
+
+  // 预览行疑似重复状态与提示
+  await expect(page.getByText('与账户已有流水疑似重复（弱指纹）')).toBeVisible()
+  const duplicateRow = page.locator('tr').filter({ hasText: '与账户已有流水疑似重复' })
+  await expect(duplicateRow.getByText('疑似重复', { exact: true })).toBeVisible()
+
+  // 勾选后确认请求体带 include_duplicates
+  await page.getByText('同时导入 1 条疑似重复流水').click()
+  await page.getByRole('button', { name: '确认入账' }).click()
+  await expect(page.getByText('任务已确认入账。')).toBeVisible()
+  expect(confirmBody).toEqual({ include_duplicates: [2] })
+})

@@ -189,7 +189,7 @@ class BankTransactionControllerTest {
     Long accountId = accountId(tenantId);
     String transactionNo = "TX-XLSX-" + suffix();
     importStatement(token, tenantId, accountId,
-        transactionNo + ",2026-09-09,income,128.00,ACME客户,项目回款\n");
+        transactionNo + ",2026-09-09,income,128.00,ACME客户,导出回款 " + transactionNo + "\n");
 
     mockMvc.perform(get("/api/v1/bank-transactions/export?format=xlsx&keyword=" + transactionNo)
             .header("Authorization", "Bearer " + token)

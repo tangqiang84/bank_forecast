@@ -57,6 +57,12 @@ const preview = ref<ImportPreview | null>(null)
 const retryJson = ref('')
 const importMessage = ref('')
 const importLoading = ref(false)
+const includeDuplicates = ref(false)
+const duplicateSuspectRows = computed(() =>
+  (preview.value?.preview_rows ?? [])
+    .filter((row) => row.status === 'duplicate_suspect')
+    .map((row) => row.row_no),
+)
 const editingId = ref<number | null>(null)
 const accountForm = ref<BankAccountInput>({
   bankCode: '',
@@ -99,6 +105,7 @@ function openModal(name: ModalName) {
     retryJson.value = ''
     importMessage.value = ''
     importDone.value = false
+    includeDuplicates.value = false
   }
   if (name === 'account') {
     reset()
@@ -156,6 +163,7 @@ function chooseFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
   preview.value = null
   importMessage.value = ''
+  includeDuplicates.value = false
 }
 async function startPreview() {
   if (!session.user.value || !session.token.value || !accountId.value || !file.value) {
@@ -184,14 +192,20 @@ async function confirm() {
   if (!session.user.value || !session.token.value || !preview.value) return
   importLoading.value = true
   try {
+    const duplicates =
+      includeDuplicates.value && duplicateSuspectRows.value.length
+        ? duplicateSuspectRows.value
+        : undefined
     preview.value = (
       await confirmImportPreview(
         base,
         session.token.value,
         session.user.value.tenant_id,
         preview.value.job_id,
+        duplicates,
       )
     ).data
+    includeDuplicates.value = false
     importMessage.value = '流水已确认入账。'
     importDone.value = true
     await load()
@@ -527,6 +541,8 @@ onMounted(() => {
         ><span>有效 {{ preview.success_rows }}</span
         ><span>失败 {{ preview.failed_rows }}</span
         ><span>跳过 {{ preview.skipped_rows }}</span
+        ><span v-if="preview.duplicate_suspected_rows"
+          >疑似重复 {{ preview.duplicate_suspected_rows }}</span
         ><RouterLink class="text-button" :to="`/imports/${preview.job_id}`">任务详情</RouterLink>
       </div>
       <template v-if="preview?.failed_rows"
@@ -544,11 +560,20 @@ onMounted(() => {
         >
           重新校验失败行
         </button></template
+      ><label
+        v-if="
+          preview &&
+          ['preview_pending', 'preview_failed'].includes(preview.status) &&
+          duplicateSuspectRows.length
+        "
+        class="checkbox-label"
+        ><input v-model="includeDuplicates" type="checkbox" /> 同时导入
+        {{ duplicateSuspectRows.length }} 条疑似重复流水</label
       ><button
         v-if="preview && ['preview_pending', 'preview_failed'].includes(preview.status)"
         v-permission="'transaction:import'"
         class="primary-button"
-        :disabled="importLoading || preview.success_rows === 0"
+        :disabled="importLoading || (preview.success_rows === 0 && !includeDuplicates)"
         type="button"
         @click="confirm"
       >

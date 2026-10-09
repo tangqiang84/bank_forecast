@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { previewFinanceRecords } from './finance'
-import { confirmImportJob, downloadImportJobErrors, retryImportJobErrors } from './imports'
+import {
+  confirmImportJob,
+  downloadImportJobErrors,
+  loadImportQualitySummary,
+  retryImportJobErrors,
+} from './imports'
 import { previewContracts } from './receivables'
 
 afterEach(() => {
@@ -72,6 +77,51 @@ describe('generic import job actions', () => {
     expect(request.method).toBe('POST')
     expect(request.body).toBeUndefined()
     expect(result.data.status).toBe('confirmed')
+  })
+
+  it('confirms an import job with include_duplicates body', async () => {
+    const fetchMock = mockJsonFetch({ job_id: 301, status: 'confirmed' })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await confirmImportJob('http://localhost:8080', 'token-1', 1, 301, [2, 5])
+
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:8080/api/v1/imports/301/confirm')
+    expect(request.method).toBe('POST')
+    expect(JSON.parse(String(request.body))).toEqual({ include_duplicates: [2, 5] })
+    expect(new Headers(request.headers).get('Content-Type')).toBe('application/json')
+  })
+
+  it('treats an empty include_duplicates list as no body', async () => {
+    const fetchMock = mockJsonFetch({ job_id: 301, status: 'confirmed' })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await confirmImportJob('http://localhost:8080', 'token-1', 1, 301, [])
+
+    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(request.body).toBeUndefined()
+  })
+
+  it('loads the import quality summary with a days parameter', async () => {
+    const fetchMock = mockJsonFetch({
+      days: 30,
+      job_count: 4,
+      total_rows: 100,
+      success_rows: 90,
+      failed_rows: 6,
+      skipped_rows: 2,
+      duplicate_suspected_rows: 2,
+      success_rate: 90.0,
+      duplicate_suspect_rate: 2.0,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await loadImportQualitySummary('http://localhost:8080', 'token-1', 1, 30)
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:8080/api/v1/imports/quality-summary?days=30')
+    expect(result.data.success_rate).toBe(90.0)
+    expect(result.data.duplicate_suspected_rows).toBe(2)
   })
 
   it('downloads the error CSV as a blob', async () => {

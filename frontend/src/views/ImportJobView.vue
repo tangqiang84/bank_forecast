@@ -5,9 +5,11 @@ import {
   confirmImportJob,
   downloadImportJobErrors,
   loadImportJobPreview,
+  loadImportQualitySummary,
   retryImportJobErrors,
   type ImportJobPreview,
   type ImportJobPreviewRow,
+  type ImportQualitySummary,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
 import {
@@ -22,6 +24,9 @@ import {
 const route = useRoute()
 const session = useSession()
 const job = ref<ImportJobPreview | null>(null)
+const quality = ref<ImportQualitySummary | null>(null)
+const qualityError = ref('')
+const includeDuplicates = ref(false)
 const retryJson = ref('')
 const loading = ref(false)
 const message = ref('')
@@ -75,6 +80,17 @@ const businessColumns = computed<PreviewColumn[]>(
 const actionable = computed(
   () => job.value !== null && ['preview_pending', 'preview_failed'].includes(job.value.status),
 )
+const duplicateSuspectRows = computed(() =>
+  job.value && job.value.job_type === 'bank_statement'
+    ? job.value.preview_rows
+        .filter((row) => row.status === 'duplicate_suspect')
+        .map((row) => row.row_no)
+    : [],
+)
+
+function rateText(value: number | null) {
+  return value === null ? '暂无数据' : `${value}%`
+}
 
 const BUSINESS_VALUE_LABELS: Record<string, (value: string | null | undefined) => string> = {
   direction: directionLabel,
@@ -113,18 +129,39 @@ async function load() {
     loading.value = false
   }
 }
+async function loadQuality() {
+  if (!session.user.value || !session.token.value) return
+  try {
+    quality.value = (
+      await loadImportQualitySummary(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        30,
+      )
+    ).data
+  } catch (cause) {
+    qualityError.value = cause instanceof Error ? cause.message : '导入质量汇总加载失败'
+  }
+}
 async function confirm() {
   if (!session.user.value || !session.token.value || !job.value) return
   loading.value = true
   try {
+    const duplicates =
+      includeDuplicates.value && duplicateSuspectRows.value.length
+        ? duplicateSuspectRows.value
+        : undefined
     job.value = (
       await confirmImportJob(
         apiBase(),
         session.token.value,
         session.user.value.tenant_id,
         job.value.job_id,
+        duplicates,
       )
     ).data
+    includeDuplicates.value = false
     message.value = '任务已确认入账。'
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认失败'
@@ -169,7 +206,10 @@ async function downloadErrors() {
     message.value = cause instanceof Error ? cause.message : '错误明细导出失败'
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  loadQuality()
+})
 </script>
 <template>
   <section class="page-shell">
@@ -182,13 +222,32 @@ onMounted(load)
       <RouterLink class="ghost-button" to="/transactions">返回流水列表</RouterLink>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
+    <article class="panel">
+      <div class="section-heading">
+        <div>
+          <h3>近 30 天导入质量</h3>
+          <span class="meta">按创建时间统计银行流水导入任务</span>
+        </div>
+      </div>
+      <div v-if="quality" class="import-summary">
+        <span>任务数 {{ quality.job_count }}</span
+        ><span>成功率 {{ rateText(quality.success_rate) }}</span
+        ><span>疑似重复率 {{ rateText(quality.duplicate_suspect_rate) }}</span
+        ><span>失败行数 {{ quality.failed_rows }}</span>
+      </div>
+      <p v-else-if="qualityError" class="error-banner">{{ qualityError }}</p>
+      <p v-else class="empty-state">导入质量汇总加载中...</p>
+    </article>
     <article v-if="job" class="panel">
       <div class="import-summary">
         <strong>{{ importJobStatusLabel(job.status) }}</strong
         ><span>总行数 {{ job.total_rows }}</span
         ><span>有效 {{ job.success_rows }}</span
         ><span>失败 {{ job.failed_rows }}</span
-        ><span>跳过 {{ job.skipped_rows }}</span>
+        ><span>跳过 {{ job.skipped_rows }}</span
+        ><span v-if="job.duplicate_suspected_rows"
+          >疑似重复 {{ job.duplicate_suspected_rows }}</span
+        >
       </div>
       <p v-if="message" class="feedback-text">{{ message }}</p>
       <section v-if="job.recognized_templates?.length" class="detail-section">
@@ -242,10 +301,13 @@ onMounted(load)
         </button>
       </section>
       <div class="action-group">
-        <button
+        <label v-if="actionable && duplicateSuspectRows.length" class="checkbox-label"
+          ><input v-model="includeDuplicates" type="checkbox" /> 同时导入
+          {{ duplicateSuspectRows.length }} 条疑似重复流水</label
+        ><button
           v-if="actionable"
           class="primary-button"
-          :disabled="loading || job.success_rows === 0"
+          :disabled="loading || (job.success_rows === 0 && !includeDuplicates)"
           type="button"
           @click="confirm"
         >

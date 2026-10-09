@@ -5,10 +5,14 @@ export type ApiResponse<T> = { code: number; message: string; data: T; trace_id:
 
 export type ImportJobType = 'bank_statement' | 'contract' | 'finance_record' | 'project' | 'receipt'
 
+// duplicate_suspect：弱指纹疑似重复行，默认不随确认入账，需显式 include_duplicates。
+export type ImportRowStatus =
+  'valid' | 'failed' | 'skipped' | 'retry_success' | 'confirmed' | 'success' | 'duplicate_suspect'
+
 export type GenericImportRow<P> = {
   id: number
   row_no: number
-  status: string
+  status: ImportRowStatus | (string & {})
   error_message: string | null
   payload: P | null
 }
@@ -28,6 +32,7 @@ export type GenericImportPreview<P> = {
   success_rows: number
   failed_rows: number
   skipped_rows: number
+  duplicate_suspected_rows?: number
   preview_rows: Array<GenericImportRow<P>>
   error_details: ImportErrorDetail[]
   recognized_templates?: Array<{
@@ -72,13 +77,42 @@ export function confirmImportJob<P = Record<string, string | null>>(
   token: string,
   tenantId: number,
   jobId: number,
+  includeDuplicates?: number[],
 ) {
+  const withDuplicates = includeDuplicates !== undefined && includeDuplicates.length > 0
   return fetchJson<ApiResponse<GenericImportPreview<P>>>(
     `${baseUrl}/api/v1/imports/${jobId}/confirm`,
     {
       method: 'POST',
-      headers: authHeaders(token, tenantId),
+      headers: withDuplicates
+        ? { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }
+        : authHeaders(token, tenantId),
+      body: withDuplicates ? JSON.stringify({ include_duplicates: includeDuplicates }) : undefined,
     },
+  )
+}
+
+export type ImportQualitySummary = {
+  days: number
+  job_count: number
+  total_rows: number
+  success_rows: number
+  failed_rows: number
+  skipped_rows: number
+  duplicate_suspected_rows: number
+  success_rate: number | null
+  duplicate_suspect_rate: number | null
+}
+
+export function loadImportQualitySummary(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  days = 30,
+) {
+  return fetchJson<ApiResponse<ImportQualitySummary>>(
+    `${baseUrl}/api/v1/imports/quality-summary?days=${days}`,
+    { headers: authHeaders(token, tenantId) },
   )
 }
 

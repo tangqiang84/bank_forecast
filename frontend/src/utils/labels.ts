@@ -180,7 +180,8 @@ export function importJobStatusLabel(value: LabelValue): string {
   return fromMap(IMPORT_JOB_STATUS_LABELS, value)
 }
 
-// 银行流水预览行（import_preview_row）确认后由 backend 写为 confirmed/success。
+// 银行流水预览行（import_preview_row）确认后由 backend 写为 confirmed/success；
+// duplicate_suspect 为弱指纹疑似重复行，默认不随确认入账。
 export const IMPORT_ROW_STATUS_LABELS: Record<string, string> = {
   valid: '有效',
   failed: '失败',
@@ -188,6 +189,7 @@ export const IMPORT_ROW_STATUS_LABELS: Record<string, string> = {
   retry_success: '重试成功',
   confirmed: '已确认',
   success: '成功',
+  duplicate_suspect: '疑似重复',
 }
 
 export function importRowStatusLabel(value: LabelValue): string {
@@ -496,6 +498,7 @@ export const FIELD_NAME_LABELS: Record<string, string> = {
   date_to: '结束日期',
   file_name: '文件名',
   header: '源表头',
+  duplicate_suspected_rows: '疑似重复行数',
   error_message: '错误信息',
   finance_subject: '财务科目',
   match_group_id: '匹配组',

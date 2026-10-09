@@ -285,6 +285,7 @@ export type ImportPreview = Record<string, unknown> & {
   success_rows: number
   failed_rows: number
   skipped_rows: number
+  duplicate_suspected_rows?: number
   preview_rows: ImportPreviewRow[]
   recognized_templates?: Array<{
     sheet_name: string
@@ -323,10 +324,15 @@ export function confirmImportPreview(
   token: string,
   tenantId: number,
   jobId: number,
+  includeDuplicates?: number[],
 ) {
+  const withDuplicates = includeDuplicates !== undefined && includeDuplicates.length > 0
   return fetchJson<ApiResponse<ImportPreview>>(`${baseUrl}/api/v1/imports/${jobId}/confirm`, {
     method: 'POST',
-    headers: authHeaders(token, tenantId),
+    headers: withDuplicates
+      ? { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' }
+      : authHeaders(token, tenantId),
+    body: withDuplicates ? JSON.stringify({ include_duplicates: includeDuplicates }) : undefined,
   })
 }
 
