@@ -1585,3 +1585,117 @@ test('驾驶舱试点验收指标与快照采集', async ({ page }) => {
   expect(collectRequested).toBe(true)
   await expect(pilotPanel.getByText('最近快照 2026-10-09')).toBeVisible()
 })
+
+test('现金预测选择模型版本并展示回测与预测区间', async ({ page }) => {
+  let runUrl = ''
+  const successJob = {
+    id: 901,
+    status: 'success',
+    model_name: 'moving-average-with-trend',
+    model_version: 'v1',
+    horizon: 7,
+    window_size: 3,
+    input_start_date: '2026-09-01',
+    input_end_date: '2026-09-07',
+    attempt_count: 1,
+    error_message: null,
+    backtest_json: '{"mae":12.34,"rmse":15.2,"points":7}',
+    started_at: '2026-10-09 09:00:00',
+    finished_at: '2026-10-09 09:00:30',
+    created_at: '2026-10-09 09:00:00',
+  }
+  const forecastResults = [
+    {
+      id: 1,
+      forecast_date: '2026-10-10',
+      forecast_amount: '100.00',
+      expected_receivable: '50.00',
+      projected_balance: '1100.00',
+      actual_amount: null,
+      deviation_amount: null,
+      risk_level: 'low',
+      risk_message: '现金流平稳',
+      ci_lower: '90.00',
+      ci_upper: '110.00',
+    },
+  ]
+  const forecastModels = [
+    {
+      id: 1,
+      version: 'v1',
+      model_name: 'moving-average-with-trend',
+      status: 'active',
+      config_json: null,
+      metrics_json: null,
+      activated_at: '2026-10-01 00:00:00',
+      created_at: '2026-10-01 00:00:00',
+    },
+    {
+      id: 2,
+      version: 'v2',
+      model_name: 'weekly-seasonal-naive',
+      status: 'inactive',
+      config_json: null,
+      metrics_json: null,
+      activated_at: null,
+      created_at: '2026-10-01 00:00:00',
+    },
+    {
+      id: 3,
+      version: 'v3',
+      model_name: 'holt-linear',
+      status: 'inactive',
+      config_json: null,
+      metrics_json: null,
+      activated_at: null,
+      created_at: '2026-10-01 00:00:00',
+    },
+  ]
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/forecast/cashflow/latest', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ job: successJob, results: forecastResults, evaluation: emptyEvaluation }),
+    }),
+  )
+  await page.route('**/api/v1/forecast/models', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(forecastModels) }),
+  )
+  await page.route('**/api/v1/forecast/cashflow/jobs?**', async (route) => {
+    runUrl = route.request().url()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        job: { ...successJob, model_version: 'v3' },
+        results: forecastResults,
+        evaluation: emptyEvaluation,
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '现金预测' }).click()
+  await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
+
+  // 模型版本下拉：当前启用版本 + auto + 三个版本
+  const versionSelect = page.getByLabel('模型版本')
+  await expect(versionSelect.locator('option')).toHaveCount(5)
+  const modelPanel = page.locator('.detail-section').filter({ hasText: '模型版本' })
+  await expect(modelPanel.getByText('移动平均（含趋势）')).toBeVisible()
+  await expect(modelPanel.getByText('周季节稳健')).toBeVisible()
+  await expect(modelPanel.getByText('Holt 线性平滑')).toBeVisible()
+
+  // 回测指标与预测区间列
+  await expect(page.getByText(/回测 MAE 12\.34 · RMSE 15\.2 · 样本点数 7/)).toBeVisible()
+  await expect(page.getByText('90.00 ~ 110.00')).toBeVisible()
+
+  // 选择 auto 后生成预测，请求携带 model_version=auto
+  await versionSelect.selectOption('auto')
+  await page.getByRole('button', { name: '生成预测' }).click()
+  await expect(page.getByText('预测任务已完成。')).toBeVisible()
+  expect(runUrl).toContain('model_version=auto')
+  await expect(page.getByText(/任务 #901 · 成功 · v3/)).toBeVisible()
+})

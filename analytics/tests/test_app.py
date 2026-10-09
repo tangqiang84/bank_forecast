@@ -240,3 +240,111 @@ def test_reload_is_disabled_by_default(monkeypatch) -> None:
     monkeypatch.delenv("APP_ENV", raising=False)
     monkeypatch.delenv("ANALYTICS_RELOAD", raising=False)
     assert _reload_enabled() is False
+
+
+def _weekly_history() -> dict:
+    # 14 天：工作日净流入 1000，周末 0，第 10 天一笔 50000 离群大额
+    from datetime import date, timedelta
+
+    start = date(2026, 9, 7)  # 周一
+    history = []
+    dates = []
+    for i in range(14):
+        day = start + timedelta(days=i)
+        dates.append(day.isoformat())
+        history.append(1000.0 if day.weekday() < 5 else 0.0)
+    history[10] = 50000.0
+    return {"history": history, "dates": dates}
+
+
+def test_forecast_v2_weekly_seasonal_with_dates() -> None:
+    client = TestClient(app)
+    payload = _weekly_history()
+    payload.update({"horizon": 7, "model_version": "v2", "outlier_handling": "none"})
+
+    response = client.post("/forecast/cashflow", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["method"] == "weekly-seasonal-naive"
+    assert len(data["forecast_values"]) == 7
+    assert len(data["confidence_lower"]) == 7
+    assert len(data["confidence_upper"]) == 7
+    # 下周一（工作日）应高于下周日（周末零流入）
+    assert data["forecast_values"][0] > data["forecast_values"][6]
+    for lower, value, upper in zip(
+        data["confidence_lower"], data["forecast_values"], data["confidence_upper"]
+    ):
+        assert lower <= value <= upper
+    assert data["backtest"]["points"] > 0
+
+
+def test_forecast_v2_clips_outlier_by_default() -> None:
+    client = TestClient(app)
+    payload = _weekly_history()
+    payload.update({"horizon": 3, "model_version": "v2"})
+
+    with_clip = client.post("/forecast/cashflow", json=payload).json()["data"]
+    payload["outlier_handling"] = "none"
+    without_clip = client.post("/forecast/cashflow", json=payload).json()["data"]
+
+    assert abs(with_clip["trend_step"]) <= abs(without_clip["trend_step"])
+
+
+def test_forecast_v3_holt_linear() -> None:
+    client = TestClient(app)
+    history = [100.0 + 10 * i for i in range(30)]
+
+    response = client.post(
+        "/forecast/cashflow",
+        json={"history": history, "horizon": 5, "model_version": "v3"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["method"] == "holt-linear"
+    assert len(data["forecast_values"]) == 5
+    # 线性增长序列上 Holt 应给出接近 +10/天的趋势
+    assert 5.0 <= data["trend_step"] <= 15.0
+    assert data["backtest"]["mae"] >= 0
+
+
+def test_evaluate_returns_ranked_models_and_recommendation() -> None:
+    client = TestClient(app)
+    payload = _weekly_history()
+    payload["horizon"] = 7
+
+    response = client.post("/forecast/evaluate", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    versions = [item["model_version"] for item in data["evaluations"]]
+    assert versions == ["v1", "v2", "v3"]
+    assert data["recommended_model_version"] in versions
+    for item in data["evaluations"]:
+        assert item["points"] > 0
+        assert item["mae"] >= 0
+
+
+def test_rejects_dates_length_mismatch() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/forecast/cashflow",
+        json={"history": [1, 2, 3], "dates": ["2026-09-01", "2026-09-02"]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == 40001
+
+
+def test_rejects_invalid_outlier_handling() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/forecast/cashflow",
+        json={"history": [1, 2, 3], "outlier_handling": "magic"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == 40001

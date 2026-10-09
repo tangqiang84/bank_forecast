@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .common import fail, ok, set_trace_id
-from .forecast import forecast_cashflow
+from .forecast import evaluate_models, forecast_cashflow
 from .models import ForecastRequest, MODEL_REGISTRY
 
 
@@ -127,6 +127,10 @@ def create_app() -> FastAPI:
     @app.post("/forecast/cashflow")
     def cashflow(request: ForecastRequest):
         return ok(forecast_cashflow(request).model_dump())
+
+    @app.post("/forecast/evaluate")
+    def evaluate(request: ForecastRequest):
+        return ok(evaluate_models(request).model_dump())
 
     @app.get("/models")
     def models() -> object:

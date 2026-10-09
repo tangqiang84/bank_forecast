@@ -48,8 +48,9 @@ public class ForecastController {
   @PostMapping("/cashflow/jobs")
   public ApiResponse<Map<String, Object>> createJob(
       @org.springframework.web.bind.annotation.RequestParam(defaultValue = "7") int horizon,
-      @org.springframework.web.bind.annotation.RequestParam(name = "window_size", defaultValue = "3") int windowSize) {
-    return ApiResponse.ok(forecastJobService.run(horizon, windowSize));
+      @org.springframework.web.bind.annotation.RequestParam(name = "window_size", defaultValue = "3") int windowSize,
+      @org.springframework.web.bind.annotation.RequestParam(name = "model_version", required = false) String modelVersion) {
+    return ApiResponse.ok(forecastJobService.run(horizon, windowSize, modelVersion));
   }
 
   @RequirePermission("forecast:view")

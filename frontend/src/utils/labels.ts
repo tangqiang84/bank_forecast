@@ -287,6 +287,8 @@ export function healthLevelLabel(value: LabelValue): string {
 
 export const MODEL_NAME_LABELS: Record<string, string> = {
   'moving-average-with-trend': '移动平均（含趋势）',
+  'weekly-seasonal-naive': '周季节稳健',
+  'holt-linear': 'Holt 线性平滑',
 }
 
 export function modelNameLabel(value: LabelValue): string {
@@ -546,6 +548,9 @@ export const FIELD_NAME_LABELS: Record<string, string> = {
   job_id: '任务编号',
   model_name: '模型名称',
   model_version: '模型版本',
+  backtest_json: '回测指标',
+  ci_lower: '区间下沿',
+  ci_upper: '区间上沿',
   horizon: '预测天数',
   window_size: '历史窗口',
   attempt_count: '尝试次数',

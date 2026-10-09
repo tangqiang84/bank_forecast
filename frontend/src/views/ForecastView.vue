@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   activateForecastModel,
@@ -26,9 +26,23 @@ const forecast = ref<ForecastDetail>({
 const models = ref<ForecastModel[]>([])
 const horizon = ref(7)
 const windowSize = ref(3)
+const modelVersion = ref('')
 const loading = ref(false)
 const error = ref('')
 const message = ref('')
+
+type BacktestMetrics = { mae?: number | string; rmse?: number | string; points?: number }
+
+const backtest = computed<BacktestMetrics | null>(() => {
+  const raw = forecast.value.job?.backtest_json
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as BacktestMetrics
+    return typeof parsed === 'object' && parsed !== null ? parsed : null
+  } catch {
+    return null
+  }
+})
 
 async function load() {
   if (!session.user.value || !session.token.value) return
@@ -61,6 +75,7 @@ async function run() {
         session.user.value.tenant_id,
         horizon.value,
         windowSize.value,
+        modelVersion.value || undefined,
       )
     ).data
     message.value = '预测任务已完成。'
@@ -157,6 +172,15 @@ onMounted(load)
           <label
             >历史窗口<input v-model.number="windowSize" min="1" max="30" type="number"
           /></label>
+          <label
+            >模型版本<select v-model="modelVersion">
+              <option value="">当前启用版本</option>
+              <option value="auto">auto 自动推荐</option>
+              <option v-for="model in models" :key="model.version" :value="model.version">
+                {{ model.version }} · {{ modelNameLabel(model.model_name) }}
+              </option>
+            </select></label
+          >
         </div>
         <div class="action-group">
           <button
@@ -243,6 +267,10 @@ onMounted(load)
             <span>完成时间</span><strong>{{ forecast.job.finished_at || '-' }}</strong>
           </div>
         </div>
+        <p v-if="backtest" class="meta import-hint">
+          回测 MAE {{ backtest.mae ?? '-' }} · RMSE {{ backtest.rmse ?? '-' }} · 样本点数
+          {{ backtest.points ?? '-' }}
+        </p>
         <p v-if="forecast.job?.error_message" class="error-banner">
           {{ forecast.job.error_message }}
         </p>
@@ -252,6 +280,7 @@ onMounted(load)
               <tr>
                 <th>日期</th>
                 <th>预测净现金流</th>
+                <th>预测区间</th>
                 <th>预计应收</th>
                 <th>预计余额</th>
                 <th>实际金额</th>
@@ -264,6 +293,13 @@ onMounted(load)
                 <td>{{ item.forecast_date }}</td>
                 <td :class="Number(item.forecast_amount) < 0 ? 'expense-amount' : 'income-amount'">
                   {{ formatCurrency(item.forecast_amount) }}
+                </td>
+                <td>
+                  {{
+                    item.ci_lower !== null && item.ci_upper !== null
+                      ? `${formatCurrency(item.ci_lower)} ~ ${formatCurrency(item.ci_upper)}`
+                      : '-'
+                  }}
                 </td>
                 <td>{{ formatCurrency(item.expected_receivable) }}</td>
                 <td>{{ formatCurrency(item.projected_balance) }}</td>

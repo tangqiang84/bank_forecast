@@ -6,6 +6,7 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.common.TraceIdHolder;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
@@ -35,6 +36,7 @@ public class ForecastJobService {
   private final RestTemplate analyticsRestTemplate;
   private final AuditService auditService;
   private final String analyticsBaseUrl;
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
   public ForecastJobService(
       JdbcTemplate jdbcTemplate,
@@ -48,11 +50,30 @@ public class ForecastJobService {
   }
 
   public Map<String, Object> run(int horizon, int windowSize) {
+    return run(horizon, windowSize, null);
+  }
+
+  /** modelVersion：空为当前启用版本，auto 为回测自动择优，其余为显式版本。 */
+  public Map<String, Object> run(int horizon, int windowSize, String modelVersion) {
     AuthPrincipal principal = requireAuth();
     validateOptions(horizon, windowSize);
-    Map<String, Object> model = activeModel();
-    Long jobId = createJob(principal.getTenantId(), horizon, windowSize, number(model.get("id")).longValue());
-    return execute(principal, jobId, horizon, windowSize, text(model.get("version")));
+    String requested = modelVersion == null ? "" : modelVersion.trim();
+    Long modelVersionId;
+    String version;
+    if (requested.isEmpty()) {
+      Map<String, Object> model = activeModel();
+      modelVersionId = number(model.get("id")).longValue();
+      version = text(model.get("version"));
+    } else if ("auto".equals(requested)) {
+      modelVersionId = number(activeModel().get("id")).longValue();
+      version = "auto";
+    } else {
+      Map<String, Object> model = findModelVersion(requested);
+      modelVersionId = number(model.get("id")).longValue();
+      version = text(model.get("version"));
+    }
+    Long jobId = createJob(principal.getTenantId(), horizon, windowSize, modelVersionId);
+    return execute(principal, jobId, horizon, windowSize, version);
   }
 
   public Map<String, Object> retry(Long jobId) {
@@ -92,7 +113,7 @@ public class ForecastJobService {
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("job", job);
     data.put("results", jdbcTemplate.queryForList(
-        "select id, forecast_date, forecast_amount, expected_receivable, projected_balance, actual_amount, deviation_amount, risk_level, risk_message "
+        "select id, forecast_date, forecast_amount, expected_receivable, projected_balance, actual_amount, deviation_amount, risk_level, risk_message, ci_lower, ci_upper "
             + "from forecast_result where tenant_id = ? and forecast_job_id = ? order by forecast_date, id",
         principal.getTenantId(), jobId));
     data.put("evaluation", evaluation(principal.getTenantId(), jobId));
@@ -159,14 +180,18 @@ public class ForecastJobService {
         throw new BusinessException(ErrorCode.PARAM_ERROR, "暂无银行流水，无法生成现金流预测");
       }
       List<Double> history = new ArrayList<>();
+      List<String> dates = new ArrayList<>();
       for (Map<String, Object> row : historyRows) {
         history.add(decimal(row.get("net_amount")).doubleValue());
+        dates.add(historyDate(row).toString());
       }
       Map<String, Object> request = new LinkedHashMap<>();
       request.put("history", history);
+      request.put("dates", dates);
       request.put("horizon", horizon);
       request.put("window_size", windowSize);
-      request.put("model_version", modelVersion);
+      String resolvedVersion = "auto".equals(modelVersion) ? recommendModel(request) : modelVersion;
+      request.put("model_version", resolvedVersion);
       HttpHeaders headers = new HttpHeaders();
       headers.setContentType(MediaType.APPLICATION_JSON);
       headers.set("X-Trace-Id", TraceIdHolder.current());
@@ -182,13 +207,17 @@ public class ForecastJobService {
       if (values.size() != horizon) {
         throw new IllegalStateException("analytics 返回预测点数量不匹配");
       }
-      writeResults(tenantId, jobId, values, horizon, historyRows);
+      List<?> ciLower = list(analyticsData.get("confidence_lower"));
+      List<?> ciUpper = list(analyticsData.get("confidence_upper"));
+      writeResults(tenantId, jobId, values, ciLower, ciUpper, horizon, historyRows);
+      String backtestJson = analyticsData.get("backtest") == null ? null : toJson(analyticsData.get("backtest"));
       Timestamp finishedAt = Timestamp.valueOf(LocalDateTime.now());
       jdbcTemplate.update(
-          "update forecast_job set status = 'success', model_name = ?, model_version_id = (select id from forecast_model_version where version = ?), input_start_date = ?, input_end_date = ?, finished_at = ?, updated_at = ? where id = ? and tenant_id = ?",
-          text(analyticsData.get("method")), text(analyticsData.get("model_version")).isEmpty() ? modelVersion : text(analyticsData.get("model_version")), historyDate(historyRows.get(0)), historyDate(historyRows.get(historyRows.size() - 1)),
+          "update forecast_job set status = 'success', model_name = ?, model_version_id = (select id from forecast_model_version where version = ?), input_start_date = ?, input_end_date = ?, backtest_json = ?, finished_at = ?, updated_at = ? where id = ? and tenant_id = ?",
+          text(analyticsData.get("method")), text(analyticsData.get("model_version")).isEmpty() ? resolvedVersion : text(analyticsData.get("model_version")), historyDate(historyRows.get(0)), historyDate(historyRows.get(historyRows.size() - 1)), backtestJson,
           finishedAt, finishedAt, jobId, tenantId);
-      auditService.record("RUN_FORECAST", "forecast_job", String.valueOf(jobId), "horizon=" + horizon);
+      auditService.record("RUN_FORECAST", "forecast_job", String.valueOf(jobId),
+          "horizon=" + horizon + ",model=" + resolvedVersion + ("auto".equals(modelVersion) ? "(auto)" : ""));
       return detail(jobId);
     } catch (BusinessException ex) {
       markFailed(tenantId, jobId, ex.getMessage());
@@ -199,20 +228,61 @@ public class ForecastJobService {
     }
   }
 
-  private void writeResults(Long tenantId, Long jobId, List<?> values, int horizon, List<Map<String, Object>> historyRows) {
+  private String recommendModel(Map<String, Object> forecastRequest) {
+    Map<String, Object> evalRequest = new LinkedHashMap<>(forecastRequest);
+    // model_version 仅为通过 analytics 入参校验；evaluate 覆盖全部 active 模型
+    evalRequest.put("model_version", activeModelVersion());
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.set("X-Trace-Id", TraceIdHolder.current());
+    ResponseEntity<Map> response = analyticsRestTemplate.postForEntity(
+        analyticsBaseUrl + "/forecast/evaluate", new HttpEntity<>(evalRequest, headers), Map.class);
+    Map<String, Object> body = response.getBody();
+    Map<String, Object> data = body == null ? null : map(body.get("data"));
+    String recommended = data == null ? "" : text(data.get("recommended_model_version"));
+    if (recommended.isEmpty()) {
+      throw new IllegalStateException("analytics 评估未返回推荐模型");
+    }
+    return recommended;
+  }
+
+  private Map<String, Object> findModelVersion(String version) {
+    try {
+      return jdbcTemplate.queryForMap("select id, version, model_name from forecast_model_version where version = ? and deleted_at is null", version);
+    } catch (EmptyResultDataAccessException ex) {
+      throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "模型版本不存在");
+    }
+  }
+
+  private String toJson(Object value) {
+    try {
+      return objectMapper.writeValueAsString(value);
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
+  private void writeResults(Long tenantId, Long jobId, List<?> values, List<?> ciLower, List<?> ciUpper, int horizon, List<Map<String, Object>> historyRows) {
     jdbcTemplate.update("delete from forecast_result where tenant_id = ? and forecast_job_id = ?", tenantId, jobId);
     BigDecimal projectedBalance = currentBalance(tenantId);
     LocalDate start = LocalDate.now();
     for (int i = 0; i < horizon; i++) {
       LocalDate forecastDate = start.plusDays(i);
       BigDecimal forecastAmount = decimal(values.get(i));
+      BigDecimal lowerBound = i < ciLower.size() ? decimal(ciLower.get(i)) : null;
+      BigDecimal upperBound = i < ciUpper.size() ? decimal(ciUpper.get(i)) : null;
       BigDecimal expectedReceivable = expectedReceivable(tenantId, forecastDate);
       projectedBalance = projectedBalance.add(forecastAmount).add(expectedReceivable);
-      String riskLevel = projectedBalance.compareTo(BigDecimal.ZERO) < 0 ? "high" : forecastAmount.compareTo(BigDecimal.ZERO) < 0 ? "medium" : "low";
-      String riskMessage = "high".equals(riskLevel) ? "预计余额为负，请及时安排资金" : "medium".equals(riskLevel) ? "预计当日现金流为负" : "预计资金余额稳定";
+      BigDecimal balanceLowerBound = lowerBound == null ? null : projectedBalance.subtract(forecastAmount.subtract(lowerBound));
+      String riskLevel = projectedBalance.compareTo(BigDecimal.ZERO) < 0 ? "high"
+          : forecastAmount.compareTo(BigDecimal.ZERO) < 0 ? "medium"
+          : (balanceLowerBound != null && balanceLowerBound.compareTo(BigDecimal.ZERO) < 0) ? "medium" : "low";
+      String riskMessage = "high".equals(riskLevel) ? "预计余额为负，请及时安排资金"
+          : (balanceLowerBound != null && balanceLowerBound.compareTo(BigDecimal.ZERO) < 0) ? "预计余额区间下沿为负，请注意资金安排"
+          : "medium".equals(riskLevel) ? "预计当日现金流为负" : "预计资金余额稳定";
       jdbcTemplate.update(
-          "insert into forecast_result (tenant_id, forecast_job_id, forecast_date, forecast_amount, expected_receivable, projected_balance, risk_level, risk_message) values (?, ?, ?, ?, ?, ?, ?, ?)",
-          tenantId, jobId, Date.valueOf(forecastDate), forecastAmount, expectedReceivable, projectedBalance, riskLevel, riskMessage);
+          "insert into forecast_result (tenant_id, forecast_job_id, forecast_date, forecast_amount, expected_receivable, projected_balance, risk_level, risk_message, ci_lower, ci_upper) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          tenantId, jobId, Date.valueOf(forecastDate), forecastAmount, expectedReceivable, projectedBalance, riskLevel, riskMessage, lowerBound, upperBound);
     }
   }
 
@@ -266,7 +336,7 @@ public class ForecastJobService {
 
   private Map<String, Object> findJob(Long tenantId, Long jobId) {
     try {
-      return jdbcTemplate.queryForMap("select fj.id, fj.status, fj.model_name, coalesce(fmv.version, '') as model_version, fj.horizon, fj.window_size, fj.input_start_date, fj.input_end_date, fj.attempt_count, fj.error_message, fj.started_at, fj.finished_at, fj.created_at from forecast_job fj left join forecast_model_version fmv on fmv.id = fj.model_version_id where fj.id = ? and fj.tenant_id = ? and fj.deleted_at is null", jobId, tenantId);
+      return jdbcTemplate.queryForMap("select fj.id, fj.status, fj.model_name, coalesce(fmv.version, '') as model_version, fj.horizon, fj.window_size, fj.input_start_date, fj.input_end_date, fj.attempt_count, fj.error_message, fj.backtest_json, fj.started_at, fj.finished_at, fj.created_at from forecast_job fj left join forecast_model_version fmv on fmv.id = fj.model_version_id where fj.id = ? and fj.tenant_id = ? and fj.deleted_at is null", jobId, tenantId);
     } catch (EmptyResultDataAccessException ex) {
       throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "预测任务不存在");
     }

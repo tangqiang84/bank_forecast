@@ -14,6 +14,7 @@ export type ForecastJob = {
   input_end_date: string | null
   attempt_count: number
   error_message: string | null
+  backtest_json: string | null
   started_at: string | null
   finished_at: string | null
   created_at: string
@@ -29,6 +30,8 @@ export type ForecastPoint = {
   deviation_amount: string | null
   risk_level: string
   risk_message: string
+  ci_lower: string | null
+  ci_upper: string | null
 }
 
 export type ForecastEvaluation = {
@@ -79,8 +82,10 @@ export function runForecast(
   tenantId: number,
   horizon: number,
   windowSize: number,
+  modelVersion?: string,
 ) {
   const params = new URLSearchParams({ horizon: String(horizon), window_size: String(windowSize) })
+  if (modelVersion) params.set('model_version', modelVersion)
   return fetchJson<ApiResponse<ForecastDetail>>(
     `${baseUrl}/api/v1/forecast/cashflow/jobs?${params.toString()}`,
     {

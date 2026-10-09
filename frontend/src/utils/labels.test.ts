@@ -231,6 +231,8 @@ describe('labels', () => {
 
   it('maps model names and falls back for unknown models', () => {
     expect(modelNameLabel('moving-average-with-trend')).toBe('移动平均（含趋势）')
+    expect(modelNameLabel('weekly-seasonal-naive')).toBe('周季节稳健')
+    expect(modelNameLabel('holt-linear')).toBe('Holt 线性平滑')
     expect(modelNameLabel('moving-average')).toBe('moving-average')
   })
 
@@ -338,6 +340,9 @@ describe('labels', () => {
   })
 
   it('maps detail field names', () => {
+    expect(fieldNameLabel('backtest_json')).toBe('回测指标')
+    expect(fieldNameLabel('ci_lower')).toBe('区间下沿')
+    expect(fieldNameLabel('ci_upper')).toBe('区间上沿')
     expect(fieldNameLabel('bank_code')).toBe('银行代码')
     expect(fieldNameLabel('bank_name')).toBe('开户银行')
     expect(fieldNameLabel('account_no_last4')).toBe('账号后四位')

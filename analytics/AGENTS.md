@@ -48,10 +48,13 @@ Ruff、mypy、pip-audit 和 bandit 是否为强制检查，以 `pyproject.toml` 
 - `GET /models`
 - `GET /forecast/sample`
 - `POST /forecast/cashflow`
+- `POST /forecast/evaluate`
 
 `/forecast/sample` 仅用于样例或联调展示，不代表真实预测任务已执行。
 
-`POST /forecast/cashflow` 的路径、字段、响应、错误码、HTTP 状态码和限制以 `docs/接口契约.md` 为准。
+注册模型：v1 `moving-average-with-trend`（基线）、v2 `weekly-seasonal-naive`（周季节中位数+稳健趋势）、v3 `holt-linear`（Holt 双参数指数平滑，参数网格回测择优）。`/forecast/cashflow` 请求支持可选 `dates`（与 history 等长、严格递增的 yyyy-MM-dd，启用周季节性）和 `outlier_handling`（`iqr_clip` 默认 / `none`）；响应含 `forecast_values`、等长的 `confidence_lower`/`confidence_upper`（约 80% 残差区间）和 `backtest`（滚动起点回测 mae/rmse/points）。`/forecast/evaluate` 请求体同 `/forecast/cashflow`，对全部 active 模型回测并返回 `recommended_model_version`。
+
+`POST /forecast/cashflow` 和 `/forecast/evaluate` 的路径、字段、响应、错误码、HTTP 状态码和限制以 `docs/接口契约.md` 为准。
 
 实现必须：
 
