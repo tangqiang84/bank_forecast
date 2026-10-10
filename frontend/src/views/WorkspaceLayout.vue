@@ -9,6 +9,7 @@ const session = useSession()
 const links = [
   { path: '/dashboard', label: '驾驶舱', permission: 'dashboard:view' },
   { path: '/accounts', label: '银行账户', permission: 'account:view' },
+  { path: '/accounts/analysis', label: '账户分析', permission: 'account:view' },
   { path: '/transactions', label: '银行流水', permission: 'transaction:view' },
   { path: '/receivables', label: '合同应收', permission: 'contract:view' },
   { path: '/projects', label: '项目资金', permission: 'project:view' },

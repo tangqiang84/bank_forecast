@@ -1,6 +1,7 @@
 package com.bankforecast.api;
 
 import com.bankforecast.security.RequirePermission;
+import com.bankforecast.bank.BankAccountAnalysisService;
 import com.bankforecast.bank.BankAccountRepository;
 import com.bankforecast.audit.AuditService;
 import com.bankforecast.common.ApiResponse;
@@ -24,10 +25,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class BankAccountController {
 
   private final BankAccountRepository bankAccountRepository;
+  private final BankAccountAnalysisService bankAccountAnalysisService;
   private final AuditService auditService;
 
-  public BankAccountController(BankAccountRepository bankAccountRepository, AuditService auditService) {
+  public BankAccountController(BankAccountRepository bankAccountRepository,
+      BankAccountAnalysisService bankAccountAnalysisService, AuditService auditService) {
     this.bankAccountRepository = bankAccountRepository;
+    this.bankAccountAnalysisService = bankAccountAnalysisService;
     this.auditService = auditService;
   }
 
@@ -41,6 +45,13 @@ public class BankAccountController {
   }
 
   @RequirePermission("account:view")
+  @GetMapping("/analysis")
+  public ApiResponse<Map<String, Object>> analysis(
+      @RequestParam(defaultValue = "30") int days) {
+    return ApiResponse.ok(bankAccountAnalysisService.analysis(days));
+  }
+
+  @RequirePermission("account:view")
   @GetMapping("/{id}")
   public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
     AuthPrincipal principal = requireAuth();
@@ -51,7 +62,7 @@ public class BankAccountController {
   @PostMapping
   public ApiResponse<Map<String, Object>> create(@Valid @RequestBody BankAccountRequest request) {
     AuthPrincipal principal = requireAuth();
-    Map<String, Object> result = bankAccountRepository.create(principal.getTenantId(), request.getBankCode(), request.getBankName(), request.getAccountName(), request.getAccountNo(), request.getCurrency(), request.getCurrentBalance());
+    Map<String, Object> result = bankAccountRepository.create(principal.getTenantId(), request.getBankCode(), request.getBankName(), request.getAccountName(), request.getAccountNo(), request.getCurrency(), request.getCurrentBalance(), request.getUseType());
     auditService.record("CREATE_BANK_ACCOUNT", "bank_account", String.valueOf(result.get("id")), "bank_code=" + request.getBankCode());
     return ApiResponse.ok(result);
   }
@@ -60,7 +71,7 @@ public class BankAccountController {
   @PutMapping("/{id}")
   public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Valid @RequestBody BankAccountRequest request) {
     AuthPrincipal principal = requireAuth();
-    Map<String, Object> result = bankAccountRepository.update(principal.getTenantId(), id, request.getBankCode(), request.getBankName(), request.getAccountName(), request.getAccountNo(), request.getCurrency(), request.getCurrentBalance());
+    Map<String, Object> result = bankAccountRepository.update(principal.getTenantId(), id, request.getBankCode(), request.getBankName(), request.getAccountName(), request.getAccountNo(), request.getCurrency(), request.getCurrentBalance(), request.getUseType());
     auditService.record("UPDATE_BANK_ACCOUNT", "bank_account", String.valueOf(id), "bank_code=" + request.getBankCode());
     return ApiResponse.ok(result);
   }

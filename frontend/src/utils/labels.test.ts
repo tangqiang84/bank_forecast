@@ -34,6 +34,7 @@ import {
   severityLabel,
   taskStatusLabel,
   templateRecognitionStatusLabel,
+  useTypeLabel,
   userStatusLabel,
 } from './labels'
 
@@ -327,6 +328,16 @@ describe('labels', () => {
     expect(payableStatusLabel('other')).toBe('other')
   })
 
+  it('maps account use types including unset', () => {
+    expect(useTypeLabel('operation')).toBe('经营')
+    expect(useTypeLabel('payroll')).toBe('工资')
+    expect(useTypeLabel('project')).toBe('项目')
+    expect(useTypeLabel('tax')).toBe('税务')
+    expect(useTypeLabel('other')).toBe('其他')
+    expect(useTypeLabel('unset')).toBe('未设置')
+    expect(useTypeLabel('unknown')).toBe('unknown')
+  })
+
   it('maps generic status by union order and falls back', () => {
     expect(genericStatusLabel('new')).toBe('新发现')
     expect(genericStatusLabel('preview_pending')).toBe('待确认预览')
@@ -356,6 +367,9 @@ describe('labels', () => {
     expect(fieldNameLabel('ci_lower')).toBe('区间下沿')
     expect(fieldNameLabel('ci_upper')).toBe('区间上沿')
     expect(fieldNameLabel('supplier_name')).toBe('供应商')
+    expect(fieldNameLabel('use_type')).toBe('账户用途')
+    expect(fieldNameLabel('txn_count_90d')).toBe('近90天笔数')
+    expect(fieldNameLabel('txn_amount_90d')).toBe('近90天金额')
     expect(fieldNameLabel('bank_code')).toBe('银行代码')
     expect(fieldNameLabel('bank_name')).toBe('开户银行')
     expect(fieldNameLabel('account_no_last4')).toBe('账号后四位')

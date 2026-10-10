@@ -442,6 +442,20 @@ export function payableStatusLabel(value: LabelValue): string {
   return fromMap(PAYABLE_STATUS_LABELS, value)
 }
 
+// unset 为 backend 对未设置 use_type 的归一化值。
+export const USE_TYPE_LABELS: Record<string, string> = {
+  operation: '经营',
+  payroll: '工资',
+  project: '项目',
+  tax: '税务',
+  other: '其他',
+  unset: '未设置',
+}
+
+export function useTypeLabel(value: LabelValue): string {
+  return fromMap(USE_TYPE_LABELS, value)
+}
+
 // 通用 status 兜底：按异常、导入任务、应收计划、账户、用户、项目、规则的顺序命中。
 const GENERIC_STATUS_MAPS = [
   EXCEPTION_STATUS_LABELS,
@@ -526,6 +540,9 @@ export const FIELD_NAME_LABELS: Record<string, string> = {
   node_type: '节点类型',
   match_reason: '匹配理由',
   supplier_name: '供应商',
+  use_type: '账户用途',
+  txn_count_90d: '近90天笔数',
+  txn_amount_90d: '近90天金额',
   last_test_status: '最近测试',
   last_test_message: '测试信息',
   last_tested_at: '最近测试时间',

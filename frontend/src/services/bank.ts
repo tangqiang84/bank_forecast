@@ -12,6 +12,7 @@ export type BankAccount = {
   currency: string
   status: string
   current_balance: string
+  use_type?: string | null
   last_transaction_at: string | null
   idle_days: number | null
   idle_level: 'normal' | 'idle_30' | 'idle_90' | 'idle_180' | null
@@ -83,6 +84,7 @@ export type BankAccountInput = {
   accountNo: string
   currency: string
   currentBalance: string
+  useType?: string
 }
 
 export function createBankAccount(
@@ -117,6 +119,67 @@ export function closeBankAccount(baseUrl: string, token: string, tenantId: numbe
     method: 'POST',
     headers: authHeaders(token, tenantId),
   })
+}
+
+export type ActivityRankItem = {
+  rank: number
+  account_id: number
+  bank_name: string
+  account_name: string
+  account_no_last4: string
+  use_type: string | null
+  current_balance: string
+  txn_count_90d: number
+  txn_amount_90d: string
+  last_transaction_date: string | null
+}
+
+export type BalanceTrendAccount = {
+  account_id: number
+  account_name: string
+  bank_name: string
+  points: Array<{ date: string; balance: number }>
+}
+
+export type BalanceTrend = {
+  days: number
+  start: string
+  end: string
+  account_limit: number
+  accounts: BalanceTrendAccount[]
+}
+
+export type UseTypeDistributionItem = {
+  use_type: string
+  account_count: number
+  balance: string
+}
+
+export type CloseSuggestion = {
+  account_id: number
+  bank_name: string
+  account_name: string
+  account_no_last4: string
+  current_balance: string
+  use_type: string | null
+  idle_days: number | null
+  reasons: string[]
+  suggestion: string
+}
+
+export type AccountAnalysis = {
+  activity_window_days: number
+  activity_ranking: ActivityRankItem[]
+  balance_trend: BalanceTrend
+  use_type_distribution: UseTypeDistributionItem[]
+  close_suggestions: CloseSuggestion[]
+}
+
+export function loadAccountAnalysis(baseUrl: string, token: string, tenantId: number, days = 30) {
+  return fetchJson<ApiResponse<AccountAnalysis>>(
+    `${baseUrl}/api/v1/bank-accounts/analysis?days=${days}`,
+    { headers: authHeaders(token, tenantId) },
+  )
 }
 
 export function scanIdleAccounts(baseUrl: string, token: string, tenantId: number) {

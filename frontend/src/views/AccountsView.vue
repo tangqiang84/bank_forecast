@@ -30,6 +30,7 @@ import {
   fieldNameLabel,
   idleLevelLabel,
   taskStatusLabel,
+  useTypeLabel,
 } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
@@ -71,6 +72,7 @@ const accountForm = ref<BankAccountInput>({
   accountNo: '',
   currency: 'CNY',
   currentBalance: '0',
+  useType: '',
 })
 const accountMessage = ref('')
 const connections = ref<BankConnection[]>([])
@@ -319,6 +321,7 @@ function edit(account: BankAccount) {
     accountNo: '',
     currency: account.currency,
     currentBalance: account.current_balance,
+    useType: account.use_type ?? '',
   }
   accountMessage.value = '编辑时请输入完整账号，页面只展示后四位。'
 }
@@ -331,6 +334,7 @@ function reset() {
     accountNo: '',
     currency: 'CNY',
     currentBalance: '0',
+    useType: '',
   }
   accountMessage.value = ''
 }
@@ -338,21 +342,19 @@ async function save() {
   if (!session.user.value || !session.token.value) return
   try {
     const wasEditing = Boolean(editingId.value)
+    const payload: BankAccountInput = {
+      ...accountForm.value,
+      useType: accountForm.value.useType || undefined,
+    }
     if (wasEditing)
       await updateBankAccount(
         base,
         session.token.value,
         session.user.value.tenant_id,
         editingId.value as number,
-        accountForm.value,
+        payload,
       )
-    else
-      await createBankAccount(
-        base,
-        session.token.value,
-        session.user.value.tenant_id,
-        accountForm.value,
-      )
+    else await createBankAccount(base, session.token.value, session.user.value.tenant_id, payload)
     reset()
     accountMessage.value = wasEditing ? '账户已更新。' : '账户已新增。'
     accountDone.value = true
@@ -453,7 +455,11 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr v-for="account in accounts" :key="account.id">
-              <td>{{ account.bank_name }}<br />{{ account.account_name }}</td>
+              <td>
+                {{ account.bank_name }}<br />{{ account.account_name }}<br /><span class="meta">{{
+                  useTypeLabel(account.use_type ?? 'unset')
+                }}</span>
+              </td>
               <td>{{ account.account_no_last4 }}</td>
               <td>{{ formatCurrency(account.current_balance) }}</td>
               <td>
@@ -599,8 +605,17 @@ onMounted(() => {
       ><label>完整账号<input v-model.trim="accountForm.accountNo" inputmode="numeric" /></label
       ><label>币种<input v-model.trim="accountForm.currency" /></label
       ><label
-        >当前余额<input v-model="accountForm.currentBalance" type="number" step="0.01"
-      /></label>
+        >当前余额<input v-model="accountForm.currentBalance" type="number" step="0.01" /></label
+      ><label
+        >账户用途<select v-model="accountForm.useType">
+          <option value="">未设置</option>
+          <option value="operation">经营</option>
+          <option value="payroll">工资</option>
+          <option value="project">项目</option>
+          <option value="tax">税务</option>
+          <option value="other">其他</option>
+        </select></label
+      >
       <div class="action-group">
         <button v-permission="'account:manage'" class="primary-button" type="button" @click="save">
           {{ editingId ? '保存账户' : '新增账户' }}

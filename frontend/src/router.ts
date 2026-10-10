@@ -12,6 +12,7 @@ import EntityDetailView from './views/EntityDetailView.vue'
 import ReconciliationView from './views/ReconciliationView.vue'
 import ForecastView from './views/ForecastView.vue'
 import AccountsView from './views/AccountsView.vue'
+import AccountAnalysisView from './views/AccountAnalysisView.vue'
 import ReceivablesView from './views/ReceivablesView.vue'
 import ProjectsView from './views/ProjectsView.vue'
 import MatchingView from './views/MatchingView.vue'
@@ -60,6 +61,12 @@ const router = createRouter({
           path: 'accounts',
           name: 'accounts',
           component: AccountsView,
+          meta: { permission: 'account:view' },
+        },
+        {
+          path: 'accounts/analysis',
+          name: 'account-analysis',
+          component: AccountAnalysisView,
           meta: { permission: 'account:view' },
         },
         {

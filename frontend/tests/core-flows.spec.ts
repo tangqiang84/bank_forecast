@@ -1879,3 +1879,192 @@ test('驾驶舱收付区块与资金缺口提示', async ({ page }) => {
   await expect(riskPanel.locator('.pill')).toHaveText('高')
   await expect(riskPanel.getByRole('link')).toHaveAttribute('href', '#/projects')
 })
+
+test('账户分析视图四区块渲染与 7/30 天切换', async ({ page }) => {
+  const requestedDays: string[] = []
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts/analysis?**', async (route) => {
+    const url = new URL(route.request().url())
+    const days = url.searchParams.get('days') ?? ''
+    requestedDays.push(days)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        activity_window_days: 90,
+        activity_ranking: [
+          {
+            rank: 1,
+            account_id: 1,
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            use_type: 'operation',
+            current_balance: '1000.00',
+            txn_count_90d: 12,
+            txn_amount_90d: '5000.00',
+            last_transaction_date: '2026-10-09',
+          },
+        ],
+        balance_trend: {
+          days: Number(days) || 30,
+          start: '2026-09-11',
+          end: '2026-10-10',
+          account_limit: 10,
+          accounts: [
+            {
+              account_id: 1,
+              account_name: '基本户',
+              bank_name: '工商银行',
+              points: [
+                { date: '2026-09-11', balance: 900 },
+                { date: '2026-09-12', balance: 950 },
+                { date: '2026-09-13', balance: 1000 },
+              ],
+            },
+            {
+              account_id: 2,
+              account_name: '工资户',
+              bank_name: '中国银行',
+              points: [
+                { date: '2026-09-11', balance: 300 },
+                { date: '2026-09-12', balance: 320 },
+                { date: '2026-09-13', balance: 310 },
+              ],
+            },
+          ],
+        },
+        use_type_distribution: [
+          { use_type: 'operation', account_count: 2, balance: '1300.00' },
+          { use_type: 'unset', account_count: 1, balance: '300.00' },
+        ],
+        close_suggestions: [
+          {
+            account_id: 2,
+            bank_name: '中国银行',
+            account_name: '睡眠户',
+            account_no_last4: '8888',
+            current_balance: '10.00',
+            use_type: null,
+            idle_days: 200,
+            reasons: ['近 180 天无动账', '余额低于 100 元'],
+            suggestion: '建议销户',
+          },
+        ],
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '账户分析' }).click()
+  await expect(page.getByRole('heading', { name: '账户活跃度与结构分析' })).toBeVisible()
+
+  const rankingPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '账户活跃度排名', exact: true }),
+  })
+  await expect(rankingPanel.getByText(/统计窗口：近 90 天/)).toBeVisible()
+  await expect(rankingPanel.getByText('工商银行')).toBeVisible()
+  await expect(rankingPanel.getByRole('cell', { name: '经营' })).toBeVisible()
+  await expect(rankingPanel.getByRole('cell', { name: '12', exact: true })).toBeVisible()
+  await expect(rankingPanel.getByText('2026-10-09')).toBeVisible()
+
+  const trendPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '余额趋势', exact: true }),
+  })
+  await expect(trendPanel.locator('svg')).toHaveCount(1)
+  await expect(trendPanel.locator('svg path')).toHaveCount(2)
+  await expect(trendPanel.getByText('工资户', { exact: true })).toBeVisible()
+
+  const distributionPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '账户用途分布', exact: true }),
+  })
+  await expect(distributionPanel.getByText('经营')).toBeVisible()
+  await expect(distributionPanel.getByText('未设置')).toBeVisible()
+  await expect(distributionPanel.getByText(/占比 81\.3%/)).toBeVisible()
+
+  const suggestionPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '销户建议', exact: true }),
+  })
+  await expect(suggestionPanel.getByText('睡眠户')).toBeVisible()
+  await expect(suggestionPanel.getByText('近 180 天无动账')).toBeVisible()
+  await expect(suggestionPanel.getByText('建议销户')).toBeVisible()
+  await expect(suggestionPanel.getByRole('link', { name: '前往账户页处理' })).toHaveAttribute(
+    'href',
+    '#/accounts',
+  )
+
+  expect(requestedDays).toEqual(['30'])
+  const analysisRequest = page.waitForRequest('**/api/v1/bank-accounts/analysis?days=7')
+  await trendPanel.getByRole('button', { name: '近 7 天' }).click()
+  await analysisRequest
+  expect(requestedDays).toEqual(['30', '7'])
+})
+
+test('账户表单提交账户用途', async ({ page }) => {
+  let createBody: Record<string, unknown> | null = null
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '100.00',
+            use_type: 'operation',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-connections**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/bank-accounts', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    createBody = postBody(route)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        id: 2,
+        bank_code: 'CMB',
+        bank_name: '招商银行',
+        account_name: '工资户',
+        account_no_last4: '7890',
+        currency: 'CNY',
+        status: 'active',
+        current_balance: '0.00',
+        use_type: 'payroll',
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行账户' }).click()
+  await expect(page.getByRole('heading', { name: '账户盘点' })).toBeVisible()
+
+  await page.getByRole('button', { name: '新增银行账户' }).click()
+  const accountDialog = page.getByRole('dialog', { name: '新增银行账户' })
+  await accountDialog.getByLabel('银行代码').fill('CMB')
+  await accountDialog.getByLabel('银行名称').fill('招商银行')
+  await accountDialog.getByLabel('账户名称').fill('工资户')
+  await accountDialog.getByLabel('完整账号').fill('1234567890')
+  await accountDialog.getByLabel('账户用途').selectOption('payroll')
+  await accountDialog.getByRole('button', { name: '新增账户' }).click()
+
+  await expect(accountDialog.getByText('账户已新增。')).toBeVisible()
+  expect(createBody).toMatchObject({ bankCode: 'CMB', useType: 'payroll' })
+})

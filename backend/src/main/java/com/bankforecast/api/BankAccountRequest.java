@@ -12,6 +12,7 @@ public class BankAccountRequest {
   @NotBlank @Size(min = 4, max = 64) private String accountNo;
   @NotBlank @Size(max = 16) private String currency;
   @DecimalMin(value = "0.00") private BigDecimal currentBalance = BigDecimal.ZERO;
+  @Size(max = 32) private String useType;
 
   public String getBankCode() { return bankCode; }
   public void setBankCode(String bankCode) { this.bankCode = bankCode; }
@@ -25,4 +26,6 @@ public class BankAccountRequest {
   public void setCurrency(String currency) { this.currency = currency; }
   public BigDecimal getCurrentBalance() { return currentBalance == null ? BigDecimal.ZERO : currentBalance; }
   public void setCurrentBalance(BigDecimal currentBalance) { this.currentBalance = currentBalance; }
+  public String getUseType() { return useType == null || useType.trim().isEmpty() ? null : useType.trim(); }
+  public void setUseType(String useType) { this.useType = useType; }
 }
