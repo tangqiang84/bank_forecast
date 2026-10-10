@@ -22,5 +22,12 @@ public class DashboardController {
   @GetMapping("/overview")
   public ApiResponse<Map<String, Object>> overview() { return ApiResponse.ok(dashboardService.overview(requireAuth().getTenantId())); }
 
+  @RequirePermission("dashboard:view")
+  @GetMapping("/trends")
+  public ApiResponse<Map<String, Object>> trends(
+      @org.springframework.web.bind.annotation.RequestParam(defaultValue = "30") int days) {
+    return ApiResponse.ok(dashboardService.trends(requireAuth().getTenantId(), days));
+  }
+
   private AuthPrincipal requireAuth() { AuthPrincipal principal = AuthContext.get(); if (principal == null) throw new BusinessException(ErrorCode.LOGIN_REQUIRED, "登录已过期，请重新登录"); return principal; }
 }

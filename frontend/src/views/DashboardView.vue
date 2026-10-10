@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { loadDashboardOverview, type DashboardOverview } from '../services/dashboard'
+import { computed, onMounted, ref } from 'vue'
+import TrendChart, { type TrendSeries } from '../components/TrendChart.vue'
+import {
+  loadDashboardOverview,
+  loadDashboardTrends,
+  type DashboardOverview,
+  type DashboardTrendPoint,
+  type DashboardTrends,
+} from '../services/dashboard'
 import { loadAccounts, type BankAccount } from '../services/bank'
 import {
   collectMetricSnapshot,
@@ -24,6 +31,10 @@ const collecting = ref(false)
 const trendMetric = ref('')
 const trendRows = ref<MetricSnapshotPoint[]>([])
 const trendLoading = ref(false)
+const trends = ref<DashboardTrends | null>(null)
+const trendsDays = ref(30)
+const trendsLoading = ref(false)
+const trendsError = ref('')
 const error = ref('')
 const loading = ref(false)
 const cards = () =>
@@ -57,6 +68,64 @@ async function load() {
 }
 function percentText(value: number | null) {
   return value === null ? '暂无数据' : `${value}%`
+}
+const trendDates = computed(() => trends.value?.series.map((point) => point.date) ?? [])
+function trendSeries(
+  name: string,
+  color: string,
+  pick: (point: DashboardTrendPoint) => number | null,
+): TrendSeries {
+  return { name, color, values: trends.value?.series.map(pick) ?? [] }
+}
+const incomeSeries = computed(() => trendSeries('收入', '#1a7f37', (point) => point.income))
+const expenseSeries = computed(() => trendSeries('支出', '#c0392b', (point) => point.expense))
+const netSeries = computed(() => trendSeries('净流入', '#2563eb', (point) => point.net_inflow))
+const balanceSeries = computed(() => trendSeries('总余额', '#2563eb', (point) => point.balance))
+const exceptionSeries = computed(() =>
+  trendSeries('未闭环异常', '#d97706', (point) => point.open_exceptions),
+)
+const matchRateSeries = computed(() =>
+  trendSeries('匹配率', '#7c3aed', (point) => point.match_rate),
+)
+const receivableSeries = computed(() =>
+  trendSeries('应收总额', '#0891b2', (point) => point.receivable_total),
+)
+const overdueSeries = computed(() =>
+  trendSeries('逾期未收', '#dc2626', (point) => point.overdue_receivable),
+)
+const snapshotMissing = computed(
+  () =>
+    !!trends.value?.series.length &&
+    trends.value.series.every(
+      (point) => point.receivable_total === null && point.overdue_receivable === null,
+    ),
+)
+function percentFormat(value: number) {
+  return `${value}%`
+}
+async function loadTrends() {
+  if (!session.user.value || !session.token.value) return
+  trendsLoading.value = true
+  trendsError.value = ''
+  try {
+    trends.value = (
+      await loadDashboardTrends(
+        apiBase(),
+        session.token.value,
+        session.user.value.tenant_id,
+        trendsDays.value,
+      )
+    ).data
+  } catch (cause) {
+    trendsError.value = cause instanceof Error ? cause.message : '资金趋势加载失败'
+  } finally {
+    trendsLoading.value = false
+  }
+}
+function switchDays(days: number) {
+  if (days === trendsDays.value) return
+  trendsDays.value = days
+  loadTrends()
 }
 function amountText(item: PilotAmountMetric) {
   if (item.value === null) return '-'
@@ -127,6 +196,7 @@ async function collectSnapshot() {
 onMounted(() => {
   load()
   loadPilot()
+  loadTrends()
   window.addEventListener('workspace-refresh', load)
 })
 </script>
@@ -147,6 +217,68 @@ onMounted(() => {
         ><strong class="stat-value">{{ card.value }}</strong>
       </article>
     </section>
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>资金趋势</h3>
+          <span class="meta">{{
+            trends ? `${trends.start} 至 ${trends.end}` : `近 ${trendsDays} 天`
+          }}</span>
+        </div>
+        <div class="action-group">
+          <button
+            class="text-button"
+            :disabled="trendsDays === 7"
+            type="button"
+            @click="switchDays(7)"
+          >
+            近 7 天</button
+          ><button
+            class="text-button"
+            :disabled="trendsDays === 30"
+            type="button"
+            @click="switchDays(30)"
+          >
+            近 30 天
+          </button>
+          <span v-if="trendsLoading" class="meta">加载中...</span>
+        </div>
+      </div>
+      <p v-if="trendsError" class="error-banner">{{ trendsError }}</p>
+      <p v-else-if="!trends || !trends.series.length" class="empty-state">
+        {{ trendsLoading ? '趋势加载中...' : '暂无趋势数据。' }}
+      </p>
+      <div v-else class="grid two-up">
+        <TrendChart
+          title="收支与净流入"
+          :dates="trendDates"
+          :bars="[incomeSeries, expenseSeries]"
+          :lines="[netSeries]"
+          :format-value="formatCurrency"
+        />
+        <TrendChart
+          title="总余额"
+          :dates="trendDates"
+          :lines="[balanceSeries]"
+          :format-value="formatCurrency"
+        />
+        <TrendChart title="未闭环异常" :dates="trendDates" :lines="[exceptionSeries]" />
+        <TrendChart
+          title="匹配率"
+          :dates="trendDates"
+          :lines="[matchRateSeries]"
+          :format-value="percentFormat"
+        />
+        <p v-if="snapshotMissing" class="empty-state">暂无快照数据，请先在试点验收区块采集快照。</p>
+        <TrendChart
+          v-else
+          title="应收 / 逾期"
+          :dates="trendDates"
+          :lines="[receivableSeries, overdueSeries]"
+          :format-value="formatCurrency"
+        />
+      </div>
+    </article>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>

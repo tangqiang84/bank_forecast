@@ -1699,3 +1699,72 @@ test('现金预测选择模型版本并展示回测与预测区间', async ({ pa
   expect(runUrl).toContain('model_version=auto')
   await expect(page.getByText(/任务 #901 · 成功 · v3/)).toBeVisible()
 })
+
+test('驾驶舱资金趋势图与 7/30 天切换', async ({ page }) => {
+  const requestedDays: string[] = []
+  let snapshotMode = true
+
+  function trendsPayload(days: number, withSnapshots: boolean) {
+    const series = []
+    const start = Date.UTC(2026, 8, 10)
+    for (let i = 0; i < days; i += 1) {
+      const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
+      series.push({
+        date,
+        income: 100 + i,
+        expense: 60 + i,
+        net_inflow: 40 - (i % 5) * 20,
+        balance: 1000 + i * 10,
+        open_exceptions: i % 3,
+        match_rate: i % 2 === 0 ? 66.5 : null,
+        receivable_total: withSnapshots ? (i % 2 === 0 ? 8000 + i : null) : null,
+        received_total: withSnapshots ? 5000 + i : null,
+        overdue_receivable: withSnapshots ? (i % 3 === 0 ? 200 + i : null) : null,
+      })
+    }
+    return { days, start: series[0].date, end: series[days - 1].date, series }
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/metrics/pilot-acceptance', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ as_of: '2026-10-10', indicators: [], amounts: [], last_snapshot_date: null }),
+    }),
+  )
+  await page.route('**/api/v1/dashboard/trends?**', async (route) => {
+    const url = new URL(route.request().url())
+    const days = url.searchParams.get('days') ?? ''
+    requestedDays.push(days)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(trendsPayload(Number(days) || 30, snapshotMode)),
+    })
+  })
+
+  await login(page)
+  const trendPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '资金趋势', exact: true }),
+  })
+  await expect(trendPanel).toBeVisible()
+
+  // 默认 30 天：五张 SVG 图、折线与坐标标注
+  await expect(trendPanel.locator('svg')).toHaveCount(5)
+  await expect(trendPanel.locator('svg path').first()).toBeVisible()
+  await expect(trendPanel.getByText('收支与净流入')).toBeVisible()
+  await expect(trendPanel.getByText('应收 / 逾期')).toBeVisible()
+  await expect(trendPanel.getByText('2026-09-10').first()).toBeVisible()
+  expect(requestedDays).toEqual(['30'])
+
+  // 切换 7 天：重新请求；快照指标全 null 时显示采集提示，图表减为 4 张
+  snapshotMode = false
+  await trendPanel.getByRole('button', { name: '近 7 天' }).click()
+  await expect(trendPanel.getByText('暂无快照数据，请先在试点验收区块采集快照。')).toBeVisible()
+  await expect(trendPanel.locator('svg')).toHaveCount(4)
+  expect(requestedDays).toEqual(['30', '7'])
+})

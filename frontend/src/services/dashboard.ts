@@ -52,3 +52,30 @@ export async function loadDashboardOverview(
     headers: authHeaders(token, tenantId),
   })
 }
+
+export type DashboardTrendPoint = {
+  date: string
+  income: number
+  expense: number
+  net_inflow: number
+  balance: number
+  open_exceptions: number
+  match_rate: number | null
+  receivable_total: number | null
+  received_total: number | null
+  overdue_receivable: number | null
+}
+
+export type DashboardTrends = {
+  days: number
+  start: string
+  end: string
+  series: DashboardTrendPoint[]
+}
+
+export function loadDashboardTrends(baseUrl: string, token: string, tenantId: number, days = 30) {
+  return fetchJson<ApiResponse<DashboardTrends>>(
+    `${baseUrl}/api/v1/dashboard/trends?days=${days}`,
+    { headers: authHeaders(token, tenantId) },
+  )
+}
