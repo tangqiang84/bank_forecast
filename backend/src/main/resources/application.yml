@@ -31,6 +31,13 @@ bank-forecast:
     base-url: ${ANALYTICS_BASE_URL:http://localhost:8001}
     connect-timeout-ms: ${ANALYTICS_CONNECT_TIMEOUT_MS:2000}
     read-timeout-ms: ${ANALYTICS_READ_TIMEOUT_MS:10000}
+  llm:
+    enabled: ${LLM_ENABLED:false}
+    base-url: ${LLM_BASE_URL:}
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:}
+    connect-timeout-ms: ${LLM_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${LLM_READ_TIMEOUT_MS:10000}
   bootstrap:
     default-admin-password: ${DEV_ADMIN_PASSWORD:}
   cors:

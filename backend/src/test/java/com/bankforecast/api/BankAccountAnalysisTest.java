@@ -110,6 +110,41 @@ class BankAccountAnalysisTest {
   }
 
   @Test
+  void proposeCloseAndCancelCloseFlow() throws Exception {
+    String token = loginToken("finance01");
+    Long accountId = createAccount(token, "销户流转户" + UUID.randomUUID().toString().substring(0, 8), "2000.00", null);
+
+    mockMvc.perform(post("/api/v1/bank-accounts/" + accountId + "/propose-close")
+            .header("Authorization", "Bearer " + token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"reason\":\"长期闲置低余额\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("pending_close"));
+
+    // 重复发起返回 44015
+    mockMvc.perform(post("/api/v1/bank-accounts/" + accountId + "/propose-close")
+            .header("Authorization", "Bearer " + token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"reason\":\"重复\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(44015));
+
+    // 撤销待销户回 active
+    mockMvc.perform(post("/api/v1/bank-accounts/" + accountId + "/cancel-close")
+            .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("active"));
+
+    // 原因为空返回 40001
+    mockMvc.perform(post("/api/v1/bank-accounts/" + accountId + "/propose-close")
+            .header("Authorization", "Bearer " + token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(40001));
+  }
+
+  @Test
   void analysisValidationAndPermission() throws Exception {
     String token = loginToken("finance01");
     mockMvc.perform(get("/api/v1/bank-accounts/analysis?days=91")

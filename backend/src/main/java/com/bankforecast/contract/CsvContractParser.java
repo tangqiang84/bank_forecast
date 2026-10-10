@@ -74,6 +74,7 @@ public class CsvContractParser {
               hasReceivablePlan ? parseDate(raw, "due_date", rowNo) : null,
               hasReceivablePlan ? positive(raw, "plan_amount", rowNo) : null,
               raw.get("owner_name"),
+              raw.get("receive_account"),
               objectMapper.writeValueAsString(raw)));
         } catch (BusinessException ex) {
           errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw)));
@@ -172,6 +173,7 @@ public class CsvContractParser {
     aliases.put("projectno", "project_no");
     aliases.put("projectname", "project_name");
     aliases.put("ownername", "owner_name");
+    aliases.put("receiveaccount", "receive_account");
     aliases.put("合同编号", "contract_no");
     aliases.put("合同名称", "contract_name");
     aliases.put("合同名", "contract_name");
@@ -186,6 +188,8 @@ public class CsvContractParser {
     aliases.put("项目编号", "project_no");
     aliases.put("项目名称", "project_name");
     aliases.put("负责人", "owner_name");
+    aliases.put("责任人", "owner_name");
+    aliases.put("收款账户", "receive_account");
     if (normalized.contains("合同") && normalized.contains("名称")) return "contract_name";
     if (normalized.contains("contract") && normalized.contains("name")) return "contract_name";
     return aliases.containsKey(normalized) ? aliases.get(normalized) : normalized;

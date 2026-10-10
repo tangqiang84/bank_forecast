@@ -428,6 +428,27 @@ public class ImportJobService {
 
   private static class ParsedFile { private final CsvParseResult<CsvBankStatementRow> result; private final List<Map<String, Object>> templates; private ParsedFile(CsvParseResult<CsvBankStatementRow> result, List<Map<String, Object>> templates) { this.result = result; this.templates = templates; } }
 
+  /**
+   * 内部转账/冲正自动识别（P3-4）：仅对 income/expense 生效。
+   * 摘要含 冲正/撤销 → reversal；含 退款/退回 → refund；
+   * 对方户名命中同租户其他账户的账户名称 → transfer（内部转账不计经营收支）。
+   */
+  private String normalizeBusinessDirection(Long tenantId, CsvBankStatementRow row) {
+    String direction = row.getDirection();
+    if (!"income".equals(direction) && !"expense".equals(direction)) return direction;
+    String summary = row.getSummary() == null ? "" : row.getSummary();
+    if (summary.contains("冲正") || summary.contains("撤销")) return "reversal";
+    if (summary.contains("退款") || summary.contains("退回")) return "refund";
+    String counterparty = row.getCounterpartyName();
+    if (counterparty != null && !counterparty.trim().isEmpty()) {
+      Integer count = jdbcTemplate.queryForObject(
+          "select count(*) from bank_account where tenant_id = ? and account_name = ? and deleted_at is null and status <> 'closed'",
+          Integer.class, tenantId, counterparty.trim());
+      if (count != null && count > 0) return "transfer";
+    }
+    return direction;
+  }
+
   private void validateDate(CsvBankStatementRow row) {
     long days = Math.abs(java.time.temporal.ChronoUnit.DAYS.between(row.getTransactionDate(), java.time.LocalDate.now()));
     if (days > maxDateRangeDays) {
@@ -547,6 +568,7 @@ public class ImportJobService {
   }
 
   private void insertTransaction(Long tenantId, Long jobId, Long bankAccountId, CsvBankStatementRow row) {
+    String direction = normalizeBusinessDirection(tenantId, row);
     jdbcTemplate.update(
         "insert into bank_transaction (tenant_id, bank_account_id, import_job_id, transaction_no, transaction_date, booking_date, direction, amount, balance_after, counterparty_name, summary, match_status, weak_fingerprint) "
             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -556,7 +578,7 @@ public class ImportJobService {
         row.getTransactionNo(),
         Date.valueOf(row.getTransactionDate()),
         Date.valueOf(row.getTransactionDate()),
-        row.getDirection(),
+        direction,
         row.getAmount(),
         row.getBalanceAfter(),
         row.getCounterpartyName(),

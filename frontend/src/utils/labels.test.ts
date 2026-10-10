@@ -150,6 +150,12 @@ describe('labels', () => {
     expect(exceptionTypeLabel('unreceived')).toBe('应收未收')
     expect(exceptionTypeLabel('unknown_receipt')).toBe('未知收款')
     expect(exceptionTypeLabel('timing_difference')).toBe('跨月时间差')
+    expect(exceptionTypeLabel('fund_gap')).toBe('资金缺口')
+    expect(exceptionTypeLabel('acceptance_overdue')).toBe('验收款逾期')
+    expect(exceptionTypeLabel('warranty_overdue')).toBe('质保金逾期')
+    expect(exceptionTypeLabel('customer_risk')).toBe('客户回款风险')
+    expect(exceptionTypeLabel('payroll_gap')).toBe('工资类支出缺口')
+    expect(exceptionTypeLabel('project_cashflow_risk')).toBe('项目现金流风险')
     expect(exceptionTypeLabel('unknown_income')).toBe('unknown_income')
   })
 
@@ -291,6 +297,13 @@ describe('labels', () => {
     expect(auditActionLabel('PREVIEW_PAYABLE')).toBe('预览应付计划导入')
     expect(auditActionLabel('CONFIRM_PAYABLE')).toBe('确认应付计划导入')
     expect(auditActionLabel('RETRY_PAYABLE_ERRORS')).toBe('重试应付计划失败行')
+    expect(auditActionLabel('PROPOSE_CLOSE_BANK_ACCOUNT')).toBe('发起销户')
+    expect(auditActionLabel('CANCEL_CLOSE_BANK_ACCOUNT')).toBe('撤销销户')
+    expect(auditActionLabel('UPDATE_EXCEPTION_ASSIGNMENT')).toBe('更新异常分派配置')
+    expect(auditActionLabel('RUN_INDUSTRY_ALERTS')).toBe('运行行业预警')
+    expect(auditActionLabel('CREATE_COUNTERPARTY_ALIAS')).toBe('新建对手方别名')
+    expect(auditActionLabel('UPDATE_COUNTERPARTY_ALIAS')).toBe('更新对手方别名')
+    expect(auditActionLabel('DELETE_COUNTERPARTY_ALIAS')).toBe('删除对手方别名')
   })
 
   it('maps exception action_type codes used in the timeline', () => {

@@ -2,18 +2,24 @@
 import { onMounted, ref } from 'vue'
 import {
   applyIndustryTemplate,
+  loadExceptionAssignment,
   loadRuleCenterRiskRules,
   loadRuleConfig,
   loadRuleVersions,
   rollbackRuleVersion,
+  runIndustryAlerts,
+  updateExceptionAssignment,
   updateRuleCenterRiskRule,
   updateRuleConfig,
+  type ExceptionAssignmentItem,
+  type IndustryAlertResult,
   type RuleConfig,
   type RuleVersion,
 } from '../services/rules'
+import { loadSystemUsers, type SystemUser } from '../services/system'
 import type { ProjectRiskRule } from '../services/projects'
 import { apiBase, useSession } from '../session'
-import { industryTemplateLabel } from '../utils/labels'
+import { exceptionTypeLabel, industryTemplateLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -25,6 +31,13 @@ const industry = ref('it_software')
 const loading = ref(false)
 const error = ref('')
 const message = ref('')
+const assignmentItems = ref<ExceptionAssignmentItem[]>([])
+const assignmentForm = ref<Record<string, string>>({})
+const assignmentUsers = ref<SystemUser[]>([])
+const assignmentUserFallback = ref(false)
+const assignmentError = ref('')
+const alertResult = ref<IndustryAlertResult | null>(null)
+const alertRunning = ref(false)
 
 async function load() {
   if (!session.user.value || !session.token.value) return
@@ -130,6 +143,78 @@ async function applyTemplate() {
   }
 }
 
+async function loadAssignment() {
+  if (!session.user.value || !session.token.value) return
+  assignmentError.value = ''
+  try {
+    const tenant = session.user.value.tenant_id
+    const items = (await loadExceptionAssignment(base, session.token.value, tenant)).data.items
+    assignmentItems.value = items
+    assignmentForm.value = Object.fromEntries(
+      items.map((item) => [
+        item.exception_type,
+        item.owner_user_id === null ? '' : String(item.owner_user_id),
+      ]),
+    )
+  } catch (cause) {
+    assignmentError.value = cause instanceof Error ? cause.message : '异常分派配置加载失败'
+  }
+  try {
+    assignmentUsers.value = (
+      await loadSystemUsers(base, session.token.value, session.user.value.tenant_id, 1, 100)
+    ).data.items.filter((user) => user.status === 'active')
+  } catch {
+    assignmentUserFallback.value = true
+  }
+}
+
+async function saveAssignment() {
+  if (!session.user.value || !session.token.value) return
+  const assignments: Record<string, number | null> = {}
+  for (const [type, value] of Object.entries(assignmentForm.value)) {
+    const trimmed = value.trim()
+    if (trimmed === '') {
+      assignments[type] = null
+      continue
+    }
+    const id = Number(trimmed)
+    if (!Number.isInteger(id) || id <= 0) {
+      message.value = `异常类型 ${exceptionTypeLabel(type)} 的处理人必须是有效的用户 ID`
+      return
+    }
+    assignments[type] = id
+  }
+  try {
+    const items = (
+      await updateExceptionAssignment(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        assignments,
+      )
+    ).data.items
+    assignmentItems.value = items
+    message.value = '异常自动分派配置已保存。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '分派配置保存失败'
+  }
+}
+
+async function runAlerts() {
+  if (!session.user.value || !session.token.value) return
+  alertRunning.value = true
+  try {
+    alertResult.value = (
+      await runIndustryAlerts(base, session.token.value, session.user.value.tenant_id)
+    ).data
+    message.value = '行业预警已运行，幂等不重复生成异常。'
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '行业预警运行失败'
+  } finally {
+    alertRunning.value = false
+  }
+}
+
 function versionSourceLabel(source: string) {
   if (source === 'baseline') return '基线'
   if (source === 'manual') return '手动修改'
@@ -138,7 +223,10 @@ function versionSourceLabel(source: string) {
   return source
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadAssignment()
+})
 </script>
 
 <template>
@@ -210,6 +298,84 @@ onMounted(load)
         扫描窗口限定参与匹配的应收日期范围（默认 30 天）；精确窗口默认 7 天；推荐/拆分/合并窗口默认
         14 天；合并流水的同日窗口与精确窗口一致。
       </p>
+    </article>
+
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>异常自动分派</h3>
+          <span class="meta">新异常按类型自动分派给处理人，留空表示不分派</span>
+        </div>
+      </div>
+      <p v-if="assignmentError" class="error-banner">{{ assignmentError }}</p>
+      <div v-else-if="assignmentItems.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>异常类型</th>
+              <th>处理人</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in assignmentItems" :key="item.exception_type">
+              <td>{{ exceptionTypeLabel(item.exception_type) }}</td>
+              <td>
+                <select
+                  v-if="!assignmentUserFallback"
+                  v-model="assignmentForm[item.exception_type]"
+                >
+                  <option value="">不分派</option>
+                  <option v-for="user in assignmentUsers" :key="user.id" :value="String(user.id)">
+                    {{ user.display_name }}（{{ user.login_name }}）
+                  </option>
+                </select>
+                <input
+                  v-else
+                  v-model="assignmentForm[item.exception_type]"
+                  placeholder="用户 ID，留空不分派"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">分派配置加载中...</p>
+      <div class="action-group">
+        <button
+          v-permission="'exception:assign'"
+          class="small-primary-button"
+          :disabled="!assignmentItems.length"
+          type="button"
+          @click="saveAssignment"
+        >
+          保存分派配置
+        </button>
+      </div>
+    </article>
+
+    <article class="panel workflow-panel">
+      <h3>行业预警</h3>
+      <p class="meta import-hint">
+        按行业规则扫描并自动生成异常：验收款逾期、质保金逾期、客户回款风险、工资类支出缺口、项目现金流风险；幂等，重复运行不重复生成。
+      </p>
+      <div class="action-group">
+        <button
+          v-permission="'project:rule'"
+          class="primary-button"
+          :disabled="alertRunning"
+          type="button"
+          @click="runAlerts"
+        >
+          {{ alertRunning ? '运行中...' : '立即运行' }}
+        </button>
+      </div>
+      <div v-if="alertResult" class="import-summary">
+        <span>验收款逾期 {{ alertResult.acceptance_overdue }}</span
+        ><span>质保金逾期 {{ alertResult.warranty_overdue }}</span
+        ><span>客户回款风险 {{ alertResult.customer_risk }}</span
+        ><span>工资类支出缺口 {{ alertResult.payroll_gap }}</span
+        ><span>项目现金流风险 {{ alertResult.project_cashflow_risk }}</span>
+      </div>
     </article>
 
     <article class="panel table-panel">

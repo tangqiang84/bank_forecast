@@ -23,9 +23,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class BankTransactionController {
 
   private final BankTransactionService bankTransactionService;
+  private final com.bankforecast.llm.SuggestionService suggestionService;
 
-  public BankTransactionController(BankTransactionService bankTransactionService) {
+  public BankTransactionController(BankTransactionService bankTransactionService,
+      com.bankforecast.llm.SuggestionService suggestionService) {
     this.bankTransactionService = bankTransactionService;
+    this.suggestionService = suggestionService;
+  }
+
+  @RequirePermission("transaction:view")
+  @org.springframework.web.bind.annotation.PostMapping("/{id}/suggest-category")
+  public ApiResponse<Map<String, Object>> suggestCategory(@org.springframework.web.bind.annotation.PathVariable Long id) {
+    return ApiResponse.ok(suggestionService.suggestCategory(id));
   }
 
   @RequirePermission("transaction:view")

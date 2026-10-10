@@ -4,9 +4,14 @@ import MatchDetail from '../components/MatchDetail.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   confirmMatchResult,
+  createCounterpartyAlias,
+  deleteCounterpartyAlias,
+  loadCounterpartyAliases,
   loadMatchResults,
   rejectMatchResult,
   runMatching,
+  updateCounterpartyAlias,
+  type CounterpartyAlias,
   type MatchResult,
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
@@ -41,6 +46,93 @@ const actionId = ref<number | null>(null)
 const matchDetailId = ref<number | null>(null)
 const pendingAction = ref<{ type: 'confirm' | 'reject'; id: number } | null>(null)
 const rejectReason = ref('')
+const aliasModalOpen = ref(false)
+const aliases = ref<CounterpartyAlias[]>([])
+const aliasForm = ref({ alias: '', canonical_name: '' })
+const aliasEditingId = ref<number | null>(null)
+const aliasMessage = ref('')
+
+async function openAliases() {
+  if (!session.user.value || !session.token.value) return
+  aliasMessage.value = ''
+  aliasEditingId.value = null
+  aliasForm.value = { alias: '', canonical_name: '' }
+  aliasModalOpen.value = true
+  try {
+    aliases.value = (
+      await loadCounterpartyAliases(base, session.token.value, session.user.value.tenant_id)
+    ).data
+  } catch (cause) {
+    aliasMessage.value = cause instanceof Error ? cause.message : '对手方别名加载失败'
+  }
+}
+
+function closeAliases() {
+  aliasModalOpen.value = false
+}
+
+async function saveAlias() {
+  if (!session.user.value || !session.token.value) return
+  const payload = {
+    alias: aliasForm.value.alias.trim(),
+    canonical_name: aliasForm.value.canonical_name.trim(),
+  }
+  if (!payload.alias || !payload.canonical_name) {
+    aliasMessage.value = '请填写别名和标准名称'
+    return
+  }
+  try {
+    if (aliasEditingId.value !== null) {
+      await updateCounterpartyAlias(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        aliasEditingId.value,
+        payload,
+      )
+      aliasMessage.value = '别名已更新。'
+    } else {
+      await createCounterpartyAlias(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        payload,
+      )
+      aliasMessage.value = '别名已新增。'
+    }
+    aliasEditingId.value = null
+    aliasForm.value = { alias: '', canonical_name: '' }
+    aliases.value = (
+      await loadCounterpartyAliases(base, session.token.value, session.user.value.tenant_id)
+    ).data
+  } catch (cause) {
+    aliasMessage.value = cause instanceof Error ? cause.message : '别名保存失败'
+  }
+}
+
+function editAlias(item: CounterpartyAlias) {
+  aliasEditingId.value = item.id
+  aliasForm.value = { alias: item.alias, canonical_name: item.canonical_name }
+}
+
+function cancelAliasEdit() {
+  aliasEditingId.value = null
+  aliasForm.value = { alias: '', canonical_name: '' }
+}
+
+async function removeAlias(item: CounterpartyAlias) {
+  if (!session.user.value || !session.token.value) return
+  if (!window.confirm(`确认删除别名「${item.alias}」？`)) return
+  try {
+    await deleteCounterpartyAlias(base, session.token.value, session.user.value.tenant_id, item.id)
+    aliasMessage.value = `别名「${item.alias}」已删除。`
+    aliases.value = (
+      await loadCounterpartyAliases(base, session.token.value, session.user.value.tenant_id)
+    ).data
+  } catch (cause) {
+    aliasMessage.value = cause instanceof Error ? cause.message : '别名删除失败'
+  }
+}
 
 function openMatch(id: number) {
   matchDetailId.value = id
@@ -152,15 +244,18 @@ onMounted(() => {
           查看自动匹配依据、拆分/合并分配明细，并对中低置信度结果进行人工确认或拒绝。
         </p>
       </div>
-      <button
-        v-permission="'matching:run'"
-        class="primary-button"
-        :disabled="loading"
-        type="button"
-        @click="run"
-      >
-        运行回款匹配
-      </button>
+      <div class="action-group">
+        <button class="ghost-button" type="button" @click="openAliases">对手方别名</button>
+        <button
+          v-permission="'matching:run'"
+          class="primary-button"
+          :disabled="loading"
+          type="button"
+          @click="run"
+        >
+          运行回款匹配
+        </button>
+      </div>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>
@@ -299,6 +394,76 @@ onMounted(() => {
       </template>
     </ModalPanel>
 
+    <ModalPanel v-if="aliasModalOpen" title="对手方别名" @close="closeAliases">
+      <p class="meta import-hint">
+        别名按归一化匹配流水对手方名称到标准名称，匹配时优先使用标准名称对齐合同客户。
+      </p>
+      <div v-if="aliases.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>别名</th>
+              <th>标准名称</th>
+              <th>更新时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in aliases" :key="item.id">
+              <td>{{ item.alias }}</td>
+              <td>{{ item.canonical_name }}</td>
+              <td>{{ item.updated_at }}</td>
+              <td>
+                <div class="action-group">
+                  <button
+                    v-permission="'contract:import'"
+                    class="text-button"
+                    type="button"
+                    @click="editAlias(item)"
+                  >
+                    编辑</button
+                  ><button
+                    v-permission="'contract:import'"
+                    class="text-button"
+                    type="button"
+                    @click="removeAlias(item)"
+                  >
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无对手方别名。</p>
+      <label>别名<input v-model.trim="aliasForm.alias" placeholder="流水中的对手方写法" /></label
+      ><label
+        >标准名称<input v-model.trim="aliasForm.canonical_name" placeholder="合同客户标准名称"
+      /></label>
+      <div class="action-group">
+        <button
+          v-permission="'contract:import'"
+          class="small-primary-button"
+          type="button"
+          @click="saveAlias"
+        >
+          {{ aliasEditingId !== null ? '保存别名' : '新增别名' }}
+        </button>
+        <button
+          v-if="aliasEditingId !== null"
+          class="ghost-button"
+          type="button"
+          @click="cancelAliasEdit"
+        >
+          取消编辑
+        </button>
+      </div>
+      <p v-if="aliasMessage" class="feedback-text">{{ aliasMessage }}</p>
+      <template #footer>
+        <button class="ghost-button" type="button" @click="closeAliases">关闭</button>
+      </template>
+    </ModalPanel>
     <ModalPanel v-if="matchDetailId !== null" title="匹配结果详情" @close="closeMatch">
       <MatchDetail :id="matchDetailId" />
       <template #footer>

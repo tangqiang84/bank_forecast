@@ -121,6 +121,54 @@ export function closeBankAccount(baseUrl: string, token: string, tenantId: numbe
   })
 }
 
+export function proposeCloseBankAccount(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  reason: string,
+) {
+  return fetchJson<ApiResponse<BankAccount>>(
+    `${baseUrl}/api/v1/bank-accounts/${id}/propose-close`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    },
+  )
+}
+
+export function cancelCloseBankAccount(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<BankAccount>>(`${baseUrl}/api/v1/bank-accounts/${id}/cancel-close`, {
+    method: 'POST',
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export type CategorySuggestion = {
+  suggested_category: string
+  source: 'llm' | 'rule' | string
+  reason: string
+  current_category: string | null
+}
+
+export function suggestTransactionCategory(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<CategorySuggestion>>(
+    `${baseUrl}/api/v1/bank-transactions/${id}/suggest-category`,
+    { method: 'POST', headers: authHeaders(token, tenantId) },
+  )
+}
+
 export type ActivityRankItem = {
   rank: number
   account_id: number

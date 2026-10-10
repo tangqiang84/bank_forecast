@@ -36,10 +36,13 @@ public class FinanceReconciliationService {
 
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
+  private final com.bankforecast.matching.ExceptionAutoAssignService autoAssignService;
 
-  public FinanceReconciliationService(JdbcTemplate jdbcTemplate, AuditService auditService) {
+  public FinanceReconciliationService(JdbcTemplate jdbcTemplate, AuditService auditService,
+      com.bankforecast.matching.ExceptionAutoAssignService autoAssignService) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
+    this.autoAssignService = autoAssignService;
   }
 
   @Transactional
@@ -351,6 +354,7 @@ public class FinanceReconciliationService {
     if (count != null && count > 0) return;
     jdbcTemplate.update("insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, reconciliation_job_id, title, description, status, severity) values (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)",
         tenantId, "EX-REC-" + UUID.randomUUID().toString().replace("-", ""), type, sourceType, sourceId, jobId, title, description, severity);
+    autoAssignService.autoAssignBySource(tenantId, type, sourceType, sourceId);
   }
 
   private List<Map<String, Object>> bankRows(Long tenantId, LocalDate from, LocalDate to) {

@@ -2068,3 +2068,300 @@ test('账户表单提交账户用途', async ({ page }) => {
   await expect(accountDialog.getByText('账户已新增。')).toBeVisible()
   expect(createBody).toMatchObject({ bankCode: 'CMB', useType: 'payroll' })
 })
+
+test('账户待销户流转：发起销户与撤销', async ({ page }) => {
+  const state = { status: 'active' }
+  let proposeBody: Record<string, unknown> | null = null
+  let cancelRequested = false
+  const account = () => ({
+    id: 1,
+    bank_code: 'ICBC',
+    bank_name: '工商银行',
+    account_name: '基本户',
+    account_no_last4: '1234',
+    currency: 'CNY',
+    status: state.status,
+    current_balance: '100.00',
+    use_type: 'operation',
+  })
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [account()], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/bank-connections**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/bank-accounts/1/propose-close', async (route) => {
+    proposeBody = postBody(route)
+    state.status = 'pending_close'
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(account()) })
+  })
+  await page.route('**/api/v1/bank-accounts/1/cancel-close', async (route) => {
+    cancelRequested = true
+    state.status = 'active'
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(account()) })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行账户' }).click()
+  const accountRow = page.locator('tr', { hasText: '基本户' })
+  await expect(accountRow.locator('.pill').first()).toHaveText('活跃')
+
+  await accountRow.getByRole('button', { name: '发起销户' }).click()
+  const proposeDialog = page.getByRole('dialog', { name: '发起销户' })
+  await proposeDialog.getByLabel('销户原因').fill('长期闲置且余额已清零')
+  await proposeDialog.getByRole('button', { name: '提交销户申请' }).click()
+  await expect(page.getByText('已发起销户，账户进入待销户状态。')).toBeVisible()
+  expect(proposeBody).toEqual({ reason: '长期闲置且余额已清零' })
+  await expect(accountRow.locator('.pill').first()).toHaveText('待销户')
+  await expect(accountRow.getByRole('button', { name: '完成销户' })).toBeVisible()
+
+  page.on('dialog', (dialog) => dialog.accept())
+  await accountRow.getByRole('button', { name: '撤销销户' }).click()
+  await expect(page.getByText('已撤销销户，账户恢复活跃。')).toBeVisible()
+  expect(cancelRequested).toBe(true)
+  await expect(accountRow.locator('.pill').first()).toHaveText('活跃')
+})
+
+const EXCEPTION_ASSIGNMENT_TYPES = [
+  'unreceived',
+  'partial_receipt',
+  'unknown_receipt',
+  'bank_unrecorded',
+  'finance_unmatched',
+  'timing_difference',
+  'fund_gap',
+]
+
+test('规则中心异常分派配置保存与行业预警运行', async ({ page }) => {
+  let assignmentBody: Record<string, unknown> | null = null
+  let alertsRequested = false
+  const assignmentItems = EXCEPTION_ASSIGNMENT_TYPES.map((type) => ({
+    exception_type: type,
+    owner_user_id: null,
+    owner_name: null,
+  }))
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/rules/risk-rules', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/rules/config', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        match_scan_window_days: 30,
+        match_exact_window_days: 7,
+        match_suggest_window_days: 14,
+        industry_template: 'it_software',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/rules/exception-assignment', async (route) => {
+    if (route.request().method() === 'PUT') {
+      assignmentBody = postBody(route)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: ok({
+          items: assignmentItems.map((item) =>
+            item.exception_type === 'unknown_receipt'
+              ? { ...item, owner_user_id: 7, owner_name: '财务专员' }
+              : item,
+          ),
+        }),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: assignmentItems }),
+    })
+  })
+  await page.route('**/api/v1/system/users?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          { id: 7, login_name: 'finance02', display_name: '财务专员', status: 'active' },
+          { id: 8, login_name: 'finance03', display_name: '出纳', status: 'active' },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 2,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/rules/industry-alerts/run', async (route) => {
+    alertsRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        acceptance_overdue: 2,
+        warranty_overdue: 1,
+        customer_risk: 0,
+        payroll_gap: 0,
+        project_cashflow_risk: 3,
+      }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '规则中心' }).click()
+  await expect(page.getByRole('heading', { name: '异常自动分派' })).toBeVisible()
+  await expect(page.locator('tr', { hasText: '资金缺口' })).toBeVisible()
+
+  const unknownRow = page.locator('tr', { hasText: '未知收款' })
+  await unknownRow.locator('select').selectOption('7')
+  await page.getByRole('button', { name: '保存分派配置' }).click()
+  await expect(page.getByText('异常自动分派配置已保存。')).toBeVisible()
+  expect(assignmentBody).toMatchObject({
+    assignments: { unknown_receipt: 7, unreceived: null, fund_gap: null },
+  })
+
+  await page.getByRole('button', { name: '立即运行' }).click()
+  await expect(page.getByText('行业预警已运行，幂等不重复生成异常。')).toBeVisible()
+  await expect(page.getByText('验收款逾期 2')).toBeVisible()
+  await expect(page.getByText('项目现金流风险 3')).toBeVisible()
+  expect(alertsRequested).toBe(true)
+})
+
+test('流水详情生成分类建议并应用', async ({ page }) => {
+  let classifyBody: Record<string, unknown> | null = null
+  const transaction = {
+    id: 500,
+    bank_account_id: 1,
+    transaction_no: 'TXN-500',
+    transaction_date: '2026-10-01',
+    direction: 'expense',
+    amount: '88.00',
+    balance_after: null,
+    counterparty_name: '服务商',
+    summary: '技术服务费',
+    purpose: null,
+    category: null,
+    match_status: 'unmatched',
+  }
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            bank_code: 'ICBC',
+            bank_name: '工商银行',
+            account_name: '基本户',
+            account_no_last4: '1234',
+            currency: 'CNY',
+            status: 'active',
+            current_balance: '1000.00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [transaction], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions/500', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...transaction, receipts: [] }),
+    })
+  })
+  await page.route('**/api/v1/bank-transactions/500/suggest-category', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        suggested_category: '技术服务费',
+        source: 'rule',
+        reason: '摘要包含「技术服务费」关键词',
+        current_category: null,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-transactions/500/manual-classify', async (route) => {
+    classifyBody = postBody(route)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...transaction, category: '技术服务费' }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detailDialog = page.getByRole('dialog', { name: '流水详情' })
+  await detailDialog.getByRole('button', { name: '生成分类建议' }).click()
+  await expect(detailDialog.getByText('技术服务费').first()).toBeVisible()
+  await expect(detailDialog.locator('.pill', { hasText: '规则' })).toBeVisible()
+  await expect(detailDialog.getByText(/摘要包含「技术服务费」关键词/)).toBeVisible()
+
+  await detailDialog.getByRole('button', { name: '应用建议分类' }).click()
+  await expect(detailDialog.getByText('分类已应用为「技术服务费」。')).toBeVisible()
+  expect(classifyBody).toMatchObject({ category: '技术服务费' })
+})
+
+test('异常详情生成解释草稿', async ({ page }) => {
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/matching/exceptions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [exceptionCase('new')], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/matching/exceptions/601', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ exception: exceptionCase('new'), logs: [], attachments: [], source: [] }),
+    })
+  })
+  await page.route('**/api/v1/matching/exceptions/601/explain-draft', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        draft: '该异常为未知收款：流水未匹配到合同回款计划，请人工确认后归类。',
+        source: 'llm',
+      }),
+    }),
+  )
+
+  await login(page)
+  await page.getByRole('link', { name: '异常事项' }).click()
+  const row = page.locator('.exception-row', { hasText: 'EXC-0001' })
+  await row.getByRole('button', { name: '详情' }).click()
+  const detailDialog = page.getByRole('dialog', { name: '异常事项详情' })
+  await detailDialog.getByRole('button', { name: '生成解释草稿' }).click()
+  await expect(detailDialog.getByText('来源：大模型')).toBeVisible()
+  await expect(detailDialog.locator('textarea[readonly]')).toHaveValue(
+    '该异常为未知收款：流水未匹配到合同回款计划，请人工确认后归类。',
+  )
+})

@@ -294,6 +294,7 @@ public class ContractImportService {
     payload.put("due_date", row.getDueDate() == null ? null : row.getDueDate().toString());
     payload.put("plan_amount", row.getPlanAmount() == null ? null : row.getPlanAmount().toPlainString());
     payload.put("owner_name", row.getOwnerName());
+    payload.put("receive_account", row.getReceiveAccount());
     return payload;
   }
 
@@ -315,7 +316,8 @@ public class ContractImportService {
     }
     return new CsvContractRow(rowNo, contractNo, contractName, customerName,
         textOrNull(payload.get("project_no")), textOrNull(payload.get("project_name")), contractAmount,
-        nodeName, nodeType, dueDate, planAmount, textOrNull(payload.get("owner_name")), writePayload(payload));
+        nodeName, nodeType, dueDate, planAmount, textOrNull(payload.get("owner_name")),
+        textOrNull(payload.get("receive_account")), writePayload(payload));
   }
 
   private void insertPreviewItem(Long tenantId, Long jobId, int rowNo, String status, String payloadJson, String errorMessage) {
@@ -471,10 +473,11 @@ public class ContractImportService {
 
   private Long insertContract(Long tenantId, CsvContractRow row, Long projectId) {
     KeyHolder keyHolder = new GeneratedKeyHolder();
+    Long receiveAccountId = resolveReceiveAccount(tenantId, row.getReceiveAccount());
     jdbcTemplate.update(connection -> {
       PreparedStatement ps = connection.prepareStatement(
-          "insert into contract (tenant_id, contract_no, contract_name, customer_name, project_id, project_no, project_name, contract_amount, status) "
-              + "values (?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
+          "insert into contract (tenant_id, contract_no, contract_name, customer_name, project_id, project_no, project_name, contract_amount, status, receive_account_id) "
+              + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
       ps.setLong(1, tenantId);
       ps.setString(2, row.getContractNo());
       ps.setString(3, row.getContractName());
@@ -484,15 +487,37 @@ public class ContractImportService {
       ps.setString(7, row.getProjectName());
       ps.setBigDecimal(8, row.getContractAmount());
       ps.setString(9, "active");
+      if (receiveAccountId == null) ps.setObject(10, null); else ps.setLong(10, receiveAccountId);
       return ps;
     }, keyHolder);
     return generatedId(keyHolder);
   }
 
+  /** 收款账户解析：按账号后四位或账户名称匹配同租户账户；未命中返回 null（宽容，不阻断导入）。 */
+  private Long resolveReceiveAccount(Long tenantId, String receiveAccount) {
+    if (receiveAccount == null || receiveAccount.trim().isEmpty()) return null;
+    String value = receiveAccount.trim();
+    List<Long> ids = jdbcTemplate.queryForList(
+        "select id from bank_account where tenant_id = ? and deleted_at is null and (account_no_last4 = ? or account_name = ?) order by id limit 2",
+        Long.class, tenantId, value, value);
+    return ids.isEmpty() ? null : ids.get(0);
+  }
+
+  /** 责任人解析：按显示名或登录名匹配同租户启用用户；未命中返回 null（宽容）。 */
+  private Long resolveOwner(Long tenantId, String ownerName) {
+    if (ownerName == null || ownerName.trim().isEmpty()) return null;
+    String value = ownerName.trim();
+    List<Long> ids = jdbcTemplate.queryForList(
+        "select id from user_account where tenant_id = ? and status = 'active' and (display_name = ? or login_name = ?) order by id limit 2",
+        Long.class, tenantId, value, value);
+    return ids.isEmpty() ? null : ids.get(0);
+  }
+
   private void insertPlan(Long tenantId, Long contractId, Long projectId, CsvContractRow row) {
+    Long ownerUserId = resolveOwner(tenantId, row.getOwnerName());
     jdbcTemplate.update(
-        "insert into contract_receivable_plan (tenant_id, contract_id, project_id, node_name, node_type, due_date, plan_amount, status) values (?, ?, ?, ?, ?, ?, ?, ?)",
-        tenantId, contractId, projectId, row.getNodeName(), row.getNodeType(), Date.valueOf(row.getDueDate()), row.getPlanAmount(), "unpaid");
+        "insert into contract_receivable_plan (tenant_id, contract_id, project_id, node_name, node_type, due_date, plan_amount, status, owner_user_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        tenantId, contractId, projectId, row.getNodeName(), row.getNodeType(), Date.valueOf(row.getDueDate()), row.getPlanAmount(), "unpaid", ownerUserId);
   }
 
   private Long createJob(Long tenantId, String fileName) {

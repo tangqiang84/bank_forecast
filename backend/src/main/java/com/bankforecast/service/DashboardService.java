@@ -174,7 +174,7 @@ public class DashboardService {
   }
 
   /** 资金缺口 = 当前总余额 + 未来 30 天应收 − 未来 30 天应付；为负即缺口。 */
-  private Map<String, Object> fundingGap(Long tenantId) {
+  public Map<String, Object> fundingGap(Long tenantId) {
     BigDecimal balance = valueOrZero(jdbcTemplate.queryForObject(
         "select coalesce(sum(current_balance), 0) from bank_account where tenant_id = ? and deleted_at is null", BigDecimal.class, tenantId));
     BigDecimal receivable30 = receivableDue(tenantId, 30);

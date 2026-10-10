@@ -21,8 +21,19 @@ import java.util.Map;
 @RequestMapping("/api/v1/matching")
 public class MatchingController {
   private final MatchingService matchingService;
+  private final com.bankforecast.llm.SuggestionService suggestionService;
 
-  public MatchingController(MatchingService matchingService) { this.matchingService = matchingService; }
+  public MatchingController(MatchingService matchingService,
+      com.bankforecast.llm.SuggestionService suggestionService) {
+    this.matchingService = matchingService;
+    this.suggestionService = suggestionService;
+  }
+
+  @RequirePermission("exception:view")
+  @PostMapping("/exceptions/{id}/explain-draft")
+  public ApiResponse<Map<String, Object>> explainDraft(@PathVariable Long id) {
+    return ApiResponse.ok(suggestionService.explainException(id));
+  }
 
   @RequirePermission("matching:run")
   @PostMapping("/receivables/run")

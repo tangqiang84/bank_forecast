@@ -23,11 +23,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class RuleCenterController {
   private final RuleCenterService ruleCenterService;
   private final com.bankforecast.service.ProjectService projectService;
+  private final com.bankforecast.rule.IndustryAlertService industryAlertService;
 
   public RuleCenterController(RuleCenterService ruleCenterService,
-      com.bankforecast.service.ProjectService projectService) {
+      com.bankforecast.service.ProjectService projectService,
+      com.bankforecast.rule.IndustryAlertService industryAlertService) {
     this.ruleCenterService = ruleCenterService;
     this.projectService = projectService;
+    this.industryAlertService = industryAlertService;
   }
 
   @RequirePermission("project:view")
@@ -79,6 +82,26 @@ public class RuleCenterController {
     Object industry = request == null ? null : request.get("industry");
     return ApiResponse.ok(ruleCenterService.applyIndustryTemplate(
         principal.getTenantId(), principal.getUserId(), industry == null ? null : String.valueOf(industry)));
+  }
+
+  @RequirePermission("exception:assign")
+  @GetMapping("/exception-assignment")
+  public ApiResponse<Map<String, Object>> exceptionAssignment() {
+    return ApiResponse.ok(ruleCenterService.exceptionAssignment(requireAuth().getTenantId()));
+  }
+
+  @RequirePermission("exception:assign")
+  @PutMapping("/exception-assignment")
+  public ApiResponse<Map<String, Object>> updateExceptionAssignment(@RequestBody Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    return ApiResponse.ok(ruleCenterService.updateExceptionAssignment(
+        principal.getTenantId(), principal.getUserId(), request));
+  }
+
+  @RequirePermission("project:rule")
+  @PostMapping("/industry-alerts/run")
+  public ApiResponse<Map<String, Object>> runIndustryAlerts() {
+    return ApiResponse.ok(industryAlertService.run());
   }
 
   private int versionNo(Map<String, Object> request) {

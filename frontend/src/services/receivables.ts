@@ -244,6 +244,73 @@ export function loadExceptionDetail(baseUrl: string, token: string, tenantId: nu
   )
 }
 
+export type ExceptionExplainDraft = { draft: string; source: 'llm' | 'rule' | string }
+
+export function explainExceptionDraft(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<ExceptionExplainDraft>>(
+    `${baseUrl}/api/v1/matching/exceptions/${id}/explain-draft`,
+    { method: 'POST', headers: authHeaders(token, tenantId) },
+  )
+}
+
+export type CounterpartyAlias = {
+  id: number
+  alias: string
+  canonical_name: string
+  created_at: string
+  updated_at: string
+}
+
+export function loadCounterpartyAliases(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<CounterpartyAlias[]>>(`${baseUrl}/api/v1/counterparty-aliases`, {
+    headers: authHeaders(token, tenantId),
+  })
+}
+
+export function createCounterpartyAlias(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: { alias: string; canonical_name: string },
+) {
+  return fetchJson<ApiResponse<CounterpartyAlias>>(`${baseUrl}/api/v1/counterparty-aliases`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateCounterpartyAlias(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+  payload: { alias: string; canonical_name: string },
+) {
+  return fetchJson<ApiResponse<CounterpartyAlias>>(`${baseUrl}/api/v1/counterparty-aliases/${id}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteCounterpartyAlias(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  id: number,
+) {
+  return fetchJson<ApiResponse<{ deleted: boolean }>>(
+    `${baseUrl}/api/v1/counterparty-aliases/${id}`,
+    { method: 'DELETE', headers: authHeaders(token, tenantId) },
+  )
+}
+
 export function confirmMatchResult(
   baseUrl: string,
   token: string,

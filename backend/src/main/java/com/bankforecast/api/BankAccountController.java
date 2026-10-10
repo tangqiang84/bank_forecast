@@ -85,6 +85,28 @@ public class BankAccountController {
     return ApiResponse.ok(result);
   }
 
+  @RequirePermission("account:manage")
+  @PostMapping("/{id}/propose-close")
+  public ApiResponse<Map<String, Object>> proposeClose(@PathVariable Long id,
+      @RequestBody(required = false) Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    String reason = request == null || request.get("reason") == null
+        ? "" : String.valueOf(request.get("reason")).trim();
+    if (reason.isEmpty()) throw new BusinessException(ErrorCode.PARAM_ERROR, "请填写销户原因");
+    Map<String, Object> result = bankAccountRepository.proposeClose(principal.getTenantId(), id, reason);
+    auditService.record("PROPOSE_CLOSE_BANK_ACCOUNT", "bank_account", String.valueOf(id), "reason=" + reason);
+    return ApiResponse.ok(result);
+  }
+
+  @RequirePermission("account:manage")
+  @PostMapping("/{id}/cancel-close")
+  public ApiResponse<Map<String, Object>> cancelClose(@PathVariable Long id) {
+    AuthPrincipal principal = requireAuth();
+    Map<String, Object> result = bankAccountRepository.cancelClose(principal.getTenantId(), id);
+    auditService.record("CANCEL_CLOSE_BANK_ACCOUNT", "bank_account", String.valueOf(id), "status=active");
+    return ApiResponse.ok(result);
+  }
+
   @RequirePermission("account:scan")
   @PostMapping("/idle-scan")
   public ApiResponse<Map<String, Object>> idleScan() {

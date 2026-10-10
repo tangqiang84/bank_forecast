@@ -160,6 +160,12 @@ export const EXCEPTION_TYPE_LABELS: Record<string, string> = {
   timing_difference: '跨月时间差',
   bank_unrecorded: '银行未记账',
   finance_unmatched: '财务未在银行发生',
+  fund_gap: '资金缺口',
+  acceptance_overdue: '验收款逾期',
+  warranty_overdue: '质保金逾期',
+  customer_risk: '客户回款风险',
+  payroll_gap: '工资类支出缺口',
+  project_cashflow_risk: '项目现金流风险',
 }
 
 export function exceptionTypeLabel(value: LabelValue): string {
@@ -295,7 +301,7 @@ export function modelNameLabel(value: LabelValue): string {
   return fromMap(MODEL_NAME_LABELS, value)
 }
 
-// 与 backend `auditService.record(` 全部动作码一致（2026-10-10 核对，共 71 个）；
+// 与 backend `auditService.record(` 全部动作码一致（2026-10-10 核对，共 77 个）；
 // 末尾 ASSIGN/COMMENT/RESOLVE/CLOSE/FALSE_POSITIVE 为异常处理日志 exception_action_log.action_type。
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ACTIVATE_FORECAST_MODEL: '启用预测模型',
@@ -305,6 +311,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   BATCH_CLASSIFY_BANK_TRANSACTION: '批量分类流水',
   BATCH_UNLINK_BANK_TRANSACTION: '批量解除流水关联',
   BATCH_UPDATE_PROJECT_STATUS: '批量更新项目状态',
+  CANCEL_CLOSE_BANK_ACCOUNT: '撤销销户',
   CLASSIFY_BANK_TRANSACTION: '分类流水',
   CLOSE_BANK_ACCOUNT: '账户销户',
   CLOSE_EXCEPTION: '关闭异常',
@@ -319,10 +326,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   CONFIRM_RECEIPT: '确认回单导入',
   CREATE_BANK_ACCOUNT: '新建银行账户',
   CREATE_BANK_CONNECTION: '新建接入配置',
+  CREATE_COUNTERPARTY_ALIAS: '新建对手方别名',
   CREATE_REPORT: '生成报表',
   CREATE_TEMPLATE_MAPPING: '新建模板映射',
   CREATE_USER: '新建用户',
   DELETE_BANK_CONNECTION: '删除接入配置',
+  DELETE_COUNTERPARTY_ALIAS: '删除对手方别名',
   DELETE_EXCEPTION_ATTACHMENT: '删除异常附件',
   DELETE_TEMPLATE_MAPPING: '删除模板映射',
   DOWNLOAD_EXCEPTION_ATTACHMENT: '下载异常附件',
@@ -341,6 +350,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   PREVIEW_PROJECT: '预览项目',
   PREVIEW_RECEIPT: '预览回单',
   PRINT_REPORT: '打印预览',
+  PROPOSE_CLOSE_BANK_ACCOUNT: '发起销户',
   REJECT_MATCH_RESULT: '拒绝匹配结果',
   RESET_USER_PASSWORD: '重置用户密码',
   RESOLVE_EXCEPTION: '处理完成异常',
@@ -353,12 +363,15 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ROLLBACK_PROJECT_RISK_RULE: '回滚风险规则',
   RUN_FINANCE_RECONCILIATION: '运行财务对账',
   RUN_FORECAST: '运行现金预测',
+  RUN_INDUSTRY_ALERTS: '运行行业预警',
   RUN_RECEIVABLE_MATCH: '运行回款匹配',
   SCAN_IDLE_BANK_ACCOUNTS: '盘点闲置账户',
   TEST_BANK_CONNECTION: '测试接入连接',
   UNLINK_BANK_TRANSACTION: '解除流水关联',
   UPDATE_BANK_ACCOUNT: '更新银行账户',
   UPDATE_BANK_CONNECTION: '更新接入配置',
+  UPDATE_COUNTERPARTY_ALIAS: '更新对手方别名',
+  UPDATE_EXCEPTION_ASSIGNMENT: '更新异常分派配置',
   UPDATE_PROJECT: '更新项目',
   UPDATE_PROJECT_RISK_RULE: '更新风险规则',
   UPDATE_PROJECT_SCOPE: '更新项目数据范围',

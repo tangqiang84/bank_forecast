@@ -40,10 +40,16 @@ public class MetricService {
 
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
+  private final com.bankforecast.service.DashboardService dashboardService;
+  private final com.bankforecast.matching.ExceptionAutoAssignService autoAssignService;
 
-  public MetricService(JdbcTemplate jdbcTemplate, AuditService auditService) {
+  public MetricService(JdbcTemplate jdbcTemplate, AuditService auditService,
+      com.bankforecast.service.DashboardService dashboardService,
+      com.bankforecast.matching.ExceptionAutoAssignService autoAssignService) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
+    this.dashboardService = dashboardService;
+    this.autoAssignService = autoAssignService;
   }
 
   /** 采集指定日期（默认今天）的全部指标快照；同日重复采集覆盖，幂等。 */
@@ -62,6 +68,7 @@ public class MetricService {
     }
     auditService.record("COLLECT_METRIC_SNAPSHOT", "metric_snapshot", String.valueOf(date),
         "metrics=" + values.size());
+    checkFundingGap(tenantId);
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("snapshot_date", date.toString());
     result.put("collected", values.size());
@@ -187,6 +194,28 @@ public class MetricService {
         Integer.class, tenantId);
     values.put("open_exception_count", BigDecimal.valueOf(open == null ? 0 : open));
     return values;
+  }
+
+  /** 资金缺口为负时生成 fund_gap 异常；已存在未闭环的缺口异常则更新描述，不重复生成。 */
+  private void checkFundingGap(Long tenantId) {
+    Map<String, Object> gap = dashboardService.fundingGap(tenantId);
+    if (!Boolean.TRUE.equals(gap.get("has_gap"))) return;
+    String title = "资金缺口预警";
+    String description = "未来 30 天预计资金缺口 " + gap.get("gap_amount") + "（余额 " + gap.get("balance")
+        + " + 应收 " + gap.get("receivable_30d") + " − 应付 " + gap.get("payable_30d") + "）";
+    Integer active = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and exception_type = 'fund_gap' and source_type = 'funding_gap' and status not in ('closed', 'false_positive') and deleted_at is null",
+        Integer.class, tenantId);
+    if (active != null && active > 0) {
+      jdbcTemplate.update(
+          "update exception_case set title = ?, description = ?, updated_at = current_timestamp where tenant_id = ? and exception_type = 'fund_gap' and source_type = 'funding_gap' and status not in ('closed', 'false_positive') and deleted_at is null",
+          title, description, tenantId);
+      return;
+    }
+    jdbcTemplate.update(
+        "insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, title, description, status, severity) values (?, ?, 'fund_gap', 'funding_gap', 0, ?, ?, 'new', 'high')",
+        tenantId, "EXC-" + java.util.UUID.randomUUID().toString().replace("-", ""), title, description);
+    autoAssignService.autoAssignBySource(tenantId, "fund_gap", "funding_gap", 0L);
   }
 
   private BigDecimal rate(Number numerator, Number denominator) {

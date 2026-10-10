@@ -32,16 +32,22 @@ public class MatchingService {
   private final JdbcTemplate jdbcTemplate;
   private final AuditService auditService;
   private final com.bankforecast.rule.RuleCenterService ruleCenterService;
+  private final ExceptionAutoAssignService autoAssignService;
+  private final CounterpartyAliasService counterpartyAliasService;
   private final int customerNameMinLength;
   private final boolean customerNameAllowContains;
 
   public MatchingService(JdbcTemplate jdbcTemplate, AuditService auditService,
       com.bankforecast.rule.RuleCenterService ruleCenterService,
+      ExceptionAutoAssignService autoAssignService,
+      CounterpartyAliasService counterpartyAliasService,
       @Value("${bank-forecast.import.customer-name-min-length}") int customerNameMinLength,
       @Value("${bank-forecast.import.customer-name-allow-contains}") boolean customerNameAllowContains) {
     this.jdbcTemplate = jdbcTemplate;
     this.auditService = auditService;
     this.ruleCenterService = ruleCenterService;
+    this.autoAssignService = autoAssignService;
+    this.counterpartyAliasService = counterpartyAliasService;
     this.customerNameMinLength = customerNameMinLength;
     this.customerNameAllowContains = customerNameAllowContains;
   }
@@ -70,6 +76,18 @@ public class MatchingService {
             + "join contract c on c.id = p.contract_id where p.tenant_id = ? and p.deleted_at is null "
             + "and c.deleted_at is null and p.status <> 'paid' order by p.due_date, p.id",
         tenantId);
+    // 对手方别名归一（P3-6）：匹配前统一应用租户别名
+    Map<String, String> aliases = counterpartyAliasService.aliases(tenantId);
+    if (!aliases.isEmpty()) {
+      for (Map<String, Object> transaction : transactions) {
+        Object raw = transaction.get("counterparty_name");
+        transaction.put("counterparty_name", CounterpartyAliasService.apply(aliases, raw == null ? null : String.valueOf(raw)));
+      }
+      for (Map<String, Object> plan : plans) {
+        Object raw = plan.get("customer_name");
+        plan.put("customer_name", CounterpartyAliasService.apply(aliases, raw == null ? null : String.valueOf(raw)));
+      }
+    }
 
     Set<Long> processedTransactions = new HashSet<>();
     for (Map<String, Object> transaction : transactions) {
@@ -880,6 +898,7 @@ public class MatchingService {
           "insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, title, description, status, severity, due_date) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           tenantId, "EXC-" + UUID.randomUUID().toString().replace("-", ""), type, sourceType, sourceId, title,
           description, "new", severity, dueDate == null ? null : Date.valueOf(dueDate));
+      autoAssignService.autoAssignBySource(tenantId, type, sourceType, sourceId);
       return true;
     } catch (DuplicateKeyException ex) {
       if ("partial_receipt".equals(type)) {

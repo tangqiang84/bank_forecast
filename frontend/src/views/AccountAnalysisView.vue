@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import ModalPanel from '../components/ModalPanel.vue'
 import TrendChart, { type TrendSeries } from '../components/TrendChart.vue'
 import {
   loadAccountAnalysis,
+  proposeCloseBankAccount,
   type AccountAnalysis,
+  type CloseSuggestion,
   type UseTypeDistributionItem,
 } from '../services/bank'
 import { apiBase, useSession } from '../session'
@@ -15,6 +18,42 @@ const analysis = ref<AccountAnalysis | null>(null)
 const days = ref(30)
 const loading = ref(false)
 const error = ref('')
+const message = ref('')
+const proposeTarget = ref<CloseSuggestion | null>(null)
+const proposeReason = ref('')
+
+function openPropose(item: CloseSuggestion) {
+  proposeTarget.value = item
+  proposeReason.value = item.reasons.join('；')
+  message.value = ''
+}
+
+function closePropose() {
+  proposeTarget.value = null
+}
+
+async function proposeClose() {
+  if (!session.user.value || !session.token.value || !proposeTarget.value) return
+  const reason = proposeReason.value.trim()
+  if (!reason) {
+    message.value = '请填写销户原因'
+    return
+  }
+  try {
+    await proposeCloseBankAccount(
+      apiBase(),
+      session.token.value,
+      session.user.value.tenant_id,
+      proposeTarget.value.account_id,
+      reason,
+    )
+    message.value = `已发起销户：${proposeTarget.value.account_name} 进入待销户状态。`
+    proposeTarget.value = null
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '发起销户失败'
+  }
+}
 
 const PALETTE = [
   '#2563eb',
@@ -94,6 +133,7 @@ onMounted(load)
       <span v-if="loading" class="meta">加载中...</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
+    <p v-if="message && !proposeTarget" class="feedback-text">{{ message }}</p>
 
     <article class="panel table-panel">
       <div class="section-heading">
@@ -216,11 +256,40 @@ onMounted(load)
           <ul class="suggestion-reasons">
             <li v-for="reason in item.reasons" :key="reason">{{ reason }}</li>
           </ul>
-          <RouterLink class="text-button" to="/accounts">前往账户页处理</RouterLink>
+          <div class="action-group">
+            <button
+              v-permission="'account:manage'"
+              class="small-danger-button"
+              type="button"
+              @click="openPropose(item)"
+            >
+              确认销户</button
+            ><RouterLink class="text-button" to="/accounts">前往账户页处理</RouterLink>
+          </div>
         </div>
       </div>
       <p v-else class="empty-state">当前无销户建议。</p>
     </article>
+
+    <ModalPanel v-if="proposeTarget" title="确认销户" @close="closePropose">
+      <p class="meta">
+        {{ proposeTarget.bank_name }} · {{ proposeTarget.account_name }} · 后四位
+        {{ proposeTarget.account_no_last4 }}
+      </p>
+      <label>销户原因<textarea v-model="proposeReason" rows="4" /></label>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button
+          v-permission="'account:manage'"
+          class="primary-button"
+          type="button"
+          @click="proposeClose"
+        >
+          提交销户申请
+        </button>
+        <button class="ghost-button" type="button" @click="closePropose">取消</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>
 

@@ -16,11 +16,13 @@ public class CsvContractRow {
   private final LocalDate dueDate;
   private final BigDecimal planAmount;
   private final String ownerName;
+  private final String receiveAccount;
   private final String rawJson;
 
   public CsvContractRow(int rowNo, String contractNo, String contractName, String customerName,
       String projectNo, String projectName, BigDecimal contractAmount, String nodeName,
-      String nodeType, LocalDate dueDate, BigDecimal planAmount, String ownerName, String rawJson) {
+      String nodeType, LocalDate dueDate, BigDecimal planAmount, String ownerName,
+      String receiveAccount, String rawJson) {
     this.rowNo = rowNo;
     this.contractNo = contractNo;
     this.contractName = contractName;
@@ -33,6 +35,7 @@ public class CsvContractRow {
     this.dueDate = dueDate;
     this.planAmount = planAmount;
     this.ownerName = ownerName;
+    this.receiveAccount = receiveAccount;
     this.rawJson = rawJson;
   }
 
@@ -48,5 +51,6 @@ public class CsvContractRow {
   public LocalDate getDueDate() { return dueDate; }
   public BigDecimal getPlanAmount() { return planAmount; }
   public String getOwnerName() { return ownerName; }
+  public String getReceiveAccount() { return receiveAccount; }
   public String getRawJson() { return rawJson; }
 }

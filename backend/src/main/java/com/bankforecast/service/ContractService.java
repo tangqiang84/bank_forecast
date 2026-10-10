@@ -28,16 +28,24 @@ public class ContractService {
     String filter = " where p.tenant_id = ? and p.deleted_at is null and c.deleted_at is null and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) and (? is null or p.due_date >= ?) and (? is null or p.due_date <= ?) and (? is null or p.status = ?)";
     Object[] args = {tenantId, contractNo, contractNo, projectNo, projectNo, dateFrom, dateFrom, dateTo, dateTo, status, status};
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
-        "select p.id, p.contract_id, p.node_name, p.node_type, p.due_date, p.plan_amount, p.paid_amount, p.status, c.contract_no, c.contract_name, c.customer_name from contract_receivable_plan p join contract c on c.id = p.contract_id" + filter + " order by p.due_date, p.id limit ? offset ?", append(args, safeSize, offset));
+        "select p.id, p.contract_id, p.node_name, p.node_type, p.due_date, p.plan_amount, p.paid_amount, p.status, c.contract_no, c.contract_name, c.customer_name, u.display_name as owner_name from contract_receivable_plan p join contract c on c.id = p.contract_id left join user_account u on u.id = p.owner_user_id and u.tenant_id = p.tenant_id" + filter + " order by p.due_date, p.id limit ? offset ?", append(args, safeSize, offset));
     return page(items, safePage, safeSize, jdbcTemplate.queryForObject("select count(*) from contract_receivable_plan p join contract c on c.id = p.contract_id" + filter, args, Integer.class));
   }
 
   public Map<String, Object> detail(Long tenantId, Long id) {
     List<Map<String, Object>> contracts = jdbcTemplate.queryForList("select c.*, coalesce(sum(p.plan_amount), 0) as receivable_amount, coalesce(sum(p.paid_amount), 0) as paid_amount from contract c left join contract_receivable_plan p on p.contract_id = c.id and p.deleted_at is null where c.id = ? and c.tenant_id = ? and c.deleted_at is null group by c.id", id, tenantId);
     if (contracts.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "合同不存在");
+    Map<String, Object> contract = new LinkedHashMap<>(contracts.get(0));
+    Object receiveAccountId = contract.get("receive_account_id");
+    if (receiveAccountId != null) {
+      List<Map<String, Object>> accounts = jdbcTemplate.queryForList(
+          "select account_name, account_no_last4 from bank_account where id = ? and tenant_id = ?",
+          receiveAccountId, tenantId);
+      if (!accounts.isEmpty()) contract.put("receive_account", accounts.get(0));
+    }
     Map<String, Object> data = new LinkedHashMap<>();
-    data.put("contract", contracts.get(0));
-    data.put("receivables", jdbcTemplate.queryForList("select id, node_name, node_type, due_date, plan_amount, paid_amount, status from contract_receivable_plan where contract_id = ? and tenant_id = ? and deleted_at is null order by due_date, id", id, tenantId));
+    data.put("contract", contract);
+    data.put("receivables", jdbcTemplate.queryForList("select p.id, p.node_name, p.node_type, p.due_date, p.plan_amount, p.paid_amount, p.status, u.display_name as owner_name from contract_receivable_plan p left join user_account u on u.id = p.owner_user_id and u.tenant_id = p.tenant_id where p.contract_id = ? and p.tenant_id = ? and p.deleted_at is null order by p.due_date, p.id", id, tenantId));
     data.put("transactions", jdbcTemplate.queryForList("select distinct bt.id, bt.transaction_no, bt.transaction_date, bt.direction, bt.amount, bt.counterparty_name, bt.summary, bt.match_status from bank_transaction bt join match_result mr on mr.bank_transaction_id = bt.id where mr.contract_id = ? and mr.tenant_id = ? and mr.deleted_at is null order by bt.transaction_date desc, bt.id desc", id, tenantId));
     data.put("audit_logs", jdbcTemplate.queryForList("select id, user_id, action, target_type, target_id, trace_id, detail, created_at from audit_log where tenant_id = ? and target_type = 'contract' and target_id = ? order by id desc", tenantId, String.valueOf(id)));
     return data;

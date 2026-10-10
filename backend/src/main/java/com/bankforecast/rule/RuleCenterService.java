@@ -6,6 +6,7 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -225,4 +226,65 @@ public class RuleCenterService {
   }
 
   private BigDecimal decimal(Object value) { return new BigDecimal(String.valueOf(value)); }
+
+  /** 异常按类型自动分派配置（P3-3）：key = exception_assign.<type>，value = 用户 ID。 */
+  public Map<String, Object> exceptionAssignment(Long tenantId) {
+    Map<String, String> configured = new LinkedHashMap<>();
+    for (Map<String, Object> row : jdbcTemplate.queryForList(
+        "select config_key, config_value from tenant_rule_config where tenant_id = ? and config_key like 'exception_assign.%'",
+        tenantId)) {
+      configured.put(String.valueOf(row.get("config_key")).substring("exception_assign.".length()),
+          String.valueOf(row.get("config_value")));
+    }
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (String type : com.bankforecast.matching.ExceptionAutoAssignService.EXCEPTION_TYPES) {
+      String userId = configured.get(type);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("exception_type", type);
+      item.put("owner_user_id", userId == null ? null : Long.valueOf(userId));
+      item.put("owner_name", userId == null ? null : userDisplayName(tenantId, Long.valueOf(userId)));
+      items.add(item);
+    }
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("items", items);
+    return data;
+  }
+
+  @Transactional
+  public Map<String, Object> updateExceptionAssignment(Long tenantId, Long userId, Map<String, Object> request) {
+    Object raw = request == null ? null : request.get("assignments");
+    if (!(raw instanceof Map)) throw new BusinessException(ErrorCode.PARAM_ERROR, "assignments 必须是对象");
+    List<String> allowed = Arrays.asList(com.bankforecast.matching.ExceptionAutoAssignService.EXCEPTION_TYPES);
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) raw).entrySet()) {
+      String type = String.valueOf(entry.getKey());
+      if (!allowed.contains(type)) throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的异常类型：" + type);
+      Object value = entry.getValue();
+      if (value == null || String.valueOf(value).trim().isEmpty()) {
+        jdbcTemplate.update("delete from tenant_rule_config where tenant_id = ? and config_key = ?",
+            tenantId, "exception_assign." + type);
+        continue;
+      }
+      Long assigneeId;
+      try {
+        assigneeId = Long.valueOf(String.valueOf(value).trim());
+      } catch (NumberFormatException ex) {
+        throw new BusinessException(ErrorCode.PARAM_ERROR, "assignments." + type + " 必须是用户 ID");
+      }
+      Integer active = jdbcTemplate.queryForObject(
+          "select count(*) from user_account where id = ? and tenant_id = ? and status = 'active'",
+          Integer.class, assigneeId, tenantId);
+      if (active == null || active == 0) {
+        throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "处理人不存在或已停用：" + type);
+      }
+      putConfig(tenantId, "exception_assign." + type, String.valueOf(assigneeId), userId);
+    }
+    auditService.record("UPDATE_EXCEPTION_ASSIGNMENT", "tenant_rule_config", "exception_assign", "");
+    return exceptionAssignment(tenantId);
+  }
+
+  private String userDisplayName(Long tenantId, Long userId) {
+    List<String> names = jdbcTemplate.queryForList(
+        "select display_name from user_account where id = ? and tenant_id = ?", String.class, userId, tenantId);
+    return names.isEmpty() ? null : names.get(0);
+  }
 }

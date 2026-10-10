@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import AccountDetail from '../components/AccountDetail.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
+  cancelCloseBankAccount,
   closeBankAccount,
   confirmImportPreview,
   createBankAccount,
@@ -12,6 +13,7 @@ import {
   loadBankConnections,
   loadBankTemplates,
   previewStatements,
+  proposeCloseBankAccount,
   retryImportErrors,
   scanIdleAccounts,
   testBankConnection,
@@ -85,9 +87,11 @@ const selectedTemplate = ref<BankTemplate | null>(null)
 const selectedAccount = computed(() => accounts.value.find((item) => item.id === accountId.value))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
-type ModalName = 'import' | 'account' | 'connection' | 'template'
+type ModalName = 'import' | 'account' | 'connection' | 'template' | 'propose'
 const activeModal = ref<ModalName | null>(null)
 const accountDetailId = ref<number | null>(null)
+const proposeTarget = ref<BankAccount | null>(null)
+const proposeReason = ref('')
 
 function openAccountDetail(id: number) {
   accountDetailId.value = id
@@ -379,6 +383,52 @@ async function close(account: BankAccount) {
     accountMessage.value = cause instanceof Error ? cause.message : '账户销户失败'
   }
 }
+function openProposeClose(account: BankAccount) {
+  proposeTarget.value = account
+  proposeReason.value = ''
+  accountMessage.value = ''
+  activeModal.value = 'propose'
+}
+async function proposeClose() {
+  if (!session.user.value || !session.token.value || !proposeTarget.value) return
+  const reason = proposeReason.value.trim()
+  if (!reason) {
+    accountMessage.value = '请填写销户原因'
+    return
+  }
+  try {
+    await proposeCloseBankAccount(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      proposeTarget.value.id,
+      reason,
+    )
+    activeModal.value = null
+    proposeTarget.value = null
+    accountMessage.value = '已发起销户，账户进入待销户状态。'
+    await load()
+  } catch (cause) {
+    accountMessage.value = cause instanceof Error ? cause.message : '发起销户失败'
+  }
+}
+async function cancelClose(account: BankAccount) {
+  if (!session.user.value || !session.token.value) return
+  if (!window.confirm(`确认撤销 ${account.bank_name} · ${account.account_name} 的销户申请？`))
+    return
+  try {
+    await cancelCloseBankAccount(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      account.id,
+    )
+    accountMessage.value = '已撤销销户，账户恢复活跃。'
+    await load()
+  } catch (cause) {
+    accountMessage.value = cause instanceof Error ? cause.message : '撤销销户失败'
+  }
+}
 async function idleScan() {
   if (!session.user.value || !session.token.value) return
   try {
@@ -481,13 +531,29 @@ onMounted(() => {
                   >
                     编辑</button
                   ><button
-                    v-if="account.status !== 'closed'"
+                    v-if="['active', 'idle'].includes(account.status)"
+                    v-permission="'account:manage'"
+                    class="small-danger-button"
+                    type="button"
+                    @click="openProposeClose(account)"
+                  >
+                    发起销户</button
+                  ><button
+                    v-if="account.status === 'pending_close'"
+                    v-permission="'account:manage'"
+                    class="text-button"
+                    type="button"
+                    @click="cancelClose(account)"
+                  >
+                    撤销销户</button
+                  ><button
+                    v-if="account.status === 'pending_close' || account.status === 'low_frequency'"
                     v-permission="'account:manage'"
                     class="small-danger-button"
                     type="button"
                     @click="close(account)"
                   >
-                    标记销户
+                    {{ account.status === 'pending_close' ? '完成销户' : '标记销户' }}
                   </button>
                 </div>
               </td>
@@ -761,6 +827,35 @@ onMounted(() => {
       </div>
       <template #footer>
         <button class="ghost-button" type="button" @click="closeModal">关闭</button>
+      </template>
+    </ModalPanel>
+    <ModalPanel
+      v-if="activeModal === 'propose' && proposeTarget"
+      title="发起销户"
+      @close="closeModal"
+    >
+      <p class="meta">
+        {{ proposeTarget.bank_name }} · {{ proposeTarget.account_name }} · 后四位
+        {{ proposeTarget.account_no_last4 }}
+      </p>
+      <label
+        >销户原因<textarea
+          v-model="proposeReason"
+          rows="4"
+          placeholder="请填写销户原因，例如：长期闲置且余额已清零"
+        />
+      </label>
+      <p v-if="accountMessage" class="feedback-text">{{ accountMessage }}</p>
+      <template #footer>
+        <button
+          v-permission="'account:manage'"
+          class="primary-button"
+          type="button"
+          @click="proposeClose"
+        >
+          提交销户申请
+        </button>
+        <button class="ghost-button" type="button" @click="closeModal">取消</button>
       </template>
     </ModalPanel>
     <ModalPanel v-if="accountDetailId !== null" title="账户详情" @close="closeAccountDetail">

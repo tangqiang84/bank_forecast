@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import BusinessDetail from './BusinessDetail.vue'
-import { loadTransactionDetail } from '../services/bank'
+import {
+  classifyTransaction,
+  loadTransactionDetail,
+  suggestTransactionCategory,
+  type CategorySuggestion,
+} from '../services/bank'
 import {
   downloadReceiptImage,
   previewReceiptImage,
@@ -89,6 +94,50 @@ async function uploadReceipt(receipt: Receipt, event: Event) {
     receiptMessage.value = cause instanceof Error ? cause.message : '回单影像上传失败'
   }
 }
+
+const suggestion = ref<CategorySuggestion | null>(null)
+const suggestionLoading = ref(false)
+const suggestionMessage = ref('')
+
+function suggestionSourceLabel(source: string) {
+  return source === 'llm' ? '大模型' : '规则'
+}
+
+async function suggestCategory() {
+  const ctx = receiptSession()
+  if (!ctx) return
+  suggestionLoading.value = true
+  suggestionMessage.value = ''
+  try {
+    suggestion.value = (
+      await suggestTransactionCategory(ctx.base, ctx.token, ctx.tenant, props.id)
+    ).data
+  } catch (cause) {
+    suggestionMessage.value = cause instanceof Error ? cause.message : '分类建议生成失败'
+  } finally {
+    suggestionLoading.value = false
+  }
+}
+
+async function applySuggestion() {
+  const ctx = receiptSession()
+  if (!ctx || !suggestion.value) return
+  try {
+    await classifyTransaction(
+      ctx.base,
+      ctx.token,
+      ctx.tenant,
+      props.id,
+      suggestion.value.suggested_category,
+      '',
+      '',
+    )
+    suggestionMessage.value = `分类已应用为「${suggestion.value.suggested_category}」。`
+    await load()
+  } catch (cause) {
+    suggestionMessage.value = cause instanceof Error ? cause.message : '分类应用失败'
+  }
+}
 </script>
 
 <template>
@@ -135,6 +184,36 @@ async function uploadReceipt(receipt: Receipt, event: Event) {
         </div>
       </div>
       <p v-else class="empty-state">暂无关联回单，可在流水列表页导入回单 CSV。</p>
+    </section>
+    <section class="detail-section">
+      <h3>分类建议</h3>
+      <p v-if="suggestionMessage" class="feedback-text">{{ suggestionMessage }}</p>
+      <div v-if="suggestion" class="detail-section">
+        <p>
+          建议分类：<strong>{{ suggestion.suggested_category }}</strong
+          ><span class="pill">{{ suggestionSourceLabel(suggestion.source) }}</span>
+        </p>
+        <p class="meta">
+          当前分类：{{ suggestion.current_category || '未分类' }} · 理由：{{ suggestion.reason }}
+        </p>
+        <button
+          v-permission="'transaction:import'"
+          class="small-primary-button"
+          type="button"
+          @click="applySuggestion"
+        >
+          应用建议分类
+        </button>
+      </div>
+      <button
+        v-else
+        class="ghost-button"
+        :disabled="suggestionLoading"
+        type="button"
+        @click="suggestCategory"
+      >
+        {{ suggestionLoading ? '生成中...' : '生成分类建议' }}
+      </button>
     </section>
   </template>
 </template>

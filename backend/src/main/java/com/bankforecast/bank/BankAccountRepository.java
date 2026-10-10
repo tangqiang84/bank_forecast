@@ -130,9 +130,34 @@ public class BankAccountRepository {
     return find(tenantId, id);
   }
 
+  /** 待销户：active/idle → pending_close；已销户或已是 pending_close 返回 44015。 */
+  public Map<String, Object> proposeClose(Long tenantId, Long id, String reason) {
+    String status = currentStatus(tenantId, id);
+    if (!"active".equals(status) && !"idle".equals(status)) {
+      throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "当前账户状态不支持发起销户：" + status);
+    }
+    jdbcTemplate.update("update bank_account set status = 'pending_close', updated_at = current_timestamp where id = ? and tenant_id = ? and deleted_at is null", id, tenantId);
+    return find(tenantId, id);
+  }
+
+  /** 撤销待销户：pending_close → active（闲置状态由下次闲置扫描重算）。 */
+  public Map<String, Object> cancelClose(Long tenantId, Long id) {
+    String status = currentStatus(tenantId, id);
+    if (!"pending_close".equals(status)) {
+      throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "当前账户不是待销户状态");
+    }
+    jdbcTemplate.update("update bank_account set status = 'active', updated_at = current_timestamp where id = ? and tenant_id = ? and deleted_at is null", id, tenantId);
+    return find(tenantId, id);
+  }
+
+  private String currentStatus(Long tenantId, Long id) {
+    if (!existsByTenant(tenantId, id)) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "银行账户不存在");
+    return jdbcTemplate.queryForObject("select status from bank_account where id = ? and tenant_id = ?", String.class, id, tenantId);
+  }
+
   public int refreshIdleStatuses(Long tenantId) {
     return jdbcTemplate.update(
-        "update bank_account ba set status = case when ba.status = 'closed' then 'closed' when (select max(bt.transaction_date) from bank_transaction bt where bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null) is null or datediff('DAY', (select max(bt2.transaction_date) from bank_transaction bt2 where bt2.bank_account_id = ba.id and bt2.tenant_id = ba.tenant_id and bt2.deleted_at is null), current_date) >= 30 then 'idle' else 'active' end, updated_at = current_timestamp where ba.tenant_id = ? and ba.deleted_at is null",
+        "update bank_account ba set status = case when ba.status in ('closed', 'pending_close') then ba.status when (select max(bt.transaction_date) from bank_transaction bt where bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null) is null or datediff('DAY', (select max(bt2.transaction_date) from bank_transaction bt2 where bt2.bank_account_id = ba.id and bt2.tenant_id = ba.tenant_id and bt2.deleted_at is null), current_date) >= 30 then 'idle' else 'active' end, updated_at = current_timestamp where ba.tenant_id = ? and ba.deleted_at is null",
         tenantId);
   }
 

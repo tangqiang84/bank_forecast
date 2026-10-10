@@ -111,3 +111,50 @@ export function applyIndustryTemplate(
     },
   )
 }
+
+export type ExceptionAssignmentItem = {
+  exception_type: string
+  owner_user_id: number | null
+  owner_name: string | null
+}
+
+export function loadExceptionAssignment(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<{ items: ExceptionAssignmentItem[] }>>(
+    `${baseUrl}/api/v1/rules/exception-assignment`,
+    { headers: authHeaders(token, tenantId) },
+  )
+}
+
+export function updateExceptionAssignment(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  assignments: Record<string, number | null>,
+) {
+  return fetchJson<ApiResponse<{ items: ExceptionAssignmentItem[] }>>(
+    `${baseUrl}/api/v1/rules/exception-assignment`,
+    {
+      method: 'PUT',
+      headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments }),
+    },
+  )
+}
+
+export type IndustryAlertResult = {
+  acceptance_overdue: number
+  warranty_overdue: number
+  customer_risk: number
+  payroll_gap: number
+  project_cashflow_risk: number
+}
+
+export function runIndustryAlerts(baseUrl: string, token: string, tenantId: number) {
+  return fetchJson<ApiResponse<IndustryAlertResult>>(
+    `${baseUrl}/api/v1/rules/industry-alerts/run`,
+    {
+      method: 'POST',
+      headers: authHeaders(token, tenantId),
+    },
+  )
+}

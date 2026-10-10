@@ -20,4 +20,15 @@ public class RestClientConfig {
         .setReadTimeout(Duration.ofMillis(readTimeout))
         .build();
   }
+
+  @Bean
+  public RestTemplate llmRestTemplate(
+      RestTemplateBuilder builder,
+      @Value("${bank-forecast.llm.connect-timeout-ms:2000}") int connectTimeout,
+      @Value("${bank-forecast.llm.read-timeout-ms:10000}") int readTimeout) {
+    return builder
+        .setConnectTimeout(Duration.ofMillis(connectTimeout))
+        .setReadTimeout(Duration.ofMillis(readTimeout))
+        .build();
+  }
 }

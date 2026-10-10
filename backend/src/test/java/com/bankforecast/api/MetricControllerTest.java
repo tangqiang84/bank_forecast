@@ -79,6 +79,33 @@ class MetricControllerTest {
   }
 
   @Test
+  void fundingGapCollectGeneratesExceptionOnce() throws Exception {
+    String token = loginToken("finance01");
+    Long tenantId = jdbcTemplate.queryForObject(
+        "select tenant_id from user_account where login_name = 'finance01'", Long.class);
+    // 远大于余额的近期应付 → 必产生缺口
+    jdbcTemplate.update(
+        "insert into contract_payable_plan (tenant_id, supplier_name, node_name, due_date, plan_amount, status) values (?, '缺口测试供应商', '巨额采购', ?, 999999999.00, 'unpaid')",
+        tenantId, java.sql.Date.valueOf(java.time.LocalDate.now().plusDays(5)));
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc.perform(post("/api/v1/metrics/snapshots/collect")
+              .header("Authorization", "Bearer " + token)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{}"))
+          .andExpect(status().isOk());
+    }
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and exception_type = 'fund_gap' and deleted_at is null",
+        Integer.class, tenantId);
+    org.junit.jupiter.api.Assertions.assertEquals(1, count.intValue());
+    String description = jdbcTemplate.queryForObject(
+        "select description from exception_case where tenant_id = ? and exception_type = 'fund_gap'",
+        String.class, tenantId);
+    org.junit.jupiter.api.Assertions.assertTrue(description.contains("资金缺口"));
+  }
+
+  @Test
   void metricsRequirePermission() throws Exception {
     String token = loginToken("biz01");
     mockMvc.perform(get("/api/v1/metrics/pilot-acceptance")
