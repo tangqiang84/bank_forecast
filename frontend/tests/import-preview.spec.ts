@@ -713,3 +713,139 @@ test('导入任务页展示疑似重复行并支持勾选强制导入', async ({
   await expect(page.getByText('任务已确认入账。')).toBeVisible()
   expect(confirmBody).toEqual({ include_duplicates: [2] })
 })
+
+const payablePreviewPayload = {
+  job_id: 305,
+  job_type: 'payable',
+  status: 'preview_pending',
+  total_rows: 2,
+  success_rows: 1,
+  failed_rows: 1,
+  skipped_rows: 0,
+  preview_rows: [
+    {
+      id: 1,
+      row_no: 1,
+      status: 'valid',
+      error_message: null,
+      payload: {
+        contract_no: null,
+        supplier_name: '供应商甲',
+        node_name: '首批款',
+        due_date: '2026-11-01',
+        plan_amount: '3000.00',
+        paid_amount: '0.00',
+        status: 'unpaid',
+        remark: null,
+      },
+    },
+    {
+      id: 2,
+      row_no: 2,
+      status: 'failed',
+      error_message: '应付金额格式不正确',
+      payload: {
+        contract_no: null,
+        supplier_name: '供应商乙',
+        node_name: '尾款',
+        due_date: '2026-12-01',
+        plan_amount: 'abc',
+        paid_amount: null,
+        status: null,
+        remark: null,
+      },
+    },
+  ],
+  error_details: [
+    {
+      row_no: 2,
+      field_name: 'plan_amount',
+      raw_json: '{"plan_amount":"abc"}',
+      error_message: '应付金额格式不正确',
+    },
+  ],
+}
+
+test('应付计划面板展示与导入流程', async ({ page }) => {
+  let confirmRequested = false
+
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/contracts/receivables?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/payables?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 1,
+            contract_id: 5,
+            contract_no: 'HT-2026-001',
+            supplier_name: '供应商甲',
+            node_name: '服务费',
+            due_date: '2026-10-20',
+            plan_amount: '2000.00',
+            paid_amount: '0.00',
+            status: 'unpaid',
+            remark: null,
+            created_at: '2026-10-01 10:00:00',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  await page.route('**/api/v1/imports/payables/preview', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok(payablePreviewPayload),
+    }),
+  )
+  await page.route('**/api/v1/imports/305/confirm', async (route) => {
+    confirmRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ ...payablePreviewPayload, status: 'confirmed', failed_rows: 0 }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '合同应收' }).click()
+  await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
+
+  const payablePanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '应付计划', exact: true }),
+  })
+  await expect(payablePanel.getByText('供应商甲')).toBeVisible()
+  await expect(payablePanel.getByText('服务费')).toBeVisible()
+  await expect(payablePanel.getByText('HT-2026-001')).toBeVisible()
+  await expect(payablePanel.getByRole('cell', { name: '未付', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '导入应付计划' }).click()
+  const payableDialog = page.getByRole('dialog', { name: '导入应付计划' })
+  await payableDialog.locator('input[type="file"]').setInputFiles({
+    name: 'payables.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      'supplier_name,node_name,due_date,plan_amount\n供应商甲,首批款,2026-11-01,3000.00\n',
+    ),
+  })
+  await payableDialog.getByRole('button', { name: '预览导入' }).click()
+  await expect(payableDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
+  await expect(payableDialog.getByText('任务 #305', { exact: true })).toBeVisible()
+  await expect(payableDialog.getByText('有效 1')).toBeVisible()
+  await expect(payableDialog.getByText('失败 1')).toBeVisible()
+  await expect(payableDialog.getByText('供应商乙')).toBeVisible()
+  await expect(payableDialog.getByText('应付金额格式不正确')).toBeVisible()
+
+  await payableDialog.getByRole('button', { name: '确认导入' }).click()
+  await expect(payableDialog.getByText('导入已确认，应付计划已更新。')).toBeVisible()
+  expect(confirmRequested).toBe(true)
+  await expect(payableDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
+})

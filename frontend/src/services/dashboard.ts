@@ -19,6 +19,35 @@ export type DashboardOverview = {
   overdue_receivable_amount?: string
   exception_count?: number
   last_sync_at: string
+  payable_top?: Array<{
+    id: number
+    contract_id: number | null
+    contract_no: string | null
+    supplier_name: string
+    node_name: string
+    due_date: string
+    amount: string
+    status: string
+  }>
+  payable_7d_amount?: string
+  payable_30d_amount?: string
+  receivable_30d_amount?: string
+  funding_gap?: {
+    horizon_days: number
+    balance: string
+    receivable_30d: string
+    payable_30d: string
+    gap_amount: string
+    has_gap: boolean
+  }
+  risk_projects?: Array<{
+    project_no: string
+    project_name: string
+    customer_name: string
+    risk_score: number
+    risk_level: string
+    risk_items: string[]
+  }>
   top_receivables: Array<{
     contract_name: string
     customer_name: string

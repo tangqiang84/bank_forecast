@@ -1768,3 +1768,114 @@ test('驾驶舱资金趋势图与 7/30 天切换', async ({ page }) => {
   await expect(trendPanel.locator('svg')).toHaveCount(4)
   expect(requestedDays).toEqual(['30', '7'])
 })
+
+test('驾驶舱收付区块与资金缺口提示', async ({ page }) => {
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/dashboard/overview', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        total_balance: '100.00',
+        yesterday_net_flow: '10.00',
+        receivable_total: '80.00',
+        overdue_receivable: '20.00',
+        open_exception_count: 0,
+        match_rate: '1.00',
+        key_risks: [],
+        recent_import_jobs: [],
+        top_receivables: [
+          {
+            contract_name: '示例合同',
+            customer_name: '示例客户',
+            amount: '800.00',
+            due_date: '2026-10-20',
+            status: 'unpaid',
+          },
+        ],
+        payable_top: [
+          {
+            id: 1,
+            contract_id: 5,
+            contract_no: 'HT-2026-001',
+            supplier_name: '供应商甲',
+            node_name: '服务费',
+            due_date: '2026-10-25',
+            amount: '500.00',
+            status: 'unpaid',
+          },
+        ],
+        payable_7d_amount: '500.00',
+        payable_30d_amount: '2000.00',
+        receivable_30d_amount: '3000.00',
+        funding_gap: {
+          horizon_days: 30,
+          balance: '100.00',
+          receivable_30d: '3000.00',
+          payable_30d: '4000.00',
+          gap_amount: '-900.00',
+          has_gap: true,
+        },
+        risk_projects: [
+          {
+            project_no: 'PRJ-001',
+            project_name: '示例项目',
+            customer_name: '示例客户',
+            risk_score: 45,
+            risk_level: 'high',
+            risk_items: ['逾期未收 2 笔'],
+          },
+        ],
+      }),
+    }),
+  )
+  await page.route('**/api/v1/bank-accounts?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok(EMPTY_PAGE) }),
+  )
+  await page.route('**/api/v1/metrics/pilot-acceptance', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ as_of: '2026-10-10', indicators: [], amounts: [], last_snapshot_date: null }),
+    }),
+  )
+  await page.route('**/api/v1/dashboard/trends?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ days: 30, start: '2026-09-11', end: '2026-10-10', series: [] }),
+    }),
+  )
+
+  await login(page)
+
+  const receivablePanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '应收 Top 5', exact: true }),
+  })
+  await expect(receivablePanel.getByText('示例合同')).toBeVisible()
+  await expect(receivablePanel.getByText(/应收日期 2026-10-20/)).toBeVisible()
+
+  const payablePanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '未来应付 Top 5', exact: true }),
+  })
+  await expect(payablePanel.getByText('供应商甲')).toBeVisible()
+  await expect(payablePanel.getByText(/应付日期 2026-10-25/)).toBeVisible()
+  await expect(
+    payablePanel.getByText(/未来 7 天应付 500\.00 · 未来 30 天应付 2,000\.00/),
+  ).toBeVisible()
+
+  const gapPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '资金缺口', exact: true }),
+  })
+  await expect(gapPanel.getByText('-900.00')).toBeVisible()
+  await expect(gapPanel.getByText('未来 30 天存在资金缺口')).toBeVisible()
+  await expect(gapPanel.getByText(/余额 100\.00 · 应收 3,000\.00 · 应付 4,000\.00/)).toBeVisible()
+
+  const riskPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '风险项目排行', exact: true }),
+  })
+  await expect(riskPanel.getByText(/PRJ-001 · 示例项目/)).toBeVisible()
+  await expect(riskPanel.getByText(/逾期未收 2 笔/)).toBeVisible()
+  await expect(riskPanel.locator('.pill')).toHaveText('高')
+  await expect(riskPanel.getByRole('link')).toHaveAttribute('href', '#/projects')
+})

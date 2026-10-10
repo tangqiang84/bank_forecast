@@ -7,6 +7,7 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.contract.ContractImportService;
 import com.bankforecast.importjob.ImportJobService;
 import com.bankforecast.finance.FinanceRecordImportService;
+import com.bankforecast.payable.PayableImportService;
 import com.bankforecast.project.ProjectImportService;
 import com.bankforecast.receipt.ReceiptImportService;
 import java.util.Map;
@@ -32,15 +33,17 @@ public class ImportController {
   private final FinanceRecordImportService financeRecordImportService;
   private final ProjectImportService projectImportService;
   private final ReceiptImportService receiptImportService;
+  private final PayableImportService payableImportService;
 
   public ImportController(ImportJobService importJobService, ContractImportService contractImportService,
       FinanceRecordImportService financeRecordImportService, ProjectImportService projectImportService,
-      ReceiptImportService receiptImportService) {
+      ReceiptImportService receiptImportService, PayableImportService payableImportService) {
     this.importJobService = importJobService;
     this.contractImportService = contractImportService;
     this.financeRecordImportService = financeRecordImportService;
     this.projectImportService = projectImportService;
     this.receiptImportService = receiptImportService;
+    this.payableImportService = payableImportService;
   }
 
   @RequirePermission("contract:import")
@@ -87,6 +90,9 @@ public class ImportController {
     if ("receipt".equals(jobType)) {
       return ApiResponse.ok(receiptImportService.getPreview(jobId));
     }
+    if ("payable".equals(jobType)) {
+      return ApiResponse.ok(payableImportService.getPreview(jobId));
+    }
     return ApiResponse.ok(importJobService.getPreview(jobId));
   }
 
@@ -113,6 +119,9 @@ public class ImportController {
     if ("receipt".equals(jobType)) {
       return ApiResponse.ok(receiptImportService.confirmPreview(jobId));
     }
+    if ("payable".equals(jobType)) {
+      return ApiResponse.ok(payableImportService.confirmPreview(jobId));
+    }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.confirmPreview(jobId, request));
     }
@@ -134,6 +143,9 @@ public class ImportController {
     }
     if ("receipt".equals(jobType)) {
       return ApiResponse.ok(receiptImportService.retryPreviewErrors(jobId, request));
+    }
+    if ("payable".equals(jobType)) {
+      return ApiResponse.ok(payableImportService.retryPreviewErrors(jobId, request));
     }
     if ("bank_statement".equals(jobType)) {
       return ApiResponse.ok(importJobService.retryPreviewErrors(jobId, request));
@@ -163,6 +175,18 @@ public class ImportController {
   @PostMapping("/projects/preview")
   public ApiResponse<Map<String, Object>> previewProjects(@RequestParam("file") MultipartFile file) {
     return ApiResponse.ok(projectImportService.previewProjects(file));
+  }
+
+  @RequirePermission("contract:import")
+  @PostMapping("/payables")
+  public ApiResponse<Map<String, Object>> importPayables(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(payableImportService.importPayables(file));
+  }
+
+  @RequirePermission("contract:import")
+  @PostMapping("/payables/preview")
+  public ApiResponse<Map<String, Object>> previewPayables(@RequestParam("file") MultipartFile file) {
+    return ApiResponse.ok(payableImportService.previewPayables(file));
   }
 
   @RequirePermission("reconciliation:run")

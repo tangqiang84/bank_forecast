@@ -3,7 +3,8 @@ import { fetchBlob, fetchJson } from './http'
 
 export type ApiResponse<T> = { code: number; message: string; data: T; trace_id: string }
 
-export type ImportJobType = 'bank_statement' | 'contract' | 'finance_record' | 'project' | 'receipt'
+export type ImportJobType =
+  'bank_statement' | 'contract' | 'finance_record' | 'project' | 'receipt' | 'payable'
 
 // duplicate_suspect：弱指纹疑似重复行，默认不随确认入账，需显式 include_duplicates。
 export type ImportRowStatus =

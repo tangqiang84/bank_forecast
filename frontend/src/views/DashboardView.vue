@@ -19,7 +19,12 @@ import {
   type PilotIndicator,
 } from '../services/metrics'
 import { apiBase, useSession } from '../session'
-import { importJobStatusLabel } from '../utils/labels'
+import {
+  importJobStatusLabel,
+  payableStatusLabel,
+  receivableStatusLabel,
+  riskLevelLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 const session = useSession()
 const overview = ref<DashboardOverview | null>(null)
@@ -215,6 +220,88 @@ onMounted(() => {
       <article v-for="card in cards()" :key="card.label" class="panel stat-card">
         <span class="label">{{ card.label }}</span
         ><strong class="stat-value">{{ card.value }}</strong>
+      </article>
+    </section>
+    <section class="grid two-up">
+      <article class="panel">
+        <h3>应收 Top 5</h3>
+        <div v-if="overview?.top_receivables?.length" class="list-stack">
+          <div v-for="item in overview.top_receivables" :key="item.contract_name" class="list-row">
+            <span
+              ><strong>{{ item.contract_name }}</strong
+              ><small class="meta"
+                >{{ item.customer_name }} · 应收日期 {{ item.due_date }} ·
+                {{ receivableStatusLabel(item.status) }}</small
+              ></span
+            ><strong>{{ formatCurrency(item.amount) }}</strong>
+          </div>
+        </div>
+        <p v-else class="empty-state">暂无未收应收计划。</p>
+      </article>
+      <article class="panel">
+        <h3>未来应付 Top 5</h3>
+        <div v-if="overview?.payable_top?.length" class="list-stack">
+          <div v-for="item in overview.payable_top" :key="item.id" class="list-row">
+            <span
+              ><strong>{{ item.supplier_name }}</strong
+              ><small class="meta"
+                >{{ item.node_name }} · 应付日期 {{ item.due_date }} ·
+                {{ payableStatusLabel(item.status) }}</small
+              ></span
+            ><strong>{{ formatCurrency(item.amount) }}</strong>
+          </div>
+        </div>
+        <p v-else class="empty-state">暂无待支付的应付计划。</p>
+        <p v-if="overview" class="meta import-hint">
+          未来 7 天应付 {{ formatCurrency(overview.payable_7d_amount ?? '0') }} · 未来 30 天应付
+          {{ formatCurrency(overview.payable_30d_amount ?? '0') }}
+        </p>
+      </article>
+      <article class="panel">
+        <h3>资金缺口</h3>
+        <template v-if="overview?.funding_gap">
+          <p>
+            <strong
+              class="stat-value"
+              :class="overview.funding_gap.has_gap ? 'expense-amount' : 'income-amount'"
+              >{{ formatCurrency(overview.funding_gap.gap_amount) }}</strong
+            >
+          </p>
+          <p>
+            <span class="pill" :class="overview.funding_gap.has_gap ? 'risk-high' : 'risk-low'">
+              未来 {{ overview.funding_gap.horizon_days }} 天{{
+                overview.funding_gap.has_gap ? '存在资金缺口' : '资金可覆盖'
+              }}
+            </span>
+          </p>
+          <p class="meta import-hint">
+            余额 {{ formatCurrency(overview.funding_gap.balance) }} · 应收
+            {{ formatCurrency(overview.funding_gap.receivable_30d) }} · 应付
+            {{ formatCurrency(overview.funding_gap.payable_30d) }}
+          </p>
+        </template>
+        <p v-else class="empty-state">暂无资金缺口数据。</p>
+      </article>
+      <article class="panel">
+        <h3>风险项目排行</h3>
+        <div v-if="overview?.risk_projects?.length" class="list-stack">
+          <RouterLink
+            v-for="item in overview.risk_projects"
+            :key="item.project_no"
+            class="list-row link-row"
+            to="/projects"
+            ><span
+              ><strong>{{ item.project_no }} · {{ item.project_name }}</strong
+              ><small class="meta"
+                >{{ item.customer_name }} · 风险分 {{ item.risk_score }} ·
+                {{ item.risk_items.join('；') || '暂无风险项' }}</small
+              ></span
+            ><span class="pill" :class="`risk-${item.risk_level}`">{{
+              riskLevelLabel(item.risk_level)
+            }}</span></RouterLink
+          >
+        </div>
+        <p v-else class="empty-state">当前没有非健康项目。</p>
       </article>
     </section>
     <article class="panel table-panel">

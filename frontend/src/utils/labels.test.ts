@@ -22,6 +22,7 @@ import {
   matchStatusLabel,
   matchTypeLabel,
   modelNameLabel,
+  payableStatusLabel,
   permissionModuleLabel,
   projectStatusLabel,
   receivableStatusLabel,
@@ -285,6 +286,10 @@ describe('labels', () => {
     expect(auditActionLabel('UPDATE_TEMPLATE_MAPPING')).toBe('更新模板映射')
     expect(auditActionLabel('DELETE_TEMPLATE_MAPPING')).toBe('删除模板映射')
     expect(auditActionLabel('COLLECT_METRIC_SNAPSHOT')).toBe('采集指标快照')
+    expect(auditActionLabel('IMPORT_PAYABLE')).toBe('导入应付计划')
+    expect(auditActionLabel('PREVIEW_PAYABLE')).toBe('预览应付计划导入')
+    expect(auditActionLabel('CONFIRM_PAYABLE')).toBe('确认应付计划导入')
+    expect(auditActionLabel('RETRY_PAYABLE_ERRORS')).toBe('重试应付计划失败行')
   })
 
   it('maps exception action_type codes used in the timeline', () => {
@@ -315,6 +320,13 @@ describe('labels', () => {
     expect(contractStatusLabel('disabled')).toBe('已停用')
   })
 
+  it('maps payable status independently from receivable status', () => {
+    expect(payableStatusLabel('unpaid')).toBe('未付')
+    expect(payableStatusLabel('partial')).toBe('部分支付')
+    expect(payableStatusLabel('paid')).toBe('已付')
+    expect(payableStatusLabel('other')).toBe('other')
+  })
+
   it('maps generic status by union order and falls back', () => {
     expect(genericStatusLabel('new')).toBe('新发现')
     expect(genericStatusLabel('preview_pending')).toBe('待确认预览')
@@ -343,6 +355,7 @@ describe('labels', () => {
     expect(fieldNameLabel('backtest_json')).toBe('回测指标')
     expect(fieldNameLabel('ci_lower')).toBe('区间下沿')
     expect(fieldNameLabel('ci_upper')).toBe('区间上沿')
+    expect(fieldNameLabel('supplier_name')).toBe('供应商')
     expect(fieldNameLabel('bank_code')).toBe('银行代码')
     expect(fieldNameLabel('bank_name')).toBe('开户银行')
     expect(fieldNameLabel('account_no_last4')).toBe('账号后四位')

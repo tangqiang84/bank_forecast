@@ -17,7 +17,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class DashboardService {
   private final JdbcTemplate jdbcTemplate;
-  public DashboardService(JdbcTemplate jdbcTemplate) { this.jdbcTemplate = jdbcTemplate; }
+  private final ProjectService projectService;
+
+  public DashboardService(JdbcTemplate jdbcTemplate, ProjectService projectService) {
+    this.jdbcTemplate = jdbcTemplate;
+    this.projectService = projectService;
+  }
 
   /**
    * 驾驶舱主指标近 N 天趋势（2026-10-10）。
@@ -137,7 +142,73 @@ public class DashboardService {
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("total_balance", valueOrZero(jdbcTemplate.queryForObject("select coalesce(sum(current_balance), 0) from bank_account where tenant_id = ? and deleted_at is null", BigDecimal.class, tenantId)));
     data.put("yesterday_net_inflow", yesterdayNetInflow(tenantId)); data.put("pending_exceptions", pendingExceptions(tenantId)); data.put("idle_accounts", countAccounts(tenantId, "idle")); data.put("match_rate", matchRate(tenantId)); data.put("last_sync_at", latestImportTime(tenantId)); data.put("receivable_amount", amount(tenantId, "plan_amount")); data.put("paid_receivable_amount", amount(tenantId, "paid_amount")); data.put("overdue_receivable_amount", overdueAmount(tenantId)); data.put("exception_count", totalExceptions(tenantId)); data.put("top_receivables", topReceivables(tenantId)); data.put("recent_import_jobs", recentImportJobs(tenantId)); data.put("key_risks", keyRisks(tenantId));
+    data.put("payable_top", payableTop(tenantId));
+    data.put("payable_7d_amount", payableDue(tenantId, 7));
+    data.put("payable_30d_amount", payableDue(tenantId, 30));
+    data.put("receivable_30d_amount", receivableDue(tenantId, 30));
+    data.put("funding_gap", fundingGap(tenantId));
+    data.put("risk_projects", riskProjects(tenantId));
     return data;
+  }
+
+  /** 未来应付 Top 5：按应付日期升序的未付清计划。 */
+  private List<Map<String, Object>> payableTop(Long tenantId) {
+    return jdbcTemplate.queryForList(
+        "select p.id, p.contract_id, c.contract_no, p.supplier_name, p.node_name, p.due_date, p.plan_amount - p.paid_amount as amount, p.status "
+            + "from contract_payable_plan p left join contract c on c.id = p.contract_id and c.tenant_id = p.tenant_id "
+            + "where p.tenant_id = ? and p.status <> 'paid' and p.deleted_at is null and p.due_date >= current_date "
+            + "order by p.due_date asc, amount desc limit 5",
+        tenantId);
+  }
+
+  private BigDecimal payableDue(Long tenantId, int days) {
+    return valueOrZero(jdbcTemplate.queryForObject(
+        "select coalesce(sum(plan_amount - paid_amount), 0) from contract_payable_plan where tenant_id = ? and status <> 'paid' and deleted_at is null and due_date >= ? and due_date <= ?",
+        BigDecimal.class, tenantId, Date.valueOf(LocalDate.now()), Date.valueOf(LocalDate.now().plusDays(days))));
+  }
+
+  private BigDecimal receivableDue(Long tenantId, int days) {
+    return valueOrZero(jdbcTemplate.queryForObject(
+        "select coalesce(sum(plan_amount - paid_amount), 0) from contract_receivable_plan where tenant_id = ? and status <> 'paid' and deleted_at is null and due_date >= ? and due_date <= ?",
+        BigDecimal.class, tenantId, Date.valueOf(LocalDate.now()), Date.valueOf(LocalDate.now().plusDays(days))));
+  }
+
+  /** 资金缺口 = 当前总余额 + 未来 30 天应收 − 未来 30 天应付；为负即缺口。 */
+  private Map<String, Object> fundingGap(Long tenantId) {
+    BigDecimal balance = valueOrZero(jdbcTemplate.queryForObject(
+        "select coalesce(sum(current_balance), 0) from bank_account where tenant_id = ? and deleted_at is null", BigDecimal.class, tenantId));
+    BigDecimal receivable30 = receivableDue(tenantId, 30);
+    BigDecimal payable30 = payableDue(tenantId, 30);
+    BigDecimal gapAmount = balance.add(receivable30).subtract(payable30);
+    Map<String, Object> gap = new LinkedHashMap<>();
+    gap.put("horizon_days", 30);
+    gap.put("balance", balance);
+    gap.put("receivable_30d", receivable30);
+    gap.put("payable_30d", payable30);
+    gap.put("gap_amount", gapAmount);
+    gap.put("has_gap", gapAmount.compareTo(BigDecimal.ZERO) < 0);
+    return gap;
+  }
+
+  /** 风险项目排行：风险分最低的 5 个非健康项目（复用项目列表的风险计算口径）。 */
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> riskProjects(Long tenantId) {
+    Map<String, Object> data = projectService.list(tenantId, 1, 100, null, null, null, null, null);
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (Map<String, Object> row : (List<Map<String, Object>>) data.get("items")) {
+      if ("healthy".equals(String.valueOf(row.get("risk_level")))) continue;
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("project_no", row.get("project_no"));
+      item.put("project_name", row.get("project_name"));
+      item.put("customer_name", row.get("customer_name"));
+      item.put("risk_score", row.get("risk_score"));
+      item.put("risk_level", row.get("risk_level"));
+      item.put("risk_items", row.get("risk_items"));
+      items.add(item);
+    }
+    items.sort((a, b) -> Integer.compare(
+        ((Number) a.get("risk_score")).intValue(), ((Number) b.get("risk_score")).intValue()));
+    return items.size() > 5 ? new ArrayList<>(items.subList(0, 5)) : items;
   }
   private BigDecimal yesterdayNetInflow(Long tenantId) { LocalDate date = LocalDate.now().minusDays(1); BigDecimal income = jdbcTemplate.queryForObject("select coalesce(sum(amount), 0) from bank_transaction where tenant_id = ? and transaction_date = ? and direction in ('income', 'refund') and deleted_at is null", BigDecimal.class, tenantId, date); BigDecimal expense = jdbcTemplate.queryForObject("select coalesce(sum(amount), 0) from bank_transaction where tenant_id = ? and transaction_date = ? and direction in ('expense', 'reversal') and deleted_at is null", BigDecimal.class, tenantId, date); return valueOrZero(income).subtract(valueOrZero(expense)); }
   private double matchRate(Long tenantId) { Integer total = jdbcTemplate.queryForObject("select count(*) from bank_transaction where tenant_id = ? and deleted_at is null", Integer.class, tenantId); if (total == null || total == 0) return 0D; Integer matched = jdbcTemplate.queryForObject("select count(*) from bank_transaction where tenant_id = ? and deleted_at is null and match_status in ('matched', 'manual_confirmed')", Integer.class, tenantId); return (matched == null ? 0D : matched) / total.doubleValue(); }

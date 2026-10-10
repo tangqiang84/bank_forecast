@@ -10,13 +10,25 @@ import {
   type Receivable,
 } from '../services/receivables'
 import {
+  loadPayables,
+  previewPayables,
+  type PaginatedPayables,
+  type PayableImportPayload,
+  type PayablePlan,
+} from '../services/payables'
+import {
   confirmImportJob,
   retryImportJobErrors,
   type GenericImportPreview,
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
-import { importJobStatusLabel, importRowStatusLabel, receivableStatusLabel } from '../utils/labels'
+import {
+  importJobStatusLabel,
+  importRowStatusLabel,
+  payableStatusLabel,
+  receivableStatusLabel,
+} from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
 const session = useSession()
@@ -45,6 +57,175 @@ const error = ref('')
 const importModalOpen = ref(false)
 const importDone = ref(false)
 const contractDetailId = ref<number | null>(null)
+const payables = ref<PayablePlan[]>([])
+const payablePage = ref(1)
+const payablePageSize = ref(20)
+const payableTotal = ref(0)
+const payableStatus = ref('')
+const payableLoading = ref(false)
+const payableMessage = ref('')
+const payableModalOpen = ref(false)
+const payableFile = ref<File | null>(null)
+const payablePreview = ref<GenericImportPreview<PayableImportPayload> | null>(null)
+const payableRetryJson = ref('')
+const payableImportLoading = ref(false)
+const payableImportDone = ref(false)
+
+function payablePrevPage() {
+  payablePage.value--
+  loadPayableList()
+}
+
+function payableNextPage() {
+  payablePage.value++
+  loadPayableList()
+}
+
+async function loadPayableList() {
+  if (!session.user.value || !session.token.value) return
+  payableLoading.value = true
+  payableMessage.value = ''
+  try {
+    const result: PaginatedPayables = (
+      await loadPayables(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        payablePage.value,
+        payablePageSize.value,
+        payableStatus.value || undefined,
+      )
+    ).data
+    payables.value = result.items
+    payableTotal.value = result.total
+  } catch (cause) {
+    payableMessage.value = cause instanceof Error ? cause.message : '应付计划加载失败'
+  } finally {
+    payableLoading.value = false
+  }
+}
+
+function filterPayables() {
+  payablePage.value = 1
+  loadPayableList()
+}
+
+function changePayableSize() {
+  payablePage.value = 1
+  loadPayableList()
+}
+
+function openPayableImport() {
+  payableFile.value = null
+  payablePreview.value = null
+  payableRetryJson.value = ''
+  payableMessage.value = ''
+  payableImportDone.value = false
+  payableModalOpen.value = true
+}
+
+function closePayableImport() {
+  payableModalOpen.value = false
+  payableMessage.value = ''
+}
+
+function choosePayableFile(event: Event) {
+  payableFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  payableMessage.value = ''
+  payablePreview.value = null
+  payableRetryJson.value = ''
+}
+
+const payablePreviewActionable = computed(
+  () =>
+    payablePreview.value !== null &&
+    ['preview_pending', 'preview_failed'].includes(payablePreview.value.status),
+)
+
+async function startPayablePreview() {
+  if (!session.user.value || !session.token.value || !payableFile.value) {
+    payableMessage.value = '请选择应付计划 CSV 文件'
+    return
+  }
+  payableImportLoading.value = true
+  try {
+    payablePreview.value = (
+      await previewPayables(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        payableFile.value,
+      )
+    ).data
+    payableMessage.value =
+      payablePreview.value.status === 'preview_failed'
+        ? '预览校验失败，请修正失败行后重新校验。'
+        : '预览完成，请核对后确认导入。'
+  } catch (cause) {
+    payableMessage.value = cause instanceof Error ? cause.message : '应付计划预览失败'
+  } finally {
+    payableImportLoading.value = false
+  }
+}
+
+async function confirmPayablePreview() {
+  if (!session.user.value || !session.token.value || !payablePreview.value) return
+  payableImportLoading.value = true
+  try {
+    payablePreview.value = (
+      await confirmImportJob<PayableImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        payablePreview.value.job_id,
+      )
+    ).data
+    await loadPayableList()
+    payableMessage.value = '导入已确认，应付计划已更新。'
+    payableImportDone.value = true
+  } catch (cause) {
+    payableMessage.value = cause instanceof Error ? cause.message : '确认导入失败'
+  } finally {
+    payableImportLoading.value = false
+  }
+}
+
+async function retryPayableErrors() {
+  if (!session.user.value || !session.token.value || !payablePreview.value) return
+  try {
+    payablePreview.value = (
+      await retryImportJobErrors<PayableImportPayload>(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        payablePreview.value.job_id,
+        JSON.parse(payableRetryJson.value),
+      )
+    ).data
+    payableRetryJson.value = ''
+    payableMessage.value = '失败行已重新校验。'
+  } catch (cause) {
+    payableMessage.value = cause instanceof Error ? cause.message : '失败行格式不正确'
+  }
+}
+
+function payableRetryPlaceholder(rows: Array<GenericImportRow<PayableImportPayload>>) {
+  return JSON.stringify(
+    rows
+      .filter((row) => row.status === 'failed')
+      .map((row) => ({
+        row_no: row.row_no,
+        contract_no: row.payload?.contract_no ?? '',
+        supplier_name: row.payload?.supplier_name ?? '',
+        node_name: row.payload?.node_name ?? '',
+        due_date: row.payload?.due_date ?? '',
+        plan_amount: row.payload?.plan_amount ?? '',
+        paid_amount: row.payload?.paid_amount ?? '',
+      })),
+    null,
+    2,
+  )
+}
 
 function openImportModal() {
   file.value = null
@@ -187,6 +368,7 @@ function changeSize() {
 }
 onMounted(() => {
   load()
+  loadPayableList()
   window.addEventListener('workspace-refresh', load)
 })
 </script>
@@ -207,6 +389,7 @@ onMounted(() => {
       <button class="ghost-button" type="button" @click="openImportModal">
         导入合同 / 应收计划
       </button>
+      <button class="ghost-button" type="button" @click="openPayableImport">导入应付计划</button>
       <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
         运行回款匹配
       </button>
@@ -285,6 +468,187 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>应付计划</h3>
+          <span class="meta">服务端分页 · 按应付日期升序</span>
+        </div>
+        <div class="action-group">
+          <label
+            >状态<select v-model="payableStatus" @change="filterPayables">
+              <option value="">全部</option>
+              <option value="unpaid">未付</option>
+              <option value="partial">部分支付</option>
+              <option value="paid">已付</option>
+            </select></label
+          >
+          <span v-if="payableLoading" class="meta">加载中...</span>
+        </div>
+      </div>
+      <p v-if="payableMessage && !payableModalOpen" class="error-banner">{{ payableMessage }}</p>
+      <div v-if="payables.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>供应商</th>
+              <th>节点</th>
+              <th>应付日期</th>
+              <th>应付金额</th>
+              <th>已付金额</th>
+              <th>状态</th>
+              <th>关联合同号</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in payables" :key="item.id">
+              <td>{{ item.supplier_name }}</td>
+              <td>{{ item.node_name }}</td>
+              <td>{{ item.due_date }}</td>
+              <td>{{ formatCurrency(item.plan_amount) }}</td>
+              <td>{{ formatCurrency(item.paid_amount) }}</td>
+              <td>
+                <span class="pill">{{ payableStatusLabel(item.status) }}</span>
+              </td>
+              <td>{{ item.contract_no || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无应付计划，请通过「导入应付计划」录入。</p>
+      <div class="pagination-controls">
+        <span
+          >第 {{ payablePage }} /
+          {{ Math.max(1, Math.ceil(payableTotal / payablePageSize)) }} 页，共
+          {{ payableTotal }} 条</span
+        ><label
+          >每页<select v-model.number="payablePageSize" @change="changePayableSize">
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option></select
+          >条</label
+        ><button
+          class="ghost-button"
+          :disabled="payablePage <= 1"
+          type="button"
+          @click="payablePrevPage"
+        >
+          上一页</button
+        ><button
+          class="ghost-button"
+          :disabled="payablePage >= Math.ceil(payableTotal / payablePageSize)"
+          type="button"
+          @click="payableNextPage"
+        >
+          下一页
+        </button>
+      </div>
+    </article>
+
+    <ModalPanel v-if="payableModalOpen" title="导入应付计划" @close="closePayableImport">
+      <label
+        >CSV 文件<input accept=".csv,text/csv" type="file" @change="choosePayableFile"
+      /></label>
+      <p v-if="payableFile" class="meta">已选择：{{ payableFile.name }}</p>
+      <button
+        v-permission="'contract:import'"
+        class="primary-button"
+        :disabled="payableImportLoading"
+        type="button"
+        @click="startPayablePreview"
+      >
+        {{ payableImportLoading ? '处理中...' : '预览导入' }}
+      </button>
+      <p v-if="payableMessage" class="feedback-text">{{ payableMessage }}</p>
+      <div v-if="payablePreview" class="import-summary">
+        <strong>任务 #{{ payablePreview.job_id }}</strong
+        ><span>有效 {{ payablePreview.success_rows }}</span
+        ><span>失败 {{ payablePreview.failed_rows }}</span
+        ><span>跳过 {{ payablePreview.skipped_rows }}</span
+        ><RouterLink class="text-button" :to="`/imports/${payablePreview.job_id}`"
+          >打开任务详情</RouterLink
+        >
+      </div>
+      <template v-if="payablePreview && payablePreviewActionable && payablePreview.failed_rows">
+        <label
+          >失败行修正 JSON<textarea
+            v-model="payableRetryJson"
+            rows="5"
+            :placeholder="payableRetryPlaceholder(payablePreview.preview_rows)"
+          />
+        </label>
+        <button
+          v-permission="'contract:import'"
+          class="ghost-button"
+          type="button"
+          @click="retryPayableErrors"
+        >
+          重新校验失败行
+        </button>
+      </template>
+      <button
+        v-if="payablePreview && payablePreviewActionable"
+        v-permission="'contract:import'"
+        class="primary-button"
+        :disabled="payableImportLoading || payablePreview.success_rows === 0"
+        type="button"
+        @click="confirmPayablePreview"
+      >
+        确认导入
+      </button>
+      <template v-if="payablePreview">
+        <h3>导入预览行</h3>
+        <p class="meta">
+          任务 #{{ payablePreview.job_id }} · {{ importJobStatusLabel(payablePreview.status) }}
+        </p>
+        <div v-if="payablePreview.preview_rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>行号</th>
+                <th>供应商</th>
+                <th>节点</th>
+                <th>应付日期</th>
+                <th>应付金额</th>
+                <th>已付金额</th>
+                <th>状态</th>
+                <th>错误原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in payablePreview.preview_rows" :key="row.id">
+                <td>{{ row.row_no }}</td>
+                <td>{{ row.payload?.supplier_name || '-' }}</td>
+                <td>{{ row.payload?.node_name || '-' }}</td>
+                <td>{{ row.payload?.due_date || '-' }}</td>
+                <td>{{ row.payload?.plan_amount || '-' }}</td>
+                <td>{{ row.payload?.paid_amount || '-' }}</td>
+                <td>
+                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
+                </td>
+                <td>{{ row.error_message || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">本次预览没有可展示的行。</p>
+      </template>
+      <p class="meta import-hint">
+        CSV 表头：supplier_name、node_name、due_date、plan_amount
+        必填，contract_no、paid_amount、status、remark 可选；重复的供应商+节点+日期+金额自动跳过。
+      </p>
+      <template #footer>
+        <button
+          v-if="payableImportDone"
+          class="primary-button"
+          type="button"
+          @click="closePayableImport"
+        >
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
 
     <ModalPanel v-if="importModalOpen" title="导入合同 / 应收计划" @close="closeImportModal">
       <label>CSV 文件<input accept=".csv,text/csv" type="file" @change="choose" /></label>

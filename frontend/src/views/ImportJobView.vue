@@ -16,6 +16,7 @@ import {
   directionLabel,
   importJobStatusLabel,
   importRowStatusLabel,
+  payableStatusLabel,
   projectStatusLabel,
   recordTypeLabel,
   templateRecognitionStatusLabel,
@@ -73,6 +74,14 @@ const BUSINESS_COLUMNS: Record<string, PreviewColumn[]> = {
     { key: 'amount', label: '金额' },
     { key: 'transaction_no', label: '关联流水号' },
   ],
+  payable: [
+    { key: 'supplier_name', label: '供应商' },
+    { key: 'node_name', label: '节点' },
+    { key: 'due_date', label: '应付日期' },
+    { key: 'plan_amount', label: '应付金额' },
+    { key: 'paid_amount', label: '已付金额' },
+    { key: 'status', label: '状态' },
+  ],
 }
 const businessColumns = computed<PreviewColumn[]>(
   () => BUSINESS_COLUMNS[job.value?.job_type ?? ''] ?? [],
@@ -96,6 +105,7 @@ const BUSINESS_VALUE_LABELS: Record<string, (value: string | null | undefined) =
   direction: directionLabel,
   record_type: recordTypeLabel,
   project_status: projectStatusLabel,
+  status: payableStatusLabel,
 }
 
 function fieldValue(row: ImportJobPreviewRow, key: string): string {

@@ -295,7 +295,7 @@ export function modelNameLabel(value: LabelValue): string {
   return fromMap(MODEL_NAME_LABELS, value)
 }
 
-// 与 backend `auditService.record(` 全部动作码一致（2026-10-09 核对，共 67 个）；
+// 与 backend `auditService.record(` 全部动作码一致（2026-10-10 核对，共 71 个）；
 // 末尾 ASSIGN/COMMENT/RESOLVE/CLOSE/FALSE_POSITIVE 为异常处理日志 exception_action_log.action_type。
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ACTIVATE_FORECAST_MODEL: '启用预测模型',
@@ -314,6 +314,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   CONFIRM_CONTRACT: '确认合同导入',
   CONFIRM_FINANCE_RECORD: '确认财务记录导入',
   CONFIRM_MATCH_RESULT: '确认匹配结果',
+  CONFIRM_PAYABLE: '确认应付计划导入',
   CONFIRM_PROJECT: '确认项目导入',
   CONFIRM_RECEIPT: '确认回单导入',
   CREATE_BANK_ACCOUNT: '新建银行账户',
@@ -330,11 +331,13 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   IMPORT_BANK_STATEMENT: '导入银行流水',
   IMPORT_CONTRACT: '导入合同',
   IMPORT_FINANCE_RECORD: '导入财务记录',
+  IMPORT_PAYABLE: '导入应付计划',
   IMPORT_PROJECT: '导入项目',
   IMPORT_RECEIPT: '导入回单',
   PREVIEW_BANK_STATEMENT: '预览银行流水',
   PREVIEW_CONTRACT: '预览合同',
   PREVIEW_FINANCE_RECORD: '预览财务记录',
+  PREVIEW_PAYABLE: '预览应付计划导入',
   PREVIEW_PROJECT: '预览项目',
   PREVIEW_RECEIPT: '预览回单',
   PRINT_REPORT: '打印预览',
@@ -344,6 +347,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   RETRY_BANK_STATEMENT_ERRORS: '重试流水失败行',
   RETRY_CONTRACT_ERRORS: '重试合同失败行',
   RETRY_FINANCE_RECORD_ERRORS: '重试财务记录失败行',
+  RETRY_PAYABLE_ERRORS: '重试应付计划失败行',
   RETRY_PROJECT_ERRORS: '重试项目失败行',
   RETRY_RECEIPT_ERRORS: '重试回单失败行',
   ROLLBACK_PROJECT_RISK_RULE: '回滚风险规则',
@@ -425,6 +429,17 @@ export const CONTRACT_STATUS_LABELS: Record<string, string> = {
 
 export function contractStatusLabel(value: LabelValue): string {
   return fromMap(CONTRACT_STATUS_LABELS, value)
+}
+
+// 应付计划状态与应收同 code 不同语义，独立映射不并入 RECEIVABLE_STATUS_LABELS。
+export const PAYABLE_STATUS_LABELS: Record<string, string> = {
+  unpaid: '未付',
+  partial: '部分支付',
+  paid: '已付',
+}
+
+export function payableStatusLabel(value: LabelValue): string {
+  return fromMap(PAYABLE_STATUS_LABELS, value)
 }
 
 // 通用 status 兜底：按异常、导入任务、应收计划、账户、用户、项目、规则的顺序命中。
@@ -510,6 +525,7 @@ export const FIELD_NAME_LABELS: Record<string, string> = {
   node_name: '节点名称',
   node_type: '节点类型',
   match_reason: '匹配理由',
+  supplier_name: '供应商',
   last_test_status: '最近测试',
   last_test_message: '测试信息',
   last_tested_at: '最近测试时间',
