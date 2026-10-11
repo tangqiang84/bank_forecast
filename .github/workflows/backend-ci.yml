@@ -45,4 +45,5 @@ jobs:
         env:
           TEST_DB_USERNAME: root
           TEST_DB_PASSWORD: ci_mysql_root_password
+          TEST_DB_PORT: '3306'
         run: ./mvnw -B clean verify

@@ -17,20 +17,20 @@ export JWT_SECRET='<本地随机长字符串>'
 
 ## 本地数据库
 
-- 数据库为本地 MySQL 8（不再使用 H2）；默认连接 `jdbc:mysql://127.0.0.1:3306/bank_forecast`，可通过 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DRIVER` 环境变量覆盖。
+- 数据库为本地 MySQL 8（不再使用 H2）；默认连接 `jdbc:mysql://127.0.0.1:3307/bank_forecast`，可通过 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DRIVER` 环境变量覆盖。
 - 本地约定账号：`bank_forecast`（密码写在 `backend/.env` 的 `DB_PASSWORD`，该文件已 gitignore）；库：`bank_forecast`（业务）、`bank_forecast_test`（测试）。
 - 启动时通过 Flyway 执行 `src/main/resources/db/migration`（V1-V28）。
 - 本机 MySQL 实例数据目录在 `~/.mysql-bank-forecast/data`；重启后启动命令：
 
 ```bash
 nohup /usr/local/mysql/bin/mysqld --user=$(whoami) --basedir=/usr/local/mysql \
-  --datadir=$HOME/.mysql-bank-forecast/data --port=3306 \
+  --datadir=$HOME/.mysql-bank-forecast/data --port=3307 \
   --socket=$HOME/.mysql-bank-forecast/mysql.sock \
   --pid-file=$HOME/.mysql-bank-forecast/mysqld.pid \
   --log-error=$HOME/.mysql-bank-forecast/mysqld.err --mysqlx=OFF &
 ```
 
-- 测试同样使用 MySQL：`src/test/resources/application.yml` 指向 `bank_forecast_test`（密码取 `TEST_DB_PASSWORD` 环境变量），每个测试库在单次 JVM 运行内由 `TestFlywayConfig` 清理重建一次，保持与原先内存库一致的隔离语义。
+- 测试同样使用 MySQL：`src/test/resources/application.yml` 指向 `bank_forecast_test`（密码取 `TEST_DB_PASSWORD` 环境变量；自带数据源覆盖的测试类端口取 `TEST_DB_PORT`，默认 3307，CI 显式设为 3306），每个测试库在单次 JVM 运行内由 `TestFlywayConfig` 清理重建一次，保持与原先内存库一致的隔离语义。
 
 ## 开发账号
 

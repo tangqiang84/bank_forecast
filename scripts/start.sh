@@ -123,7 +123,7 @@ ensure_backend_env() {
 SPRING_PROFILES_ACTIVE=dev
 JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
 DEV_ADMIN_PASSWORD=${DEV_ADMIN_PASSWORD:-$(openssl rand -hex 8)}
-DB_URL=${DB_URL:-jdbc:mysql://127.0.0.1:3306/bank_forecast?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+DB_URL=${DB_URL:-jdbc:mysql://127.0.0.1:3307/bank_forecast?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
 DB_USERNAME=${DB_USERNAME:-bank_forecast}
 DB_PASSWORD=${DB_PASSWORD:-}
 EOF

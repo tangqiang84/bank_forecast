@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: ${TEST_DB_URL:jdbc:mysql://127.0.0.1:3306/bank_forecast_test?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    url: ${TEST_DB_URL:jdbc:mysql://127.0.0.1:3307/bank_forecast_test?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
     username: ${TEST_DB_USERNAME:bank_forecast}
     password: ${TEST_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
