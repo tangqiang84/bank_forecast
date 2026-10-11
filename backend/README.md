@@ -4,6 +4,8 @@ Java 主后端。
 
 ## 启动
 
+当前基线 JDK 8（以 `pom.xml` 为准）。本机已用户级并存 Temurin JDK 17（`~/.jdk/jdk-17.0.20.1+1`，不占用系统目录、不改变系统默认 JDK 8），供 R-8（Spring Boot 3.x + JDK 17）使用；切换方式：在 `backend/.env` 取消 `JAVA_HOME` 注释，或临时 `export JAVA_HOME=<17 路径>`，仅对本项目生效。
+
 ```bash
 export DEV_ADMIN_PASSWORD='<本地开发密码>'
 export JWT_SECRET='<本地随机长字符串>'
