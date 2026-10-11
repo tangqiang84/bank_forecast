@@ -1,9 +1,9 @@
 package com.bankforecast.api.dto;
 
 import java.util.List;
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotEmpty;
-import javax.validation.constraints.Size;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 
 public class TransactionBatchClassifyRequest {
   @NotEmpty @Size(max = 500) private List<Long> transaction_ids;

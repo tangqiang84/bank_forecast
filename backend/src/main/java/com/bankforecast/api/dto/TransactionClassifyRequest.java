@@ -1,7 +1,7 @@
 package com.bankforecast.api.dto;
 
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.Size;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public class TransactionClassifyRequest {
   @NotBlank @Size(max = 64) private String category;

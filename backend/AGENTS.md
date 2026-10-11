@@ -8,14 +8,14 @@
 
 当前技术栈：
 
-- JDK 8；
-- Spring Boot 2.7.18；
+- JDK 17（Temurin）；
+- Spring Boot 3.5.16；
 - Spring JDBC；
 - Flyway（flyway-core + flyway-mysql）；
 - MySQL 8（mysql-connector-j，开发/测试均为本地 MySQL 实例，不再使用 H2）；
 - Maven Wrapper。
 
-版本以 `pom.xml` 为准。代码必须兼容 Java 8。
+版本以 `pom.xml` 为准。代码基于 Java 17（R-8 起，2026-10-11）。
 
 常用命令：
 

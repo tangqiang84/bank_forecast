@@ -6,7 +6,7 @@ import com.bankforecast.api.dto.ForecastResponse;
 import com.bankforecast.common.ApiResponse;
 import com.bankforecast.service.CashflowForecastService;
 import com.bankforecast.service.ForecastJobService;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;

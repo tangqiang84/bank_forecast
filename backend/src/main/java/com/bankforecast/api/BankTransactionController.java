@@ -9,7 +9,7 @@ import com.bankforecast.api.dto.TransactionClassifyRequest;
 import com.bankforecast.api.dto.TransactionUnlinkRequest;
 import java.util.Map;
 import java.time.LocalDate;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

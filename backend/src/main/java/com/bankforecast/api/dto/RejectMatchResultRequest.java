@@ -1,6 +1,6 @@
 package com.bankforecast.api.dto;
 
-import javax.validation.constraints.Size;
+import jakarta.validation.constraints.Size;
 
 public class RejectMatchResultRequest {
   @Size(max = 256, message = "拒绝原因不能超过256个字符")

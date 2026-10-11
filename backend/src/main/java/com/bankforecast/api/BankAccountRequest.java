@@ -1,9 +1,9 @@
 package com.bankforecast.api;
 
 import java.math.BigDecimal;
-import javax.validation.constraints.DecimalMin;
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.Size;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public class BankAccountRequest {
   @NotBlank @Size(max = 64) private String bankCode;

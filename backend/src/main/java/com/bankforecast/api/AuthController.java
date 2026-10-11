@@ -4,7 +4,7 @@ import com.bankforecast.auth.AuthService;
 import com.bankforecast.auth.LoginRequest;
 import com.bankforecast.common.ApiResponse;
 import java.util.Map;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

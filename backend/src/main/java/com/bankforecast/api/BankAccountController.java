@@ -10,7 +10,7 @@ import com.bankforecast.common.ErrorCode;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.util.Map;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

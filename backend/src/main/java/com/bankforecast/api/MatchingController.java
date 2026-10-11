@@ -5,7 +5,7 @@ import com.bankforecast.common.ApiResponse;
 import com.bankforecast.api.dto.ExceptionActionRequest;
 import com.bankforecast.api.dto.RejectMatchResultRequest;
 import com.bankforecast.matching.MatchingService;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.time.LocalDate;
 import org.springframework.web.bind.annotation.RequestParam;

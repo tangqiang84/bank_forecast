@@ -1,7 +1,7 @@
 package com.bankforecast.common;
 
 import java.util.ArrayList;
-import javax.validation.ConstraintViolationException;
+import jakarta.validation.ConstraintViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;

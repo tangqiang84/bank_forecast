@@ -109,8 +109,8 @@ require_cmd java
 # 自动生成本地开发专用随机值写入 backend/.env（已 gitignore，权限 600）。
 # 数据库为本地 MySQL（R-1 起不再使用 H2），DB_URL/DB_USERNAME 给出本地默认值，
 # DB_PASSWORD 必须按本机 MySQL bank_forecast 账号实际密码填写。
-# JAVA_HOME：不设置时使用系统默认 JDK（当前基线 JDK 8）；R-8 升级时在 .env 中
-# 指向本机 JDK 17 即可仅对本项目生效，不影响系统默认 JDK。
+# JAVA_HOME：不设置时使用系统默认 JDK；R-8 起 backend 需要 JDK 17，
+# 在 .env 中指向本机 JDK 17（仅对本项目生效，不影响系统默认 JDK）。
 ensure_backend_env() {
   local env_file="$ROOT_DIR/backend/.env"
   if [ -f "$env_file" ]; then
@@ -128,7 +128,7 @@ DEV_ADMIN_PASSWORD=${DEV_ADMIN_PASSWORD:-$(openssl rand -hex 8)}
 DB_URL=${DB_URL:-jdbc:mysql://127.0.0.1:3307/bank_forecast?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
 DB_USERNAME=${DB_USERNAME:-bank_forecast}
 DB_PASSWORD=${DB_PASSWORD:-}
-# R-8 升级 JDK 17 时取消注释（本机 Temurin 17 用户级安装于 ~/.jdk，不影响系统默认 JDK 8）：
+# backend 需要 JDK 17（R-8 起）；指向本机 JDK 17 路径后取消注释：
 # JAVA_HOME=$HOME/.jdk/jdk-17.0.20.1+1/Contents/Home
 EOF
   chmod 600 "$env_file"
