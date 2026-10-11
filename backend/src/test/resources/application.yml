@@ -1,12 +1,12 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:bank_connector_test;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  h2:
-    console:
-      enabled: false
+    url: ${TEST_DB_URL:jdbc:mysql://127.0.0.1:3306/bank_forecast_test?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${TEST_DB_USERNAME:bank_forecast}
+    password: ${TEST_DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    # 测试库为共享 MySQL，每个 Spring 上下文启动时清空重建，保持与原有内存库一致的隔离语义
+    clean-disabled: false
 
 bank-forecast:
   analytics:

@@ -6,9 +6,9 @@ alter table bank_transaction add column weak_fingerprint varchar(512) null;
 
 update bank_transaction
 set weak_fingerprint = lower(concat_ws('|',
-    cast(transaction_date as varchar),
+    cast(transaction_date as char),
     direction,
-    cast(amount as varchar),
+    cast(amount as char),
     trim(coalesce(counterparty_name, '')),
     trim(coalesce(summary, ''))));
 

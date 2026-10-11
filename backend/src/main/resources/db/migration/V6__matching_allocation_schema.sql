@@ -6,7 +6,7 @@ update match_result mr set match_group_id = concat('MR-', mr.id), allocated_amou
   select bt.amount from bank_transaction bt where bt.id = mr.bank_transaction_id
 ) where match_group_id is null;
 
-alter table match_result alter column match_group_id varchar(64) not null;
+alter table match_result modify column match_group_id varchar(64) not null;
 
 create table match_result_allocation (
   id bigint auto_increment primary key,

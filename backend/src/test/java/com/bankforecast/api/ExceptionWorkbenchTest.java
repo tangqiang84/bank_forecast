@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest(properties = {
     "bank-forecast.bootstrap.default-admin-password=test-password-123",
-    "spring.datasource.url=jdbc:h2:mem:exception_workbench_test;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1"
+    "spring.datasource.url=jdbc:mysql://127.0.0.1:3306/bank_forecast_test_exception_workbench?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)

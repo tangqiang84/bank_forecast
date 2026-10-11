@@ -17,9 +17,20 @@ export JWT_SECRET='<本地随机长字符串>'
 
 ## 本地数据库
 
-- 默认使用 H2 文件库：`./data/bank_connector`
-- 启动时通过 Flyway 执行 `src/main/resources/db/migration`
-- 本地 H2 控制台：`http://localhost:8080/h2-console`
+- 数据库为本地 MySQL 8（不再使用 H2）；默认连接 `jdbc:mysql://127.0.0.1:3306/bank_forecast`，可通过 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DRIVER` 环境变量覆盖。
+- 本地约定账号：`bank_forecast`（密码写在 `backend/.env` 的 `DB_PASSWORD`，该文件已 gitignore）；库：`bank_forecast`（业务）、`bank_forecast_test`（测试）。
+- 启动时通过 Flyway 执行 `src/main/resources/db/migration`（V1-V28）。
+- 本机 MySQL 实例数据目录在 `~/.mysql-bank-forecast/data`；重启后启动命令：
+
+```bash
+nohup /usr/local/mysql/bin/mysqld --user=$(whoami) --basedir=/usr/local/mysql \
+  --datadir=$HOME/.mysql-bank-forecast/data --port=3306 \
+  --socket=$HOME/.mysql-bank-forecast/mysql.sock \
+  --pid-file=$HOME/.mysql-bank-forecast/mysqld.pid \
+  --log-error=$HOME/.mysql-bank-forecast/mysqld.err --mysqlx=OFF &
+```
+
+- 测试同样使用 MySQL：`src/test/resources/application.yml` 指向 `bank_forecast_test`（密码取 `TEST_DB_PASSWORD` 环境变量），每个测试库在单次 JVM 运行内由 `TestFlywayConfig` 清理重建一次，保持与原先内存库一致的隔离语义。
 
 ## 开发账号
 
@@ -167,7 +178,7 @@ plan_id,contract_no,customer_name,project_no,node_name,due_date,plan_amount,rece
 
 项目风险为 MVP 规则评分：基础分 100；存在逾期应收扣 30 分，回款率低于 50% 扣 30 分、低于 80% 扣 15 分，每个未关闭/未误报异常扣 10 分，最多扣 30 分。分数 `>=80` 为 healthy，`60-79` 为 warning，低于 60 为 danger。项目汇总中的合同金额、应收金额和已收金额采用独立聚合，避免多个应收节点造成合同金额重复计算。
 
-异常附件通过 `AttachmentStorage` 抽象存储，默认写入 `ATTACHMENT_STORAGE_ROOT` 指定的本地对象目录，并在 H2 保存对象键；历史附件兼容读取 H2 BLOB。生产环境需替换为对象存储适配器，并补充病毒扫描和权限细化能力。
+异常附件通过 `AttachmentStorage` 抽象存储，默认写入 `ATTACHMENT_STORAGE_ROOT` 指定的本地对象目录，并在 MySQL 保存对象键；历史附件兼容读取数据库 BLOB。生产环境需替换为对象存储适配器，并补充病毒扫描和权限细化能力。
 
 匹配计账统一通过 `match_result_allocation` 分配明细完成：普通匹配是一条流水到一个应收节点，拆分匹配是一条流水分配到多个应收节点，合并匹配是多条流水分配到一个应收节点。`match_result` 记录 `match_group_id`、`allocation_mode` 和单条 `allocated_amount`；确认或拒绝任一待确认结果时按 `match_group_id` 整组处理。自动匹配成功后立即按分配明细更新流水匹配状态和应收已收金额，金额超过应收剩余金额时拒绝计账。
 

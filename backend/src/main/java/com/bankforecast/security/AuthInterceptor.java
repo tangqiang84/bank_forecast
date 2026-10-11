@@ -68,7 +68,6 @@ public class AuthInterceptor implements HandlerInterceptor {
   private boolean isPublicPath(String path) {
     return path.equals("/api/v1/health")
         || path.equals("/api/v1/auth/login")
-        || path.startsWith("/actuator")
-        || path.startsWith("/h2-console");
+        || path.startsWith("/actuator");
   }
 }

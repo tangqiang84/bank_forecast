@@ -107,6 +107,8 @@ require_cmd java
 
 # backend 启动强制要求 JWT_SECRET；无 backend/.env 且未导出环境变量时，
 # 自动生成本地开发专用随机值写入 backend/.env（已 gitignore，权限 600）。
+# 数据库为本地 MySQL（R-1 起不再使用 H2），DB_URL/DB_USERNAME 给出本地默认值，
+# DB_PASSWORD 必须按本机 MySQL bank_forecast 账号实际密码填写。
 ensure_backend_env() {
   local env_file="$ROOT_DIR/backend/.env"
   if [ -f "$env_file" ]; then
@@ -121,6 +123,9 @@ ensure_backend_env() {
 SPRING_PROFILES_ACTIVE=dev
 JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
 DEV_ADMIN_PASSWORD=${DEV_ADMIN_PASSWORD:-$(openssl rand -hex 8)}
+DB_URL=${DB_URL:-jdbc:mysql://127.0.0.1:3306/bank_forecast?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+DB_USERNAME=${DB_USERNAME:-bank_forecast}
+DB_PASSWORD=${DB_PASSWORD:-}
 EOF
   chmod 600 "$env_file"
   log "未检测到 backend/.env，已自动生成本地开发配置：$env_file"

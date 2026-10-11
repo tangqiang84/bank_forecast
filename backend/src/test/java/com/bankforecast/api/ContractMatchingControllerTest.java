@@ -21,7 +21,7 @@ import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(properties = {
     "bank-forecast.bootstrap.default-admin-password=test-password-123",
-    "spring.datasource.url=jdbc:h2:mem:contract_matching_controller_test;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1"
+    "spring.datasource.url=jdbc:mysql://127.0.0.1:3306/bank_forecast_test_matching?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)

@@ -149,7 +149,7 @@ public class BankAccountAnalysisService {
     List<Map<String, Object>> suggestions = new ArrayList<>();
     for (Map<String, Object> row : jdbcTemplate.queryForList(
         "select ba.id as account_id, ba.bank_name, ba.account_name, ba.account_no_last4, ba.current_balance, ba.use_type, "
-            + "datediff('DAY', max(bt.transaction_date), current_date) as idle_days "
+            + "datediff(current_date, max(bt.transaction_date)) as idle_days "
             + "from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null "
             + "where ba.tenant_id = ? and ba.deleted_at is null and ba.status = 'active' "
             + "group by ba.id, ba.bank_name, ba.account_name, ba.account_no_last4, ba.current_balance, ba.use_type",

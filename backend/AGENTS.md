@@ -11,8 +11,8 @@
 - JDK 8；
 - Spring Boot 2.7.18；
 - Spring JDBC；
-- Flyway；
-- H2；
+- Flyway（flyway-core + flyway-mysql）；
+- MySQL 8（mysql-connector-j，开发/测试均为本地 MySQL 实例，不再使用 H2）；
 - Maven Wrapper。
 
 版本以 `pom.xml` 为准。代码必须兼容 Java 8。
@@ -127,7 +127,7 @@
 - 上传、预览、下载、导出和删除接口必须限制大小、行数、格式，校验租户和权限，并防止路径穿越。
 - 配置通过 `application*.yml` 和环境变量管理。
 - `.env`、密钥文件和证书不得提交。
-- 生产配置、CORS、Actuator、H2 Console、对象存储和服务间身份校验以发布检查清单为准。
+- 生产配置、CORS、Actuator、对象存储和服务间身份校验以发布检查清单为准。
 
 ## 8. 后端测试和交付
 

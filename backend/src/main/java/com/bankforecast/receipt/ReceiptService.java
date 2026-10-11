@@ -43,6 +43,7 @@ public class ReceiptService {
             + "and (? is null or receipt_no = ?) and (? is null or transaction_no = ?) "
             + "order by id desc limit ? offset ?",
         tenantId, receiptFilter, receiptFilter, transactionFilter, transactionFilter, safeSize, offset);
+    normalizeHasImage(items);
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("items", items);
     data.put("page", safePage);
@@ -59,6 +60,7 @@ public class ReceiptService {
         "select " + LIST_COLUMNS + " from receipt where id = ? and tenant_id = ? and deleted_at is null",
         id, tenantId);
     if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "回单不存在");
+    normalizeHasImage(rows);
     return rows.get(0);
   }
 
@@ -120,6 +122,16 @@ public class ReceiptService {
           + "payee_account_last4, payer_bank, payee_bank, amount, summary, transaction_no, channel, "
           + "verification_code, image_file_name, image_content_type, image_size, image_uploaded_at, "
           + "(image_object_key is not null) as has_image, created_at, updated_at";
+
+  // MySQL 中布尔表达式返回 TINYINT（0/1），统一转为 JSON 布尔值，保持接口契约不变
+  public static void normalizeHasImage(List<Map<String, Object>> rows) {
+    for (Map<String, Object> row : rows) {
+      Object value = row.get("has_image");
+      if (value instanceof Number) {
+        row.put("has_image", ((Number) value).intValue() != 0);
+      }
+    }
+  }
 
   private AuthPrincipal requireAuth() {
     AuthPrincipal principal = AuthContext.get();

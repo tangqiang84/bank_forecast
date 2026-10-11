@@ -318,15 +318,11 @@ public class ForecastJobService {
       statement.setLong(4, modelVersionId);
       return statement;
     }, keyHolder);
-    Map<String, Object> generatedKeys = keyHolder.getKeys();
-    Object generatedId = generatedKeys == null ? null : generatedKeys.get("id");
-    if (generatedId == null && generatedKeys != null) {
-      generatedId = generatedKeys.get("ID");
-    }
-    if (!(generatedId instanceof Number)) {
+    Number key = keyHolder.getKey();
+    if (key == null) {
       throw new IllegalStateException("预测任务创建后未返回任务编号");
     }
-    return ((Number) generatedId).longValue();
+    return key.longValue();
   }
 
   private void markFailed(Long tenantId, Long jobId, String message) {

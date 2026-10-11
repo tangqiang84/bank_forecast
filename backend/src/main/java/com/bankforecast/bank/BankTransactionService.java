@@ -5,6 +5,7 @@ import com.bankforecast.audit.AuditService;
 import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import com.bankforecast.common.XlsxWriter;
+import com.bankforecast.receipt.ReceiptService;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.util.ArrayList;
@@ -73,12 +74,17 @@ public class BankTransactionService {
     data.put("audit_logs", jdbcTemplate.queryForList(
         "select id, user_id, action, target_type, target_id, trace_id, detail, created_at from audit_log "
             + "where tenant_id = ? and target_type = 'bank_transaction' and target_id = ? order by id desc", principal.getTenantId(), String.valueOf(transactionId)));
-    data.put("receipts", jdbcTemplate.queryForList(
+    data.put("receipts", receiptsWithBooleanFlag(jdbcTemplate.queryForList(
         "select id, receipt_no, transaction_date, transaction_time, currency, amount, payer_name, payee_name, "
             + "summary, verification_code, image_file_name, (image_object_key is not null) as has_image "
             + "from receipt where bank_transaction_id = ? and tenant_id = ? and deleted_at is null order by id desc",
-        transactionId, principal.getTenantId()));
+        transactionId, principal.getTenantId())));
     return data;
+  }
+
+  private static List<Map<String, Object>> receiptsWithBooleanFlag(List<Map<String, Object>> rows) {
+    ReceiptService.normalizeHasImage(rows);
+    return rows;
   }
 
   @Transactional

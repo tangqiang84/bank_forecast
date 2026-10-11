@@ -17,6 +17,19 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_mysql_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_mysql_root_password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,4 +42,7 @@ jobs:
           cache: maven
 
       - name: Compile, test and package
+        env:
+          TEST_DB_USERNAME: root
+          TEST_DB_PASSWORD: ci_mysql_root_password
         run: ./mvnw -B clean verify

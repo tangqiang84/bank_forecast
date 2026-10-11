@@ -34,10 +34,10 @@ public class BankAccountRepository {
     return jdbcTemplate.queryForList(
         "select ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type, "
             + "max(bt.transaction_date) as last_transaction_at, "
-            + "case when max(bt.transaction_date) is null then null else datediff('DAY', max(bt.transaction_date), current_date) end as idle_days, "
-            + "case when max(bt.transaction_date) is null or datediff('DAY', max(bt.transaction_date), current_date) < 30 then 'normal' "
-            + "when datediff('DAY', max(bt.transaction_date), current_date) < 90 then 'idle_30' "
-            + "when datediff('DAY', max(bt.transaction_date), current_date) < 180 then 'idle_90' else 'idle_180' end as idle_level "
+            + "case when max(bt.transaction_date) is null then null else datediff(current_date, max(bt.transaction_date)) end as idle_days, "
+            + "case when max(bt.transaction_date) is null or datediff(current_date, max(bt.transaction_date)) < 30 then 'normal' "
+            + "when datediff(current_date, max(bt.transaction_date)) < 90 then 'idle_30' "
+            + "when datediff(current_date, max(bt.transaction_date)) < 180 then 'idle_90' else 'idle_180' end as idle_level "
             + "from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null "
             + "where ba.tenant_id = ? and ba.deleted_at is null group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type order by ba.id desc",
         tenantId);
@@ -51,10 +51,10 @@ public class BankAccountRepository {
         + " where ba.tenant_id = ? and ba.deleted_at is null";
     String select = "select ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type, "
         + "max(bt.transaction_date) as last_transaction_at, "
-        + "case when max(bt.transaction_date) is null then null else datediff('DAY', max(bt.transaction_date), current_date) end as idle_days, "
-        + "case when max(bt.transaction_date) is null or datediff('DAY', max(bt.transaction_date), current_date) < 30 then 'normal' "
-        + "when datediff('DAY', max(bt.transaction_date), current_date) < 90 then 'idle_30' "
-        + "when datediff('DAY', max(bt.transaction_date), current_date) < 180 then 'idle_90' else 'idle_180' end as idle_level"
+        + "case when max(bt.transaction_date) is null then null else datediff(current_date, max(bt.transaction_date)) end as idle_days, "
+        + "case when max(bt.transaction_date) is null or datediff(current_date, max(bt.transaction_date)) < 30 then 'normal' "
+        + "when datediff(current_date, max(bt.transaction_date)) < 90 then 'idle_30' "
+        + "when datediff(current_date, max(bt.transaction_date)) < 180 then 'idle_90' else 'idle_180' end as idle_level"
         + from + " group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type"
         + " order by ba.id desc limit ? offset ?";
     List<Map<String, Object>> items = jdbcTemplate.queryForList(select, tenantId, safeSize, offset);
@@ -71,10 +71,10 @@ public class BankAccountRepository {
     List<Map<String, Object>> accounts = jdbcTemplate.queryForList(
         "select ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type, "
             + "max(bt.transaction_date) as last_transaction_at, "
-            + "case when max(bt.transaction_date) is null then null else datediff('DAY', max(bt.transaction_date), current_date) end as idle_days, "
-            + "case when max(bt.transaction_date) is null or datediff('DAY', max(bt.transaction_date), current_date) < 30 then 'normal' "
-            + "when datediff('DAY', max(bt.transaction_date), current_date) < 90 then 'idle_30' "
-            + "when datediff('DAY', max(bt.transaction_date), current_date) < 180 then 'idle_90' else 'idle_180' end as idle_level "
+            + "case when max(bt.transaction_date) is null then null else datediff(current_date, max(bt.transaction_date)) end as idle_days, "
+            + "case when max(bt.transaction_date) is null or datediff(current_date, max(bt.transaction_date)) < 30 then 'normal' "
+            + "when datediff(current_date, max(bt.transaction_date)) < 90 then 'idle_30' "
+            + "when datediff(current_date, max(bt.transaction_date)) < 180 then 'idle_90' else 'idle_180' end as idle_level "
             + "from bank_account ba left join bank_transaction bt on bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null "
             + "where ba.tenant_id = ? and ba.id = ? and ba.deleted_at is null "
             + "group by ba.id, ba.bank_code, ba.bank_name, ba.account_name, ba.account_no_last4, ba.currency, ba.status, ba.current_balance, ba.use_type",
@@ -157,7 +157,7 @@ public class BankAccountRepository {
 
   public int refreshIdleStatuses(Long tenantId) {
     return jdbcTemplate.update(
-        "update bank_account ba set status = case when ba.status in ('closed', 'pending_close') then ba.status when (select max(bt.transaction_date) from bank_transaction bt where bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null) is null or datediff('DAY', (select max(bt2.transaction_date) from bank_transaction bt2 where bt2.bank_account_id = ba.id and bt2.tenant_id = ba.tenant_id and bt2.deleted_at is null), current_date) >= 30 then 'idle' else 'active' end, updated_at = current_timestamp where ba.tenant_id = ? and ba.deleted_at is null",
+        "update bank_account ba set status = case when ba.status in ('closed', 'pending_close') then ba.status when (select max(bt.transaction_date) from bank_transaction bt where bt.bank_account_id = ba.id and bt.tenant_id = ba.tenant_id and bt.deleted_at is null) is null or datediff(current_date, (select max(bt2.transaction_date) from bank_transaction bt2 where bt2.bank_account_id = ba.id and bt2.tenant_id = ba.tenant_id and bt2.deleted_at is null)) >= 30 then 'idle' else 'active' end, updated_at = current_timestamp where ba.tenant_id = ? and ba.deleted_at is null",
         tenantId);
   }
 
