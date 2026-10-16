@@ -40,6 +40,9 @@ public class ExcelBankStatementParser {
   private static final String[] BOSC_ENTERPRISE_HEADERS = {
       "交易流水号", "交易时间", "记账日期", "交易方向", "交易金额", "余额",
       "对手账号", "对手名称", "摘要", "交易用途", "备注"};
+  private static final String[] SUZB_ENTERPRISE_HEADERS = {
+      "交易日期", "收入", "支出", "余额", "对方账号", "对方户名",
+      "对方行名", "摘要", "用途", "流水号", "机器时间"};
   private final ObjectMapper objectMapper;
 
   public ExcelBankStatementParser(ObjectMapper objectMapper) { this.objectMapper = objectMapper; }
@@ -69,7 +72,11 @@ public class ExcelBankStatementParser {
             templates.add(template(sheet.name, bankName, "unsupported", "未找到交易日期和金额表头"));
             continue;
           }
-          if (bankName == null && header.boscEnterprise) bankName = "上海银行";
+          if (bankName == null && header.enterpriseFormat != null) bankName = header.enterpriseFormat.bankName;
+          if (header.enterpriseFormat != null && !header.enterpriseFormat.bankName.equals(bankName)) {
+            templates.add(template(sheet.name, bankName, "unsupported", "工作表银行与企业网银表头签名不一致"));
+            continue;
+          }
           if (bankName == null) {
             templates.add(template(sheet.name, null, "unsupported", "工作表名称无法识别为六家支持银行"));
             continue;
@@ -86,7 +93,7 @@ public class ExcelBankStatementParser {
             if (totalRows > maxRows) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "导入行数超过上限");
             int rowNo = rowIndex + 1;
             if (isMetadataRow(raw) || isRepeatedHeader(raw, aliases) || isFooterRow(raw)) continue;
-            try { rows.add(toRow(rowNo, raw, bankName, sheet.name, header.boscEnterprise)); }
+            try { rows.add(toRow(rowNo, raw, bankName, sheet.name, header.enterpriseFormat)); }
             catch (BusinessException ex) { errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(), objectMapper.writeValueAsString(raw))); }
           }
         }
@@ -101,7 +108,7 @@ public class ExcelBankStatementParser {
   }
 
   private CsvBankStatementRow toRow(int rowNo, Map<String, String> raw, String bankName, String sheetName,
-      boolean boscEnterprise) {
+      EnterpriseFormat enterpriseFormat) {
     String sourceTransactionNo = first(raw, "transaction_no", "凭证号", "流水号");
     String transactionNo = sourceTransactionNo;
     if (transactionNo == null) transactionNo = "XLSX-" + bankName + "-" + rowNo;
@@ -124,12 +131,12 @@ public class ExcelBankStatementParser {
     if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行金额必须大于 0");
     BigDecimal balance = decimalOrNull(raw.get("balance_after"), "balance_after", rowNo);
     String summary = first(raw, "summary", "transaction_purpose", "remark");
-    if (boscEnterprise) transactionNo = boscTransactionNo(raw, sourceTransactionNo, transactionDate, direction, amount, balance);
+    if (enterpriseFormat != null) transactionNo = enterpriseTransactionNo(enterpriseFormat, raw, sourceTransactionNo, transactionDate, direction, amount, balance);
     Map<String, String> normalized = new LinkedHashMap<>(raw);
     normalized.put("transaction_no", transactionNo); normalized.put("transaction_date", dateText);
     normalized.put("amount", amount.toPlainString()); normalized.put("direction", direction);
     normalized.put("source_bank", bankName); normalized.put("source_sheet", sheetName);
-    if (boscEnterprise) normalized.put("source_transaction_no", sourceTransactionNo == null ? "" : sourceTransactionNo);
+    if (enterpriseFormat != null) normalized.put("source_transaction_no", sourceTransactionNo == null ? "" : sourceTransactionNo);
     try {
       return new CsvBankStatementRow(rowNo, transactionNo, transactionDate, direction, amount,
           balance, raw.get("counterparty_name"), summary, objectMapper.writeValueAsString(normalized));
@@ -147,22 +154,31 @@ public class ExcelBankStatementParser {
         String key = canonicalHeader(cellText(cell, sharedStrings), aliases);
         if (!key.isEmpty()) indexes.put(key, columnIndex(cell.getAttribute("r")));
       }
-      boolean boscEnterprise = isBoscEnterpriseHeader(cells, sharedStrings);
-      boolean dualAmount = indexes.containsKey("debit_amount") || indexes.containsKey("credit_amount");
-      if (indexes.containsKey("transaction_date") && (boscEnterprise || dualAmount)) {
-        return new Header(parseInt(row.getAttribute("r"), i + 1) - 1, indexes, boscEnterprise);
+      EnterpriseFormat enterpriseFormat = enterpriseFormat(cells, sharedStrings);
+      boolean plainSuzbAmount = containsHeaders(cells, sharedStrings, new String[] {"收入"})
+          || containsHeaders(cells, sharedStrings, new String[] {"支出"});
+      boolean dualAmount = (indexes.containsKey("debit_amount") || indexes.containsKey("credit_amount"))
+          && (!plainSuzbAmount || enterpriseFormat == EnterpriseFormat.SUZB);
+      if (indexes.containsKey("transaction_date") && (enterpriseFormat != null || dualAmount)) {
+        return new Header(parseInt(row.getAttribute("r"), i + 1) - 1, indexes, enterpriseFormat);
       }
     }
     return null;
   }
 
-  private boolean isBoscEnterpriseHeader(NodeList cells, List<String> sharedStrings) {
+  private EnterpriseFormat enterpriseFormat(NodeList cells, List<String> sharedStrings) {
+    if (containsHeaders(cells, sharedStrings, BOSC_ENTERPRISE_HEADERS)) return EnterpriseFormat.BOSC;
+    if (containsHeaders(cells, sharedStrings, SUZB_ENTERPRISE_HEADERS)) return EnterpriseFormat.SUZB;
+    return null;
+  }
+
+  private boolean containsHeaders(NodeList cells, List<String> sharedStrings, String[] requiredHeaders) {
     Set<String> values = new HashSet<>();
     for (int i = 0; i < cells.getLength(); i++) {
       Element cell = (Element) cells.item(i);
       values.add(CsvImportSupport.normalizeHeader(cellText(cell, sharedStrings)));
     }
-    for (String header : BOSC_ENTERPRISE_HEADERS) {
+    for (String header : requiredHeaders) {
       if (!values.contains(CsvImportSupport.normalizeHeader(header))) return false;
     }
     return true;
@@ -231,13 +247,14 @@ public class ExcelBankStatementParser {
     if (override != null) return override;
     if (normalized.contains("交易日期") || normalized.equals("交易日") || normalized.equals("日期") || normalized.equals("记账日期") || normalized.equals("起息日") || normalized.equals("入账日期")) return "transaction_date";
     if (normalized.contains("凭证号") || normalized.contains("交易流水号") || normalized.equals("流水号")) return "transaction_no";
-    if (normalized.equals("交易时间") || normalized.equals("transaction_time")) return "transaction_time";
+    if (normalized.equals("交易时间") || normalized.equals("机器时间") || normalized.equals("transaction_time")) return "transaction_time";
     if (normalized.equals("交易方向") || normalized.equals("transaction_direction")) return "transaction_direction";
-    if (normalized.contains("借方金额") || normalized.contains("借方发生额") || normalized.contains("支出金额")) return "debit_amount";
-    if (normalized.contains("贷方金额") || normalized.contains("贷方发生额") || normalized.contains("收入金额")) return "credit_amount";
+    if (normalized.contains("借方金额") || normalized.contains("借方发生额") || normalized.contains("支出金额") || normalized.equals("支出")) return "debit_amount";
+    if (normalized.contains("贷方金额") || normalized.contains("贷方发生额") || normalized.contains("收入金额") || normalized.equals("收入")) return "credit_amount";
     if (normalized.equals("交易金额") || normalized.equals("金额") || normalized.equals("amount")) return "amount";
     if (normalized.equals("余额") || normalized.contains("交易后余额")) return "balance_after";
     if (normalized.equals("对手账号") || normalized.equals("对手账户") || normalized.equals("对方账号") || normalized.equals("对方账户") || normalized.equals("counterparty_account")) return "counterparty_account";
+    if (normalized.equals("对方行名") || normalized.equals("对方开户行") || normalized.equals("counterparty_bank")) return "counterparty_bank";
     if (normalized.contains("对方户名") || normalized.contains("对方名称") || normalized.equals("对手方") || normalized.equals("对手名称") || normalized.equals("counterparty_name")) return "counterparty_name";
     if (normalized.contains("交易用途") || normalized.equals("用途") || normalized.equals("transaction_purpose")) return "transaction_purpose";
     if (normalized.contains("附言") || normalized.equals("备注") || normalized.equals("remark")) return "remark";
@@ -254,26 +271,42 @@ public class ExcelBankStatementParser {
     if ("出账(借方)".equals(direction)) return "expense";
     throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "第 " + rowNo + " 行 transaction_direction 不合法");
   }
-  private String boscTransactionNo(Map<String, String> raw, String sourceTransactionNo,
-      LocalDate transactionDate, String direction, BigDecimal amount, BigDecimal balance) {
+  private String enterpriseTransactionNo(EnterpriseFormat format, Map<String, String> raw,
+      String sourceTransactionNo, LocalDate transactionDate, String direction, BigDecimal amount, BigDecimal balance) {
     MessageDigest digest;
     try {
       digest = MessageDigest.getInstance("SHA-256");
     } catch (NoSuchAlgorithmException ex) {
       throw new IllegalStateException(ex);
     }
-    updateHash(digest, normalizeText(sourceTransactionNo));
-    updateHash(digest, normalizeText(raw.get("transaction_time")));
-    updateHash(digest, transactionDate.toString());
-    updateHash(digest, direction);
-    updateHash(digest, canonicalDecimal(amount));
-    updateHash(digest, canonicalDecimal(balance));
-    updateHash(digest, normalizeText(raw.get("counterparty_account")));
-    updateHash(digest, normalizeText(raw.get("counterparty_name")));
-    updateHash(digest, normalizeText(raw.get("summary")));
-    updateHash(digest, normalizeText(raw.get("transaction_purpose")));
-    updateHash(digest, normalizeText(raw.get("remark")));
-    return "BOSC1-" + java.util.HexFormat.of().formatHex(digest.digest());
+    List<String> identity = switch (format) {
+      case BOSC -> List.of(
+          normalizeText(sourceTransactionNo),
+          normalizeText(raw.get("transaction_time")),
+          transactionDate.toString(),
+          direction,
+          canonicalDecimal(amount),
+          canonicalDecimal(balance),
+          normalizeText(raw.get("counterparty_account")),
+          normalizeText(raw.get("counterparty_name")),
+          normalizeText(raw.get("summary")),
+          normalizeText(raw.get("transaction_purpose")),
+          normalizeText(raw.get("remark")));
+      case SUZB -> List.of(
+          normalizeText(sourceTransactionNo),
+          normalizeText(raw.get("transaction_time")),
+          transactionDate.toString(),
+          direction,
+          canonicalDecimal(amount),
+          canonicalDecimal(balance),
+          normalizeText(raw.get("counterparty_account")),
+          normalizeText(raw.get("counterparty_name")),
+          normalizeText(raw.get("counterparty_bank")),
+          normalizeText(raw.get("summary")),
+          normalizeText(raw.get("transaction_purpose")));
+    };
+    for (String field : identity) updateHash(digest, field);
+    return format.prefix + "-" + java.util.HexFormat.of().formatHex(digest.digest());
   }
   private void updateHash(MessageDigest digest, String value) {
     byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
@@ -292,14 +325,27 @@ public class ExcelBankStatementParser {
   private boolean isDate(String value) { try { parseDate(value, 0); return true; } catch (BusinessException ex) { return false; } }
   private String fieldFromMessage(String message) { if (message == null) return "row"; for (String field : new String[] {"transaction_date", "transaction_direction", "amount", "debit_amount", "credit_amount", "balance_after"}) if (message.contains(field)) return field; return "row"; }
 
+  private enum EnterpriseFormat {
+    BOSC("上海银行", "BOSC1"),
+    SUZB("苏州银行", "SUZB1");
+
+    private final String bankName;
+    private final String prefix;
+
+    EnterpriseFormat(String bankName, String prefix) {
+      this.bankName = bankName;
+      this.prefix = prefix;
+    }
+  }
+
   private static class Header {
     private final int rowIndex;
     private final Map<String, Integer> indexes;
-    private final boolean boscEnterprise;
-    private Header(int rowIndex, Map<String, Integer> indexes, boolean boscEnterprise) {
+    private final EnterpriseFormat enterpriseFormat;
+    private Header(int rowIndex, Map<String, Integer> indexes, EnterpriseFormat enterpriseFormat) {
       this.rowIndex = rowIndex;
       this.indexes = indexes;
-      this.boscEnterprise = boscEnterprise;
+      this.enterpriseFormat = enterpriseFormat;
     }
   }
   private static class SheetRef { private final String name; private final String path; private SheetRef(String name, String path) { this.name = name; this.path = path; } }
