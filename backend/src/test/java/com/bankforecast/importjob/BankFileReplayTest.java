@@ -73,6 +73,8 @@ class BankFileReplayTest {
 
     assertEquals(2, result.getRows().size());
     assertTrue(result.getErrors().isEmpty());
+    assertEquals("BOSC-RP-001", result.getRows().get(0).getTransactionNo());
+    assertEquals("BOSC-RP-002", result.getRows().get(1).getTransactionNo());
     assertEquals("2026-09-08", result.getRows().get(0).getTransactionDate().toString());
     assertEquals("2026-09-09", result.getRows().get(1).getTransactionDate().toString());
   }

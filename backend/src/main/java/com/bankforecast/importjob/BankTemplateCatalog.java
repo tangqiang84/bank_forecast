@@ -12,9 +12,10 @@ public class BankTemplateCatalog {
 
   private static final String[] BANK_CODES = {"BOC", "ICBC", "CGB", "PAB", "BOSC", "SUZB"};
   private static final String[] SAMPLE_HEADERS = {
-      "交易日期", "日期", "交易日", "凭证号", "交易流水号", "流水号",
-      "借方金额", "支出金额", "贷方金额", "收入金额", "余额", "交易后余额",
-      "对方户名", "对手方", "摘要", "交易用途", "备注"};
+      "交易日期", "日期", "交易日", "记账日期", "凭证号", "交易流水号", "流水号",
+      "交易时间", "交易方向", "交易金额", "借方金额", "支出金额", "贷方金额", "收入金额",
+      "余额", "交易后余额", "对手账号", "对方户名", "对手方", "对手名称",
+      "摘要", "交易用途", "用途", "备注", "附言"};
 
   private final ExcelBankStatementParser parser;
 
@@ -37,7 +38,9 @@ public class BankTemplateCatalog {
       item.put("bank_code", BANK_CODES[i]);
       item.put("bank_name", banks[i]);
       item.put("format", "xlsx/csv");
-      item.put("recognition", "工作表名称包含银行名称 + 表头归一化映射");
+      item.put("recognition", "上海银行".equals(banks[i])
+          ? "工作表名称包含银行名称，或上海银行企业网银11列签名 + 表头归一化映射"
+          : "工作表名称包含银行名称 + 表头归一化映射");
       item.put("field_mappings", mappings);
       result.add(item);
     }
