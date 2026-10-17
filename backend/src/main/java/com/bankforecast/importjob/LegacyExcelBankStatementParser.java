@@ -25,17 +25,43 @@ import org.springframework.stereotype.Component;
 
 /**
  * 读取银行网银 Excel 97-2003（.xls，HSSF）流水文件。
- * 东亚银行企业网银导出 sheet 名为账号形态，只能用 14 列表头签名识别，不能依赖 sheet 名。
+ * 东亚银行企业网银导出 sheet 名为账号形态、宁波银行为通用 Sheet1，均不能用 sheet 名识别，
+ * 只能按各自完整表头签名做内容识别（EAB 14 列、NBCB 15 列，两套签名独立判定、互不干扰）。
  */
 @Component
 public class LegacyExcelBankStatementParser {
 
-  private static final String EAB_BANK_NAME = "东亚银行";
-  private static final String EAB_PREFIX = "EAB1";
   private static final String[] EAB_ENTERPRISE_HEADERS = {
       "生效日期", "交易日期", "交易时间", "支出金额", "收入金额", "对方账号", "对方户名",
       "对方银行名称", "余额", "成交汇率", "交易流水号", "摘要", "交易备注", "票据凭证号码"};
+  private static final String[] NBCB_ENTERPRISE_HEADERS = {
+      "流水号", "交易账号", "交易日期", "交易时间", "币种", "交易网点", "借方金额", "贷方金额",
+      "账户余额", "对方账号", "对方户名", "对方开户行", "凭证号", "摘要", "备注"};
   private static final int HEADER_SCAN_LIMIT = 60;
+
+  private enum LegacyFormat {
+    EAB("东亚银行", "EAB1", EAB_ENTERPRISE_HEADERS),
+    NBCB("宁波银行", "NBCB1", NBCB_ENTERPRISE_HEADERS);
+
+    private final String bankName;
+    private final String prefix;
+    private final String[] headers;
+
+    LegacyFormat(String bankName, String prefix, String[] headers) {
+      this.bankName = bankName;
+      this.prefix = prefix;
+      this.headers = headers;
+    }
+  }
+
+  private static class HeaderMatch {
+    private final int rowIndex;
+    private final LegacyFormat format;
+    private HeaderMatch(int rowIndex, LegacyFormat format) {
+      this.rowIndex = rowIndex;
+      this.format = format;
+    }
+  }
 
   private final ObjectMapper objectMapper;
 
@@ -53,14 +79,15 @@ public class LegacyExcelBankStatementParser {
       for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
         Sheet sheet = workbook.getSheetAt(sheetIndex);
         String sheetName = sheet.getSheetName();
-        Integer headerRow = findHeaderRow(sheet, formatter);
-        if (headerRow == null) {
-          templates.add(template(sheetName, null, "unsupported", "未找到东亚银行企业网银14列表头签名"));
+        HeaderMatch header = findHeaderRow(sheet, formatter);
+        if (header == null) {
+          templates.add(template(sheetName, null, "unsupported", "未找到支持的银行企业网银表头签名"));
           continue;
         }
-        templates.add(template(sheetName, EAB_BANK_NAME, "recognized", "表头已映射为统一流水字段"));
-        Map<Integer, String> columnKeys = columnKeys(sheet.getRow(headerRow), formatter);
-        for (int rowIndex = headerRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+        LegacyFormat format = header.format;
+        templates.add(template(sheetName, format.bankName, "recognized", "表头已映射为统一流水字段"));
+        Map<Integer, String> columnKeys = columnKeys(sheet.getRow(header.rowIndex), formatter, format);
+        for (int rowIndex = header.rowIndex + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
           Map<String, String> raw = rawValues(sheet.getRow(rowIndex), columnKeys, formatter);
           if (isBlank(raw)) continue;
           totalRows++;
@@ -68,7 +95,7 @@ public class LegacyExcelBankStatementParser {
           int rowNo = rowIndex + 1;
           if (isRepeatedHeader(raw) || isFooterRow(raw)) continue;
           try {
-            rows.add(toRow(rowNo, raw, sheetName));
+            rows.add(toRow(rowNo, raw, sheetName, format));
           } catch (BusinessException ex) {
             errors.add(new CsvRowError(rowNo, fieldFromMessage(ex.getMessage()), ex.getMessage(),
                 objectMapper.writeValueAsString(raw)));
@@ -86,7 +113,8 @@ public class LegacyExcelBankStatementParser {
     }
   }
 
-  private Integer findHeaderRow(Sheet sheet, DataFormatter formatter) {
+  /** 按行归一化表头集合分别匹配各格式完整签名；两套签名独立判定，全部命中才识别。 */
+  private HeaderMatch findHeaderRow(Sheet sheet, DataFormatter formatter) {
     int last = Math.min(sheet.getLastRowNum(), HEADER_SCAN_LIMIT);
     for (int rowIndex = sheet.getFirstRowNum(); rowIndex <= last; rowIndex++) {
       Row row = sheet.getRow(rowIndex);
@@ -95,42 +123,56 @@ public class LegacyExcelBankStatementParser {
       for (int column = 0; column < row.getLastCellNum(); column++) {
         values.add(CsvImportSupport.normalizeHeader(cellText(row, column, formatter)));
       }
-      boolean matched = true;
-      for (String header : EAB_ENTERPRISE_HEADERS) {
-        if (!values.contains(CsvImportSupport.normalizeHeader(header))) {
-          matched = false;
-          break;
+      for (LegacyFormat format : LegacyFormat.values()) {
+        boolean matched = true;
+        for (String header : format.headers) {
+          if (!values.contains(CsvImportSupport.normalizeHeader(header))) {
+            matched = false;
+            break;
+          }
         }
+        if (matched) return new HeaderMatch(rowIndex, format);
       }
-      if (matched) return rowIndex;
     }
     return null;
   }
 
   /** 表头列索引 → 标准字段名；未映射列保留原始表头文本作为 raw_json 键。 */
-  private Map<Integer, String> columnKeys(Row headerRow, DataFormatter formatter) {
+  private Map<Integer, String> columnKeys(Row headerRow, DataFormatter formatter, LegacyFormat format) {
     Map<Integer, String> keys = new LinkedHashMap<>();
     for (int column = 0; column < headerRow.getLastCellNum(); column++) {
       String original = cellText(headerRow, column, formatter);
       String normalized = CsvImportSupport.normalizeHeader(original);
-      String key = canonicalHeader(normalized);
+      String key = canonicalHeader(normalized, format);
       keys.put(column, key.isEmpty() ? original : key);
     }
     return keys;
   }
 
-  private String canonicalHeader(String normalized) {
+  private String canonicalHeader(String normalized, LegacyFormat format) {
+    switch (format) {
+      case EAB:
+        if (normalized.equals("支出金额")) return "debit_amount";
+        if (normalized.equals("收入金额")) return "credit_amount";
+        if (normalized.equals("余额")) return "balance_after";
+        if (normalized.equals("对方银行名称")) return "counterparty_bank";
+        if (normalized.equals("交易备注")) return "remark";
+        if (normalized.equals("交易流水号")) return "source_transaction_no";
+        break;
+      case NBCB:
+        if (normalized.equals("借方金额")) return "debit_amount";
+        if (normalized.equals("贷方金额")) return "credit_amount";
+        if (normalized.equals("账户余额")) return "balance_after";
+        if (normalized.equals("对方开户行")) return "counterparty_bank";
+        if (normalized.equals("备注")) return "remark";
+        if (normalized.equals("流水号")) return "source_transaction_no";
+        break;
+    }
     if (normalized.equals("交易日期")) return "transaction_date";
     if (normalized.equals("交易时间")) return "transaction_time";
-    if (normalized.equals("支出金额")) return "debit_amount";
-    if (normalized.equals("收入金额")) return "credit_amount";
-    if (normalized.equals("余额")) return "balance_after";
     if (normalized.equals("对方账号")) return "counterparty_account";
     if (normalized.equals("对方户名")) return "counterparty_name";
-    if (normalized.equals("对方银行名称")) return "counterparty_bank";
     if (normalized.equals("摘要")) return "summary";
-    if (normalized.equals("交易备注")) return "remark";
-    if (normalized.equals("交易流水号")) return "source_transaction_no";
     return "";
   }
 
@@ -148,14 +190,14 @@ public class LegacyExcelBankStatementParser {
     return formatter.formatCellValue(row.getCell(column)).trim();
   }
 
-  /** 东亚银行未使用的一侧金额以 "--" 占位，与空串一样视为空。 */
+  /** 企业网银未使用的一侧金额或凭证号常以 "--" 占位，与空串一样视为空。 */
   private String emptyAsNull(String value) {
     if (value == null) return null;
     String text = value.trim();
     return text.isEmpty() || "--".equals(text) ? null : text;
   }
 
-  private CsvBankStatementRow toRow(int rowNo, Map<String, String> raw, String sheetName) {
+  private CsvBankStatementRow toRow(int rowNo, Map<String, String> raw, String sheetName, LegacyFormat format) {
     String sourceTransactionNo = raw.get("source_transaction_no");
     String dateText = required(raw, "transaction_date", rowNo);
     LocalDate transactionDate = parseDate(dateText, rowNo);
@@ -176,13 +218,13 @@ public class LegacyExcelBankStatementParser {
     }
     BigDecimal balance = decimalOrNull(raw.get("balance_after"), "balance_after", rowNo);
     String summary = raw.get("summary");
-    String transactionNo = enterpriseTransactionNo(raw, sourceTransactionNo, transactionDate, direction, amount, balance);
+    String transactionNo = enterpriseTransactionNo(raw, sourceTransactionNo, transactionDate, direction, amount, balance, format);
     Map<String, String> normalized = new LinkedHashMap<>(raw);
     normalized.put("transaction_no", transactionNo);
     normalized.put("transaction_date", dateText);
     normalized.put("amount", amount.toPlainString());
     normalized.put("direction", direction);
-    normalized.put("source_bank", EAB_BANK_NAME);
+    normalized.put("source_bank", format.bankName);
     normalized.put("source_sheet", sheetName);
     normalized.put("source_transaction_no", sourceTransactionNo == null ? "" : sourceTransactionNo);
     try {
@@ -194,12 +236,13 @@ public class LegacyExcelBankStatementParser {
   }
 
   /**
-   * EAB1 标准流水号：source_transaction_no、transaction_time、transaction_date(ISO)、direction、
+   * 标准流水号：source_transaction_no、transaction_time、transaction_date(ISO)、direction、
    * amount、balance_after、counterparty_account、counterparty_name、counterparty_bank、summary、remark。
-   * 规范化与 ExcelBankStatementParser 完全一致，不含行号、文件名、任务 ID 或随机值。
+   * 规范化与 ExcelBankStatementParser 完全一致，不含行号、文件名、任务 ID 或随机值；
+   * 前缀按格式区分（EAB1/NBCB1）。
    */
   private String enterpriseTransactionNo(Map<String, String> raw, String sourceTransactionNo,
-      LocalDate transactionDate, String direction, BigDecimal amount, BigDecimal balance) {
+      LocalDate transactionDate, String direction, BigDecimal amount, BigDecimal balance, LegacyFormat format) {
     MessageDigest digest;
     try {
       digest = MessageDigest.getInstance("SHA-256");
@@ -219,7 +262,7 @@ public class LegacyExcelBankStatementParser {
         normalizeText(raw.get("summary")),
         normalizeText(raw.get("remark")));
     for (String field : identity) updateHash(digest, field);
-    return EAB_PREFIX + "-" + java.util.HexFormat.of().formatHex(digest.digest());
+    return format.prefix + "-" + java.util.HexFormat.of().formatHex(digest.digest());
   }
 
   private void updateHash(MessageDigest digest, String value) {

@@ -71,12 +71,12 @@ class BankConnectionControllerTest {
   }
 
   @Test
-  void templateCatalogListsEightBanks() throws Exception {
+  void templateCatalogListsNineBanks() throws Exception {
     String token = loginToken("finance01");
     mockMvc.perform(get("/api/v1/bank-connections/templates")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId("finance01"))))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.length()").value(8))
+        .andExpect(jsonPath("$.data.length()").value(9))
         .andExpect(jsonPath("$.data[0].field_mappings").isArray())
         .andExpect(jsonPath("$.data[?(@.bank_name == '中国银行')]").exists());
   }

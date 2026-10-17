@@ -795,7 +795,7 @@ onMounted(() => {
     </ModalPanel>
 
     <ModalPanel v-if="activeModal === 'template'" title="银行模板字典" @close="closeModal">
-      <p class="meta">八家支持银行的表头映射规则（只读，来自解析器实际规则）</p>
+      <p class="meta">九家支持银行的表头映射规则（只读，来自解析器实际规则）</p>
       <div class="mini-list">
         <div v-for="template in templates" :key="template.bank_code" class="mini-row">
           <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>
