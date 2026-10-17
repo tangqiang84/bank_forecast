@@ -25,6 +25,7 @@
     <tomcat.version>10.1.59</tomcat.version>
     <jackson-bom.version>2.21.7</jackson-bom.version>
     <log4j2.version>2.25.5</log4j2.version>
+    <poi.version>5.5.1</poi.version>
   </properties>
 
   <dependencies>
@@ -56,6 +57,11 @@
       <groupId>com.mysql</groupId>
       <artifactId>mysql-connector-j</artifactId>
       <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi</artifactId>
+      <version>${poi.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

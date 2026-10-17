@@ -8,6 +8,7 @@ import com.bankforecast.importjob.CsvBankStatementParser;
 import com.bankforecast.importjob.CsvBankStatementRow;
 import com.bankforecast.importjob.CsvParseResult;
 import com.bankforecast.importjob.ExcelBankStatementParser;
+import com.bankforecast.importjob.LegacyExcelBankStatementParser;
 import com.bankforecast.security.AuthContext;
 import com.bankforecast.security.AuthPrincipal;
 import java.sql.PreparedStatement;
@@ -30,6 +31,7 @@ public class BankConnectionService {
   private final BankTemplateCatalog templateCatalog;
   private final BankTemplateMappingService templateMappingService;
   private final ExcelBankStatementParser excelParser;
+  private final LegacyExcelBankStatementParser legacyExcelParser;
   private final CsvBankStatementParser csvParser;
   private final int maxRows;
   private final long maxFileSize;
@@ -37,6 +39,7 @@ public class BankConnectionService {
   public BankConnectionService(JdbcTemplate jdbcTemplate, AuditService auditService,
       BankTemplateCatalog templateCatalog, BankTemplateMappingService templateMappingService,
       ExcelBankStatementParser excelParser,
+      LegacyExcelBankStatementParser legacyExcelParser,
       CsvBankStatementParser csvParser,
       @Value("${bank-forecast.import.max-rows}") int maxRows,
       @Value("${bank-forecast.import.max-file-size-bytes}") long maxFileSize) {
@@ -45,6 +48,7 @@ public class BankConnectionService {
     this.templateCatalog = templateCatalog;
     this.templateMappingService = templateMappingService;
     this.excelParser = excelParser;
+    this.legacyExcelParser = legacyExcelParser;
     this.csvParser = csvParser;
     this.maxRows = maxRows;
     this.maxFileSize = maxFileSize;
@@ -133,6 +137,13 @@ public class BankConnectionService {
         result.put("error_rows", parsed.getErrors().size());
         result.put("status", "success");
         result.put("message", "模板识别成功，解析出 " + parsed.getRows().size() + " 条流水");
+      } else if (fileName.endsWith(".xls")) {
+        ExcelBankStatementParser.ExcelParseResult parsed = legacyExcelParser.parse(open(file), maxRows);
+        result.put("recognized_templates", parsed.getTemplates());
+        result.put("parsed_rows", parsed.getRows().size());
+        result.put("error_rows", parsed.getErrors().size());
+        result.put("status", "success");
+        result.put("message", "模板识别成功，解析出 " + parsed.getRows().size() + " 条流水");
       } else if (fileName.endsWith(".csv")) {
         CsvParseResult<CsvBankStatementRow> parsed = csvParser.parse(open(file), maxRows, aliases);
         result.put("parsed_rows", parsed.getRows().size());
@@ -141,7 +152,7 @@ public class BankConnectionService {
         result.put("status", success ? "success" : "failed");
         result.put("message", success ? "CSV 解析成功，识别出 " + parsed.getRows().size() + " 条流水" : "CSV 未解析出有效流水行");
       } else {
-        throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED, "仅支持 CSV 或 XLSX 样本文件");
+        throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED, "仅支持 CSV、XLS 或 XLSX 样本文件");
       }
     } catch (BusinessException ex) {
       result.put("status", "failed");

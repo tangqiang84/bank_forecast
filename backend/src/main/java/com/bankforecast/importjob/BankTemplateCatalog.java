@@ -6,11 +6,11 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
-/** 六家支持银行的模板字典：字段映射来自解析器实际的表头归一化规则。 */
+/** 七家支持银行的模板字典：字段映射来自解析器实际的表头归一化规则。 */
 @Component
 public class BankTemplateCatalog {
 
-  private static final String[] BANK_CODES = {"BOC", "ICBC", "CGB", "PAB", "BOSC", "SUZB"};
+  private static final String[] BANK_CODES = {"BOC", "ICBC", "CGB", "PAB", "BOSC", "SUZB", "BEA"};
   private static final String[] SAMPLE_HEADERS = {
       "交易日期", "日期", "交易日", "记账日期", "凭证号", "交易流水号", "流水号",
       "交易时间", "机器时间", "交易方向", "交易金额", "借方金额", "支出金额", "支出", "贷方金额", "收入金额", "收入",
@@ -37,13 +37,17 @@ public class BankTemplateCatalog {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("bank_code", BANK_CODES[i]);
       item.put("bank_name", banks[i]);
-      item.put("format", "xlsx/csv");
+      String format = "xlsx/csv";
       String recognition = "工作表名称包含银行名称 + 表头归一化映射";
       if ("上海银行".equals(banks[i])) {
         recognition = "工作表名称包含银行名称，或上海银行企业网银11列签名 + 表头归一化映射";
       } else if ("苏州银行".equals(banks[i])) {
         recognition = "工作表名称包含银行名称，或苏州银行企业网银11列签名 + 表头归一化映射";
+      } else if ("东亚银行".equals(banks[i])) {
+        format = "xls";
+        recognition = "东亚银行企业网银14列表头签名识别 + 表头归一化映射";
       }
+      item.put("format", format);
       item.put("recognition", recognition);
       item.put("field_mappings", mappings);
       result.add(item);

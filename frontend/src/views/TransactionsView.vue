@@ -224,7 +224,7 @@ function chooseFile(event: Event) {
 }
 async function startPreview() {
   if (!session.user.value || !session.token.value || !accountId.value || !file.value) {
-    message.value = '请选择银行账户和 CSV/XLSX 文件'
+    message.value = '请选择银行账户和 CSV/XLS/XLSX 文件'
     return
   }
   loading.value = true
@@ -430,7 +430,7 @@ onMounted(() => {
         </select></label
       ><label
         >CSV / Excel 文件<input
-          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           type="file"
           @change="chooseFile"
       /></label>

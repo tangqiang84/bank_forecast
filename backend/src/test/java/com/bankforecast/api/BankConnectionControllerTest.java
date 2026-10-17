@@ -67,16 +67,16 @@ class BankConnectionControllerTest {
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.status").value("failed"))
-        .andExpect(jsonPath("$.data.message").value("仅支持 CSV 或 XLSX 样本文件"));
+        .andExpect(jsonPath("$.data.message").value("仅支持 CSV、XLS 或 XLSX 样本文件"));
   }
 
   @Test
-  void templateCatalogListsSixBanks() throws Exception {
+  void templateCatalogListsSevenBanks() throws Exception {
     String token = loginToken("finance01");
     mockMvc.perform(get("/api/v1/bank-connections/templates")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId("finance01"))))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.length()").value(6))
+        .andExpect(jsonPath("$.data.length()").value(7))
         .andExpect(jsonPath("$.data[0].field_mappings").isArray())
         .andExpect(jsonPath("$.data[?(@.bank_name == '中国银行')]").exists());
   }

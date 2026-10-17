@@ -173,7 +173,7 @@ function chooseFile(event: Event) {
 }
 async function startPreview() {
   if (!session.user.value || !session.token.value || !accountId.value || !file.value) {
-    importMessage.value = '请选择银行账户和 CSV/XLSX 文件'
+    importMessage.value = '请选择银行账户和 CSV/XLS/XLSX 文件'
     return
   }
   importLoading.value = true
@@ -592,7 +592,7 @@ onMounted(() => {
         </select></label
       ><label
         >CSV / Excel 文件<input
-          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           type="file"
           @change="chooseFile"
       /></label>
@@ -752,7 +752,7 @@ onMounted(() => {
               <td>
                 <label class="text-button"
                   >选择样本<input
-                    accept=".csv,.xlsx"
+                    accept=".csv,.xls,.xlsx"
                     type="file"
                     style="display: none"
                     @change="chooseTestFile(connection.id, $event)"
@@ -795,7 +795,7 @@ onMounted(() => {
     </ModalPanel>
 
     <ModalPanel v-if="activeModal === 'template'" title="银行模板字典" @close="closeModal">
-      <p class="meta">六家支持银行的表头映射规则（只读，来自解析器实际规则）</p>
+      <p class="meta">七家支持银行的表头映射规则（只读，来自解析器实际规则）</p>
       <div class="mini-list">
         <div v-for="template in templates" :key="template.bank_code" class="mini-row">
           <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>

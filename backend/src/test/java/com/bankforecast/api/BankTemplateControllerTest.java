@@ -37,7 +37,7 @@ class BankTemplateControllerTest {
 
     mockMvc.perform(get("/api/v1/bank-templates").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.templates.length()").value(6))
+        .andExpect(jsonPath("$.data.templates.length()").value(7))
         .andExpect(jsonPath("$.data.fields.length()").value(10))
         .andExpect(jsonPath("$.data.mappings").isArray());
 

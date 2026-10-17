@@ -36,7 +36,7 @@ import org.w3c.dom.NodeList;
 public class ExcelBankStatementParser {
   private static final String MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
   private static final String REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-  public static final String[] SUPPORTED_BANKS = {"中国银行", "工商银行", "广发银行", "平安银行", "上海银行", "苏州银行"};
+  public static final String[] SUPPORTED_BANKS = {"中国银行", "工商银行", "广发银行", "平安银行", "上海银行", "苏州银行", "东亚银行"};
   private static final String[] BOSC_ENTERPRISE_HEADERS = {
       "交易流水号", "交易时间", "记账日期", "交易方向", "交易金额", "余额",
       "对手账号", "对手名称", "摘要", "交易用途", "备注"};
