@@ -36,13 +36,19 @@ import org.w3c.dom.NodeList;
 public class ExcelBankStatementParser {
   private static final String MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
   private static final String REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-  public static final String[] SUPPORTED_BANKS = {"中国银行", "工商银行", "广发银行", "平安银行", "上海银行", "苏州银行", "东亚银行"};
+  public static final String[] SUPPORTED_BANKS = {"中国银行", "工商银行", "广发银行", "平安银行", "上海银行", "苏州银行", "东亚银行", "招商银行"};
   private static final String[] BOSC_ENTERPRISE_HEADERS = {
       "交易流水号", "交易时间", "记账日期", "交易方向", "交易金额", "余额",
       "对手账号", "对手名称", "摘要", "交易用途", "备注"};
   private static final String[] SUZB_ENTERPRISE_HEADERS = {
       "交易日期", "收入", "支出", "余额", "对方账号", "对方户名",
       "对方行名", "摘要", "用途", "流水号", "机器时间"};
+  private static final String[] CMB_ENTERPRISE_HEADERS = {
+      "账号", "账号名称", "币种", "交易日", "交易时间", "起息日", "交易类型", "借方金额", "贷方金额",
+      "余额", "摘要", "流水号", "流程实例号", "业务名称", "用途", "业务参考号", "业务摘要", "其它摘要",
+      "收(付)方分行名", "收(付)方名称", "收(付)方账号", "收(付)方开户行行号", "收(付)方开户行名",
+      "收(付)方开户行地址", "母(子)公司账号分行名", "母(子)公司账号", "母(子)公司名称", "信息标志",
+      "有否附件信息", "冲账标志", "扩展摘要", "交易分析码", "票据号", "商务支付订单号", "内部编号", "公司一卡通号"};
   private final ObjectMapper objectMapper;
 
   public ExcelBankStatementParser(ObjectMapper objectMapper) { this.objectMapper = objectMapper; }
@@ -155,6 +161,9 @@ public class ExcelBankStatementParser {
         if (!key.isEmpty()) indexes.put(key, columnIndex(cell.getAttribute("r")));
       }
       EnterpriseFormat enterpriseFormat = enterpriseFormat(cells, sharedStrings);
+      if (enterpriseFormat == EnterpriseFormat.CMB) {
+        return new Header(parseInt(row.getAttribute("r"), i + 1) - 1, cmbIndexes(cells, sharedStrings), enterpriseFormat);
+      }
       boolean plainSuzbAmount = containsHeaders(cells, sharedStrings, new String[] {"收入"})
           || containsHeaders(cells, sharedStrings, new String[] {"支出"});
       boolean dualAmount = (indexes.containsKey("debit_amount") || indexes.containsKey("credit_amount"))
@@ -169,7 +178,42 @@ public class ExcelBankStatementParser {
   private EnterpriseFormat enterpriseFormat(NodeList cells, List<String> sharedStrings) {
     if (containsHeaders(cells, sharedStrings, BOSC_ENTERPRISE_HEADERS)) return EnterpriseFormat.BOSC;
     if (containsHeaders(cells, sharedStrings, SUZB_ENTERPRISE_HEADERS)) return EnterpriseFormat.SUZB;
+    if (containsHeaders(cells, sharedStrings, CMB_ENTERPRISE_HEADERS)) return EnterpriseFormat.CMB;
     return null;
+  }
+
+  /**
+   * 招商银行企业网银 36 列格式级键映射：通用 canonicalHeader 会把「交易日」和「起息日」都归一到
+   * transaction_date（起息日列覆盖交易日列），且不收「收(付)方名称/账号/开户行名」，因此 CMB 不走
+   * 通用归一化；未映射列保留原始表头文本作为 raw_json 键。
+   */
+  private Map<String, Integer> cmbIndexes(NodeList cells, List<String> sharedStrings) {
+    Map<String, Integer> indexes = new LinkedHashMap<>();
+    for (int j = 0; j < cells.getLength(); j++) {
+      Element cell = (Element) cells.item(j);
+      String original = cellText(cell, sharedStrings);
+      if (original.isEmpty()) continue;
+      String key = cmbHeaderKey(CsvImportSupport.normalizeHeader(original));
+      indexes.put(key.isEmpty() ? original : key, columnIndex(cell.getAttribute("r")));
+    }
+    return indexes;
+  }
+
+  private String cmbHeaderKey(String normalized) {
+    if (normalized.equals("交易日")) return "transaction_date";
+    if (normalized.equals("交易时间")) return "transaction_time";
+    if (normalized.equals("起息日")) return "value_date";
+    if (normalized.equals("交易类型")) return "transaction_type";
+    if (normalized.equals("借方金额")) return "debit_amount";
+    if (normalized.equals("贷方金额")) return "credit_amount";
+    if (normalized.equals("余额")) return "balance_after";
+    if (normalized.equals("摘要")) return "summary";
+    if (normalized.equals("流水号")) return "transaction_no";
+    if (normalized.equals("用途")) return "transaction_purpose";
+    if (normalized.equals("收方账号")) return "counterparty_account";
+    if (normalized.equals("收方名称")) return "counterparty_name";
+    if (normalized.equals("收方开户行名")) return "counterparty_bank";
+    return "";
   }
 
   private boolean containsHeaders(NodeList cells, List<String> sharedStrings, String[] requiredHeaders) {
@@ -304,6 +348,18 @@ public class ExcelBankStatementParser {
           normalizeText(raw.get("counterparty_bank")),
           normalizeText(raw.get("summary")),
           normalizeText(raw.get("transaction_purpose")));
+      case CMB -> List.of(
+          normalizeText(sourceTransactionNo),
+          normalizeText(raw.get("transaction_time")),
+          transactionDate.toString(),
+          direction,
+          canonicalDecimal(amount),
+          canonicalDecimal(balance),
+          normalizeText(raw.get("counterparty_account")),
+          normalizeText(raw.get("counterparty_name")),
+          normalizeText(raw.get("counterparty_bank")),
+          normalizeText(raw.get("summary")),
+          normalizeText(raw.get("transaction_purpose")));
     };
     for (String field : identity) updateHash(digest, field);
     return format.prefix + "-" + java.util.HexFormat.of().formatHex(digest.digest());
@@ -327,7 +383,8 @@ public class ExcelBankStatementParser {
 
   private enum EnterpriseFormat {
     BOSC("上海银行", "BOSC1"),
-    SUZB("苏州银行", "SUZB1");
+    SUZB("苏州银行", "SUZB1"),
+    CMB("招商银行", "CMB1");
 
     private final String bankName;
     private final String prefix;

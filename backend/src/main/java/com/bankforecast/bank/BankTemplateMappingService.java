@@ -43,7 +43,7 @@ public class BankTemplateMappingService {
     this.templateCatalog = templateCatalog;
   }
 
-  /** 模板配置中心总览：内置七银行字典、可映射标准字段和租户自定义映射。 */
+  /** 模板配置中心总览：内置八银行字典、可映射标准字段和租户自定义映射。 */
   public Map<String, Object> overview(Long tenantId) {
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("templates", templateCatalog.templates());
