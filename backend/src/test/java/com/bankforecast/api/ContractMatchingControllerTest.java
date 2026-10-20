@@ -3,6 +3,7 @@ package com.bankforecast.api;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -410,6 +411,52 @@ class ContractMatchingControllerTest {
     mockMvc.perform(post("/api/v1/matching/results/" + firstResultId + "/reject").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"暂不确认\"}")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
     org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
+  }
+
+  @Test
+  void exceptionStatsExtendTodayNewLargeAmountAndReviewPending() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    // P4-7：今日新增/待复核/大额阈值字段；默认阈值 10 万下大额待办为 0
+    mockMvc.perform(get("/api/v1/matching/exceptions/stats")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.today_new_count").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+        .andExpect(jsonPath("$.data.review_pending_count").isNumber())
+        .andExpect(jsonPath("$.data.large_amount_threshold").value(100000))
+        .andExpect(jsonPath("$.data.large_amount_count").value(0));
+
+    // 阈值可配：调低到 100 后，500 元的部分收款工单计入大额待办
+    mockMvc.perform(put("/api/v1/rules/config")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"workbench_large_amount_threshold\":100}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.workbench_large_amount_threshold").value(100));
+    mockMvc.perform(get("/api/v1/matching/exceptions/stats")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.large_amount_threshold").value(100))
+        .andExpect(jsonPath("$.data.large_amount_count").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+
+    // 确认核销后待复核计数增加
+    mockMvc.perform(post("/api/v1/matching/results/" + resultId + "/confirm")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    mockMvc.perform(get("/api/v1/matching/exceptions/stats")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.review_pending_count").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+
+    // 恢复默认阈值，避免影响同库其他用例
+    mockMvc.perform(put("/api/v1/rules/config")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"workbench_large_amount_threshold\":100000}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
   }
 
   @Test

@@ -22,9 +22,11 @@ public class RuleCenterService {
   public static final String CONFIG_EXACT_WINDOW = "match_exact_window_days";
   public static final String CONFIG_SUGGEST_WINDOW = "match_suggest_window_days";
   public static final String CONFIG_INDUSTRY = "industry_template";
+  public static final String CONFIG_LARGE_AMOUNT_THRESHOLD = "workbench_large_amount_threshold";
   public static final int DEFAULT_SCAN_WINDOW = 30;
   public static final int DEFAULT_EXACT_WINDOW = 7;
   public static final int DEFAULT_SUGGEST_WINDOW = 14;
+  public static final int DEFAULT_LARGE_AMOUNT_THRESHOLD = 100000;
   public static final String DEFAULT_INDUSTRY = "it_software";
 
   private final JdbcTemplate jdbcTemplate;
@@ -86,6 +88,7 @@ public class RuleCenterService {
     data.put(CONFIG_EXACT_WINDOW, configInt(tenantId, CONFIG_EXACT_WINDOW, DEFAULT_EXACT_WINDOW));
     data.put(CONFIG_SUGGEST_WINDOW, configInt(tenantId, CONFIG_SUGGEST_WINDOW, DEFAULT_SUGGEST_WINDOW));
     data.put(CONFIG_INDUSTRY, configText(tenantId, CONFIG_INDUSTRY, DEFAULT_INDUSTRY));
+    data.put(CONFIG_LARGE_AMOUNT_THRESHOLD, configInt(tenantId, CONFIG_LARGE_AMOUNT_THRESHOLD, DEFAULT_LARGE_AMOUNT_THRESHOLD));
     return data;
   }
 
@@ -105,8 +108,23 @@ public class RuleCenterService {
     putConfig(tenantId, CONFIG_SCAN_WINDOW, String.valueOf(scan), userId);
     putConfig(tenantId, CONFIG_EXACT_WINDOW, String.valueOf(exact), userId);
     putConfig(tenantId, CONFIG_SUGGEST_WINDOW, String.valueOf(suggest), userId);
+    // P4-7：大额待办阈值可选更新（正整数，仅在请求携带时写入）
+    Object thresholdValue = request == null ? null : request.get(CONFIG_LARGE_AMOUNT_THRESHOLD);
+    Integer threshold = null;
+    if (thresholdValue != null && !String.valueOf(thresholdValue).trim().isEmpty()) {
+      try {
+        threshold = Integer.parseInt(String.valueOf(thresholdValue).trim());
+      } catch (NumberFormatException ex) {
+        throw new BusinessException(ErrorCode.PARAM_ERROR, CONFIG_LARGE_AMOUNT_THRESHOLD + " 必须是正整数金额");
+      }
+      if (threshold < 1) {
+        throw new BusinessException(ErrorCode.PARAM_ERROR, CONFIG_LARGE_AMOUNT_THRESHOLD + " 必须是正整数金额");
+      }
+      putConfig(tenantId, CONFIG_LARGE_AMOUNT_THRESHOLD, String.valueOf(threshold), userId);
+    }
     auditService.record("UPDATE_RULE_CONFIG", "tenant_rule_config", "match_window",
-        "scan=" + scan + ", exact=" + exact + ", suggest=" + suggest);
+        "scan=" + scan + ", exact=" + exact + ", suggest=" + suggest
+            + (threshold == null ? "" : ", large_amount_threshold=" + threshold));
     return config(tenantId);
   }
 
@@ -135,6 +153,11 @@ public class RuleCenterService {
         configInt(tenantId, CONFIG_SCAN_WINDOW, DEFAULT_SCAN_WINDOW),
         configInt(tenantId, CONFIG_EXACT_WINDOW, DEFAULT_EXACT_WINDOW),
         configInt(tenantId, CONFIG_SUGGEST_WINDOW, DEFAULT_SUGGEST_WINDOW)};
+  }
+
+  /** 回款处理工作台大额待办阈值（P4-7），默认 10 万元。 */
+  public int largeAmountThreshold(Long tenantId) {
+    return configInt(tenantId, CONFIG_LARGE_AMOUNT_THRESHOLD, DEFAULT_LARGE_AMOUNT_THRESHOLD);
   }
 
   /** 行业模板阈值包：验收/回款周期与垫资特征不同，逾期与异常容忍度不同。 */

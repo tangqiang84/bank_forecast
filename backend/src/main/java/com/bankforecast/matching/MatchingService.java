@@ -278,16 +278,7 @@ public class MatchingService {
     String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
         + "left join contract c on c.id = p.contract_id "
         + "left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id"
-        + " left join bank_transaction sbt on e.source_type = 'bank_transaction' and sbt.id = e.source_id"
-        + " left join (select mr.tenant_id, mr.match_group_id, "
-        + "substring_index(group_concat(bt.transaction_no order by mr.id), ',', 1) as txn_no, "
-        + "sum(mr.allocated_amount) as amount, "
-        + "substring_index(group_concat(mr.confidence_level order by mr.id), ',', 1) as confidence_level, "
-        + "substring_index(group_concat(mr.match_status order by mr.id), ',', 1) as match_status, "
-        + "substring_index(group_concat(mc.contract_no order by mr.id), ',', 1) as contract_no "
-        + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
-        + "left join contract mc on mc.id = mr.contract_id where mr.deleted_at is null "
-        + "group by mr.tenant_id, mr.match_group_id) ms on ms.tenant_id = e.tenant_id and ms.match_group_id = e.match_group_id";
+        + AMOUNT_JOINS;
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
         "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, u.display_name as owner_name, e.status, "
             + "case when e.status = 'closed' then '已关闭' when e.status = 'false_positive' then '误报' "
@@ -331,6 +322,19 @@ public class MatchingService {
     item.put("match_summary", summary);
   }
 
+  // P4-6/P4-7：工单金额取数（匹配组金额或流水金额）与匹配摘要的共用连接
+  private static final String AMOUNT_JOINS =
+      " left join bank_transaction sbt on e.source_type = 'bank_transaction' and sbt.id = e.source_id"
+          + " left join (select mr.tenant_id, mr.match_group_id, "
+          + "substring_index(group_concat(bt.transaction_no order by mr.id), ',', 1) as txn_no, "
+          + "sum(mr.allocated_amount) as amount, "
+          + "substring_index(group_concat(mr.confidence_level order by mr.id), ',', 1) as confidence_level, "
+          + "substring_index(group_concat(mr.match_status order by mr.id), ',', 1) as match_status, "
+          + "substring_index(group_concat(mc.contract_no order by mr.id), ',', 1) as contract_no "
+          + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+          + "left join contract mc on mc.id = mr.contract_id where mr.deleted_at is null "
+          + "group by mr.tenant_id, mr.match_group_id) ms on ms.tenant_id = e.tenant_id and ms.match_group_id = e.match_group_id";
+
   private String queueFilter(String queue, Long currentUserId) {
     if (queue == null || queue.trim().isEmpty()) return "";
     switch (queue.trim()) {
@@ -358,6 +362,16 @@ public class MatchingService {
     data.put("overdue_count", countExceptions(tenantId, "e.status in ('new', 'in_progress') and e.due_date is not null and e.due_date < current_date", null));
     data.put("closed_count", countExceptions(tenantId, "e.status = 'closed'", null));
     data.put("false_positive_count", countExceptions(tenantId, "e.status = 'false_positive'", null));
+    // P4-7 工作台概览扩展：今日新增、待复核（与 pending_close 同口径）、大额待办
+    data.put("today_new_count", countExceptions(tenantId, "date(e.created_at) = current_date", null));
+    data.put("review_pending_count", data.get("pending_close_count"));
+    int largeAmountThreshold = ruleCenterService.largeAmountThreshold(tenantId);
+    data.put("large_amount_threshold", largeAmountThreshold);
+    data.put("large_amount_count", jdbcTemplate.queryForObject(
+        "select count(*) from exception_case e" + AMOUNT_JOINS
+            + " where e.tenant_id = ? and e.deleted_at is null and e.status in ('new', 'in_progress') "
+            + "and coalesce(ms.amount, sbt.amount) >= ?",
+        Integer.class, tenantId, largeAmountThreshold));
     int total = countExceptions(tenantId, null, null);
     int closed = (Integer) data.get("closed_count") + (Integer) data.get("false_positive_count");
     data.put("total_count", total);
