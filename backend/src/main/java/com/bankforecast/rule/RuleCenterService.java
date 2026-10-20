@@ -113,17 +113,10 @@ public class RuleCenterService {
   @Transactional
   public Map<String, Object> applyIndustryTemplate(Long tenantId, Long userId, String industry) {
     String code = industry == null || industry.trim().isEmpty() ? DEFAULT_INDUSTRY : industry.trim();
-    if (!DEFAULT_INDUSTRY.equals(code)) {
-      throw new BusinessException(ErrorCode.PARAM_ERROR, "暂不支持的行业模板，当前仅支持 it_software");
+    Object[][] preset = industryPreset(code);
+    if (preset == null) {
+      throw new BusinessException(ErrorCode.PARAM_ERROR, "暂不支持的行业模板，当前仅支持 it_software、manufacturing");
     }
-    // IT 软件与信息服务行业默认阈值包：验收/回款周期长，逾期容忍度低
-    Object[][] preset = {
-        {"overdue_exists", "0", "30", null},
-        {"overdue_ratio_high", "0.3", "20", null},
-        {"paid_rate_low", "0.5", "30", null},
-        {"paid_rate_mid", "0.8", "15", null},
-        {"open_exception_count", "1", "10", "30"},
-        {"negative_cashflow", "0", "15", null}};
     for (Object[] rule : preset) {
       updateRule(tenantId, userId, String.valueOf(rule[0]),
           new BigDecimal(String.valueOf(rule[1])), new BigDecimal(String.valueOf(rule[2])),
@@ -142,6 +135,31 @@ public class RuleCenterService {
         configInt(tenantId, CONFIG_SCAN_WINDOW, DEFAULT_SCAN_WINDOW),
         configInt(tenantId, CONFIG_EXACT_WINDOW, DEFAULT_EXACT_WINDOW),
         configInt(tenantId, CONFIG_SUGGEST_WINDOW, DEFAULT_SUGGEST_WINDOW)};
+  }
+
+  /** 行业模板阈值包：验收/回款周期与垫资特征不同，逾期与异常容忍度不同。 */
+  private static Object[][] industryPreset(String code) {
+    if ("it_software".equals(code)) {
+      // IT 软件与信息服务：验收/回款周期长，逾期容忍度低
+      return new Object[][] {
+          {"overdue_exists", "0", "30", null},
+          {"overdue_ratio_high", "0.3", "20", null},
+          {"paid_rate_low", "0.5", "30", null},
+          {"paid_rate_mid", "0.8", "15", null},
+          {"open_exception_count", "1", "10", "30"},
+          {"negative_cashflow", "0", "15", null}};
+    }
+    if ("manufacturing".equals(code)) {
+      // 制造业：生产与回款周期更长、质保金常见、垫资压力大，逾期/异常容忍略宽，现金流扣分更重
+      return new Object[][] {
+          {"overdue_exists", "0", "30", null},
+          {"overdue_ratio_high", "0.4", "15", null},
+          {"paid_rate_low", "0.4", "30", null},
+          {"paid_rate_mid", "0.7", "15", null},
+          {"open_exception_count", "2", "10", "30"},
+          {"negative_cashflow", "0", "20", null}};
+    }
+    return null;
   }
 
   private void ensureBaselineVersion(Long tenantId, String ruleCode, Long userId) {

@@ -279,6 +279,7 @@ onMounted(() => {
       <label
         >行业模板<select v-model="industry">
           <option value="it_software">IT 软件与信息服务</option>
+          <option value="manufacturing">制造业</option>
         </select></label
       >
       <button

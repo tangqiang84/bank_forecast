@@ -109,7 +109,7 @@ class RuleCenterControllerTest {
         "select count(*) from project_risk_rule where tenant_id = ? and rule_code = 'overdue_ratio_high' and penalty = 20",
         Integer.class, tenantId).intValue());
     org.junit.jupiter.api.Assertions.assertEquals(6, jdbcTemplate.queryForObject(
-        "select count(*) from project_risk_rule_version where tenant_id = ? and change_source = 'template'",
+        "select count(*) from project_risk_rule_version where tenant_id = ? and change_source = 'template' and remark like '%it_software%'",
         Integer.class, tenantId).intValue());
 
     mockMvc.perform(post("/api/v1/rules/industry-template")
@@ -117,6 +117,32 @@ class RuleCenterControllerTest {
             .content("{\"industry\":\"unknown_industry\"}")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void appliesManufacturingTemplate() throws Exception {
+    String token = loginToken("finance01");
+    Long tenantId = tenantId("finance01");
+
+    mockMvc.perform(post("/api/v1/rules/industry-template")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"industry\":\"manufacturing\"}")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.industry_template").value("manufacturing"));
+
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from project_risk_rule where tenant_id = ? and rule_code = 'negative_cashflow' and penalty = 20",
+        Integer.class, tenantId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from project_risk_rule where tenant_id = ? and rule_code = 'overdue_ratio_high' and threshold = 0.40 and penalty = 15",
+        Integer.class, tenantId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from project_risk_rule where tenant_id = ? and rule_code = 'open_exception_count' and threshold = 2",
+        Integer.class, tenantId).intValue());
+    org.junit.jupiter.api.Assertions.assertEquals(6, jdbcTemplate.queryForObject(
+        "select count(*) from project_risk_rule_version where tenant_id = ? and change_source = 'template' and remark like '%manufacturing%'",
+        Integer.class, tenantId).intValue());
   }
 
   @Test

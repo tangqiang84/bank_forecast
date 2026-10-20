@@ -838,6 +838,7 @@ test('规则中心修改规则并回滚版本', async ({ page }) => {
   await page.getByRole('link', { name: '规则中心' }).click()
   await expect(page.getByRole('heading', { name: '规则配置与版本管理' })).toBeVisible()
   await expect(page.getByText('当前行业模板：IT 软件与信息服务')).toBeVisible()
+  await expect(page.locator('select').filter({ hasText: '制造业' }).first()).toBeVisible()
 
   await page.getByRole('button', { name: '项目风险规则' }).click()
   const rulePanel = page.getByRole('dialog', { name: '项目风险规则' })

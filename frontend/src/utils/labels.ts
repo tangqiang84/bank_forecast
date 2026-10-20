@@ -395,6 +395,7 @@ export function auditActionLabel(value: LabelValue): string {
 
 export const INDUSTRY_TEMPLATE_LABELS: Record<string, string> = {
   it_software: 'IT 软件与信息服务',
+  manufacturing: '制造业',
 }
 
 export function industryTemplateLabel(value: LabelValue): string {
