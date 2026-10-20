@@ -23,8 +23,21 @@ const session = useSession()
 const base = apiBase()
 const rows = ref<ExceptionCase[]>([])
 const stats = ref<ExceptionStats | null>(null)
-const queue = ref('')
+type WorkbenchView = 'mine' | 'unassigned' | 'pending_close' | 'all'
+const view = ref<WorkbenchView>('mine')
+const viewTabs: Array<{ value: WorkbenchView; label: string }> = [
+  { value: 'mine', label: '我的待办' },
+  { value: 'unassigned', label: '待分派' },
+  { value: 'pending_close', label: '待复核' },
+  { value: 'all', label: '全部记录' },
+]
 const ownerFilter = ref('')
+const typeFilter = ref('')
+const amountMin = ref('')
+const amountMax = ref('')
+const createdFrom = ref('')
+const createdTo = ref('')
+const runSummary = ref('')
 const selected = ref<number[]>([])
 const page = ref(1)
 
@@ -88,13 +101,23 @@ async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
   try {
+    const filters: Record<string, string> = {
+      queue: view.value === 'all' ? '' : view.value,
+      owner_user_id: ownerFilter.value,
+      exception_type: typeFilter.value,
+      amount_min: amountMin.value,
+      amount_max: amountMax.value,
+      created_from: createdFrom.value,
+      created_to: createdTo.value,
+    }
+    if (view.value === 'all') filters.active_only = 'false'
     const result = await loadExceptions(
       base,
       session.token.value,
       session.user.value.tenant_id,
       page.value,
       pageSize.value,
-      { queue: queue.value, owner_user_id: ownerFilter.value },
+      filters,
     )
     rows.value = result.data.items
     total.value = result.data.total
@@ -114,7 +137,20 @@ async function loadStats() {
     error.value = cause instanceof Error ? cause.message : '异常统计加载失败'
   }
 }
-function applyQueue() {
+const typeOptions = computed(() => (stats.value?.by_type ?? []).map((item) => item.exception_type))
+
+function switchView(next: WorkbenchView) {
+  view.value = next
+  page.value = 1
+  selected.value = []
+  load()
+}
+function applyFilters() {
+  page.value = 1
+  load()
+}
+function selectType(type: string) {
+  typeFilter.value = type
   page.value = 1
   load()
 }
@@ -122,10 +158,11 @@ async function matching() {
   if (!session.user.value || !session.token.value) return
   try {
     const result = await runMatching(base, session.token.value, session.user.value.tenant_id)
-    message.value = `匹配完成：新增匹配 ${result.data.matched ?? 0}，待确认 ${result.data.suggested ?? 0}。`
+    runSummary.value = `匹配完成：自动核销 ${result.data.auto_matched_count ?? result.data.matched ?? 0} 笔，待人工 ${result.data.pending_review_count ?? result.data.suggested ?? 0} 笔。`
     await load()
+    await loadStats()
   } catch (cause) {
-    message.value = cause instanceof Error ? cause.message : '匹配运行失败'
+    runSummary.value = cause instanceof Error ? cause.message : '匹配运行失败'
   }
 }
 async function confirmAssign() {
@@ -247,7 +284,29 @@ onMounted(() => {
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
     <article v-if="stats" class="panel">
+      <div class="section-heading">
+        <div>
+          <h3>今日概览</h3>
+          <span class="meta"
+            >大额待办口径：进行中且工单金额 ≥ {{ stats.large_amount_threshold ?? 100000 }}</span
+          >
+        </div>
+        <div class="filter-bar">
+          <button
+            v-permission="'matching:run'"
+            class="primary-button"
+            :disabled="loading"
+            type="button"
+            @click="matching"
+          >
+            运行回款匹配
+          </button>
+        </div>
+      </div>
       <div class="summary-grid compact-summary">
+        <div>
+          <span>今日新增</span><strong>{{ stats.today_new_count ?? 0 }}</strong>
+        </div>
         <div>
           <span>我的待办</span><strong>{{ stats.my_todo_count }}</strong>
         </div>
@@ -255,10 +314,14 @@ onMounted(() => {
           <span>待分派</span><strong>{{ stats.unassigned_count }}</strong>
         </div>
         <div>
-          <span>待关闭</span><strong>{{ stats.pending_close_count }}</strong>
+          <span>待复核</span
+          ><strong>{{ stats.review_pending_count ?? stats.pending_close_count }}</strong>
         </div>
         <div>
           <span>超期未处理</span><strong>{{ stats.overdue_count }}</strong>
+        </div>
+        <div>
+          <span>大额待办</span><strong>{{ stats.large_amount_count ?? 0 }}</strong>
         </div>
         <div>
           <span>闭环率</span><strong>{{ (Number(stats.closure_rate) * 100).toFixed(1) }}%</strong>
@@ -267,6 +330,7 @@ onMounted(() => {
           <span>平均处理时长</span><strong>{{ stats.avg_resolution_hours }}h</strong>
         </div>
       </div>
+      <p v-if="runSummary" class="feedback-text">{{ runSummary }}</p>
       <div v-if="stats.by_owner.length" class="detail-section">
         <h3>责任人视图</h3>
         <div class="mini-list">
@@ -282,14 +346,6 @@ onMounted(() => {
     </article>
     <div class="page-toolbar">
       <button
-        v-permission="'matching:run'"
-        class="ghost-button"
-        :disabled="loading"
-        type="button"
-        @click="matching"
-      >
-        运行回款匹配</button
-      ><button
         v-permission="'exception:handle'"
         class="ghost-button"
         :disabled="!selected.length"
@@ -313,29 +369,59 @@ onMounted(() => {
           <h3>异常清单</h3>
           <span class="meta">共 {{ total }} 条，支持分派、备注、处理、关闭和附件</span>
         </div>
-        <div class="filter-bar">
-          <label
-            >队列<select v-model="queue" @change="applyQueue">
-              <option value="">进行中</option>
-              <option value="mine">我的待办</option>
-              <option value="unassigned">待分派</option>
-              <option value="pending_close">待关闭</option>
-              <option value="closed">已关闭/误报</option>
-            </select></label
+        <div class="view-tabs" role="tablist" aria-label="待办视图">
+          <button
+            v-for="tab in viewTabs"
+            :key="tab.value"
+            class="view-tab"
+            :class="{ active: view === tab.value }"
+            role="tab"
+            :aria-selected="view === tab.value"
+            type="button"
+            @click="switchView(tab.value)"
           >
-          <label
-            >责任人<select v-model="ownerFilter" @change="applyQueue">
-              <option value="">全部</option>
-              <option
-                v-for="owner in stats?.by_owner ?? []"
-                :key="owner.owner_user_id"
-                :value="String(owner.owner_user_id)"
-              >
-                {{ owner.owner_name || `用户 ${owner.owner_user_id}` }}
-              </option>
-            </select></label
-          >
+            {{ tab.label }}
+          </button>
         </div>
+      </div>
+      <div class="type-chips">
+        <button
+          class="chip"
+          :class="{ active: typeFilter === '' }"
+          type="button"
+          @click="selectType('')"
+        >
+          全部类型</button
+        ><button
+          v-for="type in typeOptions"
+          :key="type"
+          class="chip"
+          :class="{ active: typeFilter === type }"
+          type="button"
+          @click="selectType(type)"
+        >
+          {{ exceptionTypeLabel(type) }}
+        </button>
+      </div>
+      <div class="filter-bar">
+        <label
+          >金额下限<input v-model="amountMin" type="number" min="0" @change="applyFilters" /></label
+        ><label
+          >金额上限<input v-model="amountMax" type="number" min="0" @change="applyFilters" /></label
+        ><label>创建起始<input v-model="createdFrom" type="date" @change="applyFilters" /></label
+        ><label>创建截止<input v-model="createdTo" type="date" @change="applyFilters" /></label
+        ><label
+          >责任人<select v-model="ownerFilter" @change="applyFilters">
+            <option value="">全部</option>
+            <option
+              v-for="owner in stats?.by_owner ?? []"
+              :key="owner.owner_user_id"
+              :value="String(owner.owner_user_id)"
+            >
+              {{ owner.owner_name || `用户 ${owner.owner_user_id}` }}
+            </option>
+          </select></label
+        >
       </div>
       <div v-if="rows.length" class="list-stack">
         <div v-for="item in rows" :key="item.id" class="exception-row">

@@ -657,6 +657,17 @@ class ContractMatchingControllerTest {
             .header("Authorization", auth).header("X-Tenant-Id", tenant))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.total").value(0));
+
+    // 类型筛选（P4-10 工作台类型 chips）
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&exception_type=partial_receipt")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(1))
+        .andExpect(jsonPath("$.data.items[0].exception_type").value("partial_receipt"));
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&exception_type=fund_gap")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(0));
   }
 
   @Test

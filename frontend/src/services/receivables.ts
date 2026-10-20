@@ -38,6 +38,17 @@ export type ExceptionCase = {
   owner_name?: string | null
   stage?: string
   closed_at?: string | null
+  match_group_id?: string | null
+  match_summary?: ExceptionMatchSummary | null
+}
+
+export type ExceptionMatchSummary = {
+  match_group_id: string
+  match_status: string
+  confidence: string
+  txn_no: string
+  amount: string
+  contract_no: string | null
 }
 
 export type ExceptionOwnerStat = {
@@ -60,6 +71,10 @@ export type ExceptionStats = {
   total_count: number
   closure_rate: number
   avg_resolution_hours: number
+  today_new_count?: number
+  review_pending_count?: number
+  large_amount_count?: number
+  large_amount_threshold?: number
   by_type: Array<{ exception_type: string; count: number }>
   by_owner: ExceptionOwnerStat[]
 }

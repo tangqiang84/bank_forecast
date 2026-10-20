@@ -885,6 +885,10 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
         total_count: 6,
         closure_rate: 0.5,
         avg_resolution_hours: 12.5,
+        today_new_count: 2,
+        review_pending_count: 1,
+        large_amount_count: 1,
+        large_amount_threshold: 100000,
         by_type: [{ exception_type: 'unknown_receipt', count: 2 }],
         by_owner: [
           {
@@ -931,14 +935,23 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
   await page.getByRole('link', { name: '异常事项' }).click()
   await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('我的待办')).toBeVisible()
+  await expect(page.locator('.summary-grid').getByText('今日新增')).toBeVisible()
+  await expect(page.locator('.summary-grid').getByText('待复核')).toBeVisible()
+  await expect(page.locator('.summary-grid').getByText('大额待办')).toBeVisible()
   await expect(page.getByText('12.5h')).toBeVisible()
   await expect(page.getByText('待处理 1 · 已处理 2 · 超期 1')).toBeVisible()
   await expect(page.getByText('处理中')).toBeVisible()
   await expect(page.getByText('财务负责人').first()).toBeVisible()
 
-  await page.getByLabel('队列').selectOption('mine')
-  await expect.poll(() => lastListUrl).toContain('queue=mine')
+  await page.getByRole('tab', { name: '待分派' }).click()
+  await expect.poll(() => lastListUrl).toContain('queue=unassigned')
   expect(lastListUrl).not.toContain('active_only')
+
+  await page.getByRole('tab', { name: '全部记录' }).click()
+  await expect.poll(() => lastListUrl).toContain('active_only=false')
+
+  await page.getByRole('button', { name: '未知收款', exact: true }).click()
+  await expect.poll(() => lastListUrl).toContain('exception_type=unknown_receipt')
 
   await page.getByLabel('责任人').selectOption('1')
   await expect.poll(() => lastListUrl).toContain('owner_user_id=1')

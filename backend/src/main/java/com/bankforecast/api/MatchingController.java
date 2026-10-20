@@ -81,9 +81,10 @@ public class MatchingController {
       @RequestParam(name = "amount_min", required = false) BigDecimal amountMin,
       @RequestParam(name = "amount_max", required = false) BigDecimal amountMax,
       @RequestParam(name = "created_from", required = false) LocalDate createdFrom,
-      @RequestParam(name = "created_to", required = false) LocalDate createdTo) {
+      @RequestParam(name = "created_to", required = false) LocalDate createdTo,
+      @RequestParam(name = "exception_type", required = false) String exceptionType) {
     return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly, ownerUserId, queue,
-        amountMin, amountMax, createdFrom, createdTo));
+        amountMin, amountMax, createdFrom, createdTo, exceptionType));
   }
 
   @RequirePermission({"exception:view", "matching:view"})

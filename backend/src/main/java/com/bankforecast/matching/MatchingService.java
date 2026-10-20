@@ -258,18 +258,20 @@ public class MatchingService {
   }
   public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
       LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly, Long ownerUserId, String queue,
-      BigDecimal amountMin, BigDecimal amountMax, LocalDate createdFrom, LocalDate createdTo) {
+      BigDecimal amountMin, BigDecimal amountMax, LocalDate createdFrom, LocalDate createdTo, String exceptionType) {
     AuthPrincipal principal = requireAuth();
     int safePage = Math.max(page, 1);
     int safeSize = Math.min(Math.max(pageSize, 1), 100);
     int offset = (safePage - 1) * safeSize;
     // P4-6：金额区间按「工单金额」过滤（承载工单取匹配组金额，流水类工单取流水金额，无金额工单在设筛选时不返回）；
     // created_from/created_to 为创建日期范围；既有 date_from/date_to 保持 due_date 口径不变
+    // P4-10：exception_type 类型筛选（工作台类型 chips）
     String filter = " where e.tenant_id = ? and e.deleted_at is null "
         + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
         + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) "
         + "and (? is null or e.status = ?) "
         + "and (? is null or e.owner_user_id = ?)"
+        + "and (? is null or e.exception_type = ?) "
         + "and (? is null or coalesce(ms.amount, sbt.amount) >= ?) "
         + "and (? is null or coalesce(ms.amount, sbt.amount) <= ?) "
         + "and (? is null or date(e.created_at) >= ?) and (? is null or date(e.created_at) <= ?)"
@@ -278,6 +280,7 @@ public class MatchingService {
         + (activeOnly ? " and e.status in ('new', 'in_progress')" : "");
     Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
         dateFrom, dateFrom, dateTo, dateTo, status, status, ownerUserId, ownerUserId,
+        emptyToNull(exceptionType), emptyToNull(exceptionType),
         amountMin, amountMin, amountMax, amountMax, createdFrom, createdFrom, createdTo, createdTo};
     String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
         + "left join contract c on c.id = p.contract_id "
@@ -1092,6 +1095,7 @@ public class MatchingService {
   }
 
   private Long number(Object value) { return ((Number) value).longValue(); }
+  private String emptyToNull(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
   private Long numberOrNull(Object value) { return value == null ? null : number(value); }
   private BigDecimal decimal(Object value) { return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString()); }
   private String text(Object value) { return value == null ? "" : value.toString().trim(); }

@@ -166,6 +166,7 @@ export const EXCEPTION_TYPE_LABELS: Record<string, string> = {
   customer_risk: '客户回款风险',
   payroll_gap: '工资类支出缺口',
   project_cashflow_risk: '项目现金流风险',
+  match_review: '待核销',
 }
 
 export function exceptionTypeLabel(value: LabelValue): string {
