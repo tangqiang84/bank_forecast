@@ -1452,6 +1452,17 @@ test('模板配置中心映射管理', async ({ page }) => {
   await expect(bankPanel.locator('.mini-row')).toHaveCount(6)
   await expect(bankPanel.getByText('中国银行（BOC）')).toBeVisible()
   await expect(bankPanel.getByText('苏州银行（SUZB）')).toBeVisible()
+  await expect(bankPanel.getByRole('img', { name: '中国银行图标' })).toBeVisible()
+  await expect(bankPanel.getByRole('img', { name: '苏州银行图标' })).toBeVisible()
+
+  await bankPanel.getByRole('button', { name: '字段映射' }).first().click()
+  const bankMappingDialog = page.getByRole('dialog', { name: '中国银行 字段映射' })
+  await expect(bankMappingDialog).toBeVisible()
+  await expect(bankMappingDialog.getByRole('columnheader', { name: '银行表头' })).toBeVisible()
+  await expect(bankMappingDialog.getByRole('columnheader', { name: '标准字段' })).toBeVisible()
+  await expect(bankMappingDialog.locator('tbody tr')).toHaveCount(2)
+  await bankMappingDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(bankMappingDialog).toBeHidden()
 
   const mappingPanel = page.locator('article').filter({
     has: page.getByRole('heading', { name: '自定义表头映射', exact: true }),

@@ -1253,6 +1253,19 @@ textarea {
   font-weight: 600;
 }
 
+.bank-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .attachment-list {
   display: block;
 }

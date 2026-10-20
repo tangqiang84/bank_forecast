@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import BankIcon from '../components/BankIcon.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   createTemplateMapping,
@@ -18,7 +19,15 @@ const base = apiBase()
 const templates = ref<BankTemplate[]>([])
 const fields = ref<TemplateField[]>([])
 const mappings = ref<TemplateMapping[]>([])
-const selectedTemplate = ref<BankTemplate | null>(null)
+const mappingTemplate = ref<BankTemplate | null>(null)
+
+function openMappingModal(template: BankTemplate) {
+  mappingTemplate.value = template
+}
+
+function closeMappingModal() {
+  mappingTemplate.value = null
+}
 const modalOpen = ref(false)
 const editingMapping = ref<TemplateMapping | null>(null)
 const formHeader = ref('')
@@ -123,11 +132,6 @@ async function removeMapping(mapping: TemplateMapping) {
   }
 }
 
-function toggleTemplate(template: BankTemplate) {
-  selectedTemplate.value =
-    selectedTemplate.value?.bank_code === template.bank_code ? null : template
-}
-
 onMounted(load)
 </script>
 
@@ -138,7 +142,7 @@ onMounted(load)
         <p class="eyebrow">模板配置中心</p>
         <h2>银行模板与表头映射</h2>
         <p class="lead">
-          查看六家内置银行模板，维护租户级自定义表头映射；导入流水时自定义映射优先于内置字典。
+          查看九家内置银行模板，维护租户级自定义表头映射；导入流水时自定义映射优先于内置字典。
         </p>
       </div>
       <span class="meta">共 {{ mappings.length }} 条自定义映射</span>
@@ -209,39 +213,46 @@ onMounted(load)
       <div class="section-heading">
         <div>
           <h3>内置银行模板</h3>
-          <span class="meta">六家支持银行的表头映射规则（只读，来自解析器实际规则）</span>
+          <span class="meta">九家支持银行的表头映射规则（只读，来自解析器实际规则）</span>
         </div>
       </div>
       <div class="mini-list">
         <div v-for="template in templates" :key="template.bank_code" class="mini-row">
+          <BankIcon :bank-code="template.bank_code" :bank-name="template.bank_name" />
           <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>
           <span class="meta">{{ template.format }} · {{ template.recognition }}</span>
-          <button class="text-button" type="button" @click="toggleTemplate(template)">
-            {{ selectedTemplate?.bank_code === template.bank_code ? '收起映射' : '字段映射' }}
+          <button class="text-button" type="button" @click="openMappingModal(template)">
+            字段映射
           </button>
         </div>
       </div>
-      <div v-if="selectedTemplate" class="detail-section">
-        <h3>{{ selectedTemplate.bank_name }} 字段映射</h3>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>银行表头</th>
-                <th>标准字段</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="mapping in selectedTemplate.field_mappings" :key="mapping.header">
-                <td>{{ mapping.header }}</td>
-                <td>{{ fieldLabel(mapping.field) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <button class="ghost-button" type="button" @click="selectedTemplate = null">收起</button>
-      </div>
     </article>
+
+    <ModalPanel
+      v-if="mappingTemplate"
+      :title="`${mappingTemplate.bank_name} 字段映射`"
+      @close="closeMappingModal"
+    >
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>银行表头</th>
+              <th>标准字段</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="mapping in mappingTemplate.field_mappings" :key="mapping.header">
+              <td>{{ mapping.header }}</td>
+              <td>{{ fieldLabel(mapping.field) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeMappingModal">关闭</button>
+      </template>
+    </ModalPanel>
 
     <ModalPanel
       v-if="modalOpen"
