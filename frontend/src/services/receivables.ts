@@ -164,8 +164,10 @@ export function loadContracts(
   token: string,
   tenantId: number,
   filters: Record<string, string> = {},
+  page = 1,
+  pageSize = 100,
 ) {
-  const params = new URLSearchParams({ page: '1', page_size: '100' })
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   Object.entries(filters).forEach(([key, value]) => {
     if (value) params.set(key, value)
   })

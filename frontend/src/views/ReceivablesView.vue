@@ -86,6 +86,60 @@ const planForm = ref({
 })
 const contractOptions = ref<Contract[]>([])
 const projectOptions = ref<Project[]>([])
+const contractRows = ref<Contract[]>([])
+const contractPage = ref(1)
+const contractPageSize = ref(20)
+const contractTotal = ref(0)
+const contractLoading = ref(false)
+const plansModalOpen = ref(false)
+const planTab = ref<'receivable' | 'payable'>('receivable')
+
+async function loadContractList() {
+  if (!session.user.value || !session.token.value) return
+  contractLoading.value = true
+  try {
+    const response = await loadContracts(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      {},
+      contractPage.value,
+      contractPageSize.value,
+    )
+    contractRows.value = response.data.items
+    contractTotal.value = response.data.total
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '合同列表加载失败'
+  } finally {
+    contractLoading.value = false
+  }
+}
+
+function contractPrevPage() {
+  contractPage.value--
+  loadContractList()
+}
+
+function contractNextPage() {
+  contractPage.value++
+  loadContractList()
+}
+
+function changeContractSize() {
+  contractPage.value = 1
+  loadContractList()
+}
+
+function openPlansModal() {
+  planTab.value = 'receivable'
+  plansModalOpen.value = true
+  load()
+  loadPayableList()
+}
+
+function closePlansModal() {
+  plansModalOpen.value = false
+}
 
 async function openContractModal() {
   contractForm.value = {
@@ -149,6 +203,7 @@ async function saveContract() {
     message.value = `合同「${form.contract_name.trim()}」已创建。`
     contractDone.value = true
     contractOptions.value = []
+    await loadContractList()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '合同创建失败'
   }
@@ -584,9 +639,8 @@ function changeSize() {
   load()
 }
 onMounted(() => {
-  load()
-  loadPayableList()
-  window.addEventListener('workspace-refresh', load)
+  loadContractList()
+  window.addEventListener('workspace-refresh', loadContractList)
 })
 </script>
 
@@ -595,16 +649,16 @@ onMounted(() => {
     <header class="hero-band">
       <div>
         <p class="eyebrow">合同应收</p>
-        <h2>合同回款计划</h2>
+        <h2>合同列表</h2>
         <p class="lead">
-          应收计划核对与回款匹配；新增合同、新增应收/应付计划和导入通过右上方入口在弹层中操作。
+          合同主数据与回款进度总览；应收/应付计划通过「应收计划与应付计划」弹层分 Tab 查看与维护。
         </p>
       </div>
-      <span class="meta">共 {{ total }} 个节点</span>
+      <span class="meta">共 {{ contractTotal }} 个合同</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p
-      v-if="message && !importModalOpen && !contractModalOpen && !planModalOpen"
+      v-if="message && !importModalOpen && !contractModalOpen && !planModalOpen && !plansModalOpen"
       class="feedback-text"
     >
       {{ message }}
@@ -618,112 +672,191 @@ onMounted(() => {
       >
         新增合同
       </button>
-      <button
-        v-permission="'contract:import'"
-        class="ghost-button"
-        type="button"
-        @click="openPlanModal"
-      >
-        新增应收计划
-      </button>
+      <button class="ghost-button" type="button" @click="openPlansModal">应收计划与应付计划</button>
       <button class="ghost-button" type="button" @click="openImportModal">
         导入合同 / 应收计划
-      </button>
-      <button
-        v-permission="'contract:import'"
-        class="ghost-button"
-        type="button"
-        @click="openPayableCreateModal"
-      >
-        新增应付计划
       </button>
       <button class="ghost-button" type="button" @click="openPayableImport">导入应付计划</button>
       <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
         运行回款匹配
       </button>
     </div>
-    <article class="panel">
-      <h3>业务口径</h3>
-      <div class="detail-section">
-        <p>未到期、按期足额、逾期未收、部分收款和超额收款由系统根据应收日期及已收金额计算。</p>
-        <p class="meta">低置信度结果进入匹配结果页人工确认，未知收款进入异常事项页处理。</p>
-      </div>
-    </article>
     <article class="panel table-panel">
       <div class="section-heading">
         <div>
-          <h3>应收计划</h3>
+          <h3>合同清单</h3>
           <span class="meta">服务端分页</span>
         </div>
-        <span v-if="loading" class="meta">加载中...</span>
+        <span v-if="contractLoading" class="meta">加载中...</span>
       </div>
-      <div v-if="rows.length" class="table-scroll">
+      <div v-if="contractRows.length" class="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>合同</th>
+              <th>合同编号</th>
+              <th>合同名称</th>
               <th>客户</th>
-              <th>节点</th>
-              <th>应收日期</th>
-              <th>计划金额</th>
+              <th>关联项目</th>
+              <th>合同金额</th>
+              <th>应收金额</th>
               <th>已收金额</th>
-              <th>状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in rows" :key="item.id">
+            <tr v-for="contract in contractRows" :key="contract.id">
+              <td>{{ contract.contract_no }}</td>
+              <td>{{ contract.contract_name }}</td>
+              <td>{{ contract.customer_name }}</td>
+              <td>{{ contract.project_name || '-' }}</td>
+              <td>{{ formatCurrency(contract.contract_amount) }}</td>
+              <td>{{ formatCurrency(contract.receivable_amount) }}</td>
+              <td>{{ formatCurrency(contract.paid_amount) }}</td>
               <td>
-                {{ item.contract_no }}<br /><span class="meta">{{ item.contract_name }}</span>
-              </td>
-              <td>{{ item.customer_name }}</td>
-              <td>{{ item.node_name }}</td>
-              <td>{{ item.due_date }}</td>
-              <td>{{ formatCurrency(item.plan_amount) }}</td>
-              <td>{{ formatCurrency(item.paid_amount) }}</td>
-              <td>
-                <span class="pill">{{ receivableStatusLabel(item.status) }}</span>
-              </td>
-              <td>
-                <button class="text-button" type="button" @click="openContract(item.contract_id)">
-                  查看合同
+                <button class="text-button" type="button" @click="openContract(contract.id)">
+                  详情
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p v-else class="empty-state">暂无应收计划，请先导入合同 CSV。</p>
+      <p v-else class="empty-state">暂无合同，请通过「新增合同」或「导入合同 / 应收计划」录入。</p>
       <div class="pagination-controls">
         <span
-          >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
-          {{ total }} 条</span
+          >第 {{ contractPage }} /
+          {{ Math.max(1, Math.ceil(contractTotal / contractPageSize)) }} 页，共
+          {{ contractTotal }} 条</span
         ><label
-          >每页<select v-model.number="pageSize" @change="changeSize">
+          >每页<select v-model.number="contractPageSize" @change="changeContractSize">
             <option :value="20">20</option>
             <option :value="50">50</option>
             <option :value="100">100</option></select
           >条</label
-        ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+        ><button
+          class="ghost-button"
+          :disabled="contractPage <= 1"
+          type="button"
+          @click="contractPrevPage"
+        >
           上一页</button
         ><button
           class="ghost-button"
-          :disabled="page >= Math.ceil(total / pageSize)"
+          :disabled="contractPage >= Math.ceil(contractTotal / contractPageSize)"
           type="button"
-          @click="nextPage"
+          @click="contractNextPage"
         >
           下一页
         </button>
       </div>
     </article>
-
-    <article class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>应付计划</h3>
-          <span class="meta">服务端分页 · 按应付日期升序</span>
+    <ModalPanel v-if="plansModalOpen" title="应收计划与应付计划" @close="closePlansModal">
+      <div class="page-toolbar">
+        <button
+          class="ghost-button"
+          :class="{ 'primary-button': planTab === 'receivable' }"
+          type="button"
+          @click="planTab = 'receivable'"
+        >
+          应收计划
+        </button>
+        <button
+          class="ghost-button"
+          :class="{ 'primary-button': planTab === 'payable' }"
+          type="button"
+          @click="planTab = 'payable'"
+        >
+          应付计划
+        </button>
+      </div>
+      <template v-if="planTab === 'receivable'">
+        <div class="detail-section">
+          <p class="meta">
+            未到期、按期足额、逾期未收、部分收款和超额收款由系统根据应收日期及已收金额计算；低置信度结果进入匹配结果页人工确认，未知收款进入异常事项页处理。
+          </p>
         </div>
-        <div class="action-group">
+        <div class="page-toolbar">
+          <button
+            v-permission="'contract:import'"
+            class="ghost-button"
+            type="button"
+            @click="openPlanModal"
+          >
+            新增应收计划
+          </button>
+          <span v-if="loading" class="meta">加载中...</span>
+        </div>
+        <div v-if="rows.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>合同</th>
+                <th>客户</th>
+                <th>节点</th>
+                <th>应收日期</th>
+                <th>计划金额</th>
+                <th>已收金额</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in rows" :key="item.id">
+                <td>
+                  {{ item.contract_no }}<br /><span class="meta">{{ item.contract_name }}</span>
+                </td>
+                <td>{{ item.customer_name }}</td>
+                <td>{{ item.node_name }}</td>
+                <td>{{ item.due_date }}</td>
+                <td>{{ formatCurrency(item.plan_amount) }}</td>
+                <td>{{ formatCurrency(item.paid_amount) }}</td>
+                <td>
+                  <span class="pill">{{ receivableStatusLabel(item.status) }}</span>
+                </td>
+                <td>
+                  <button class="text-button" type="button" @click="openContract(item.contract_id)">
+                    查看合同
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">
+          暂无应收计划，请通过「新增应收计划」或「导入合同 / 应收计划」录入。
+        </p>
+        <div class="pagination-controls">
+          <span
+            >第 {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }} 页，共
+            {{ total }} 条</span
+          ><label
+            >每页<select v-model.number="pageSize" @change="changeSize">
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option></select
+            >条</label
+          ><button class="ghost-button" :disabled="page <= 1" type="button" @click="prevPage">
+            上一页</button
+          ><button
+            class="ghost-button"
+            :disabled="page >= Math.ceil(total / pageSize)"
+            type="button"
+            @click="nextPage"
+          >
+            下一页
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <div class="page-toolbar">
+          <button
+            v-permission="'contract:import'"
+            class="ghost-button"
+            type="button"
+            @click="openPayableCreateModal"
+          >
+            新增应付计划
+          </button>
           <label
             >状态<select v-model="payableStatus" @change="filterPayables">
               <option value="">全部</option>
@@ -734,67 +867,75 @@ onMounted(() => {
           >
           <span v-if="payableLoading" class="meta">加载中...</span>
         </div>
-      </div>
-      <p v-if="payableMessage && !payableModalOpen && !payableCreateModalOpen" class="error-banner">
-        {{ payableMessage }}
-      </p>
-      <div v-if="payables.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>供应商</th>
-              <th>节点</th>
-              <th>应付日期</th>
-              <th>应付金额</th>
-              <th>已付金额</th>
-              <th>状态</th>
-              <th>关联合同号</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in payables" :key="item.id">
-              <td>{{ item.supplier_name }}</td>
-              <td>{{ item.node_name }}</td>
-              <td>{{ item.due_date }}</td>
-              <td>{{ formatCurrency(item.plan_amount) }}</td>
-              <td>{{ formatCurrency(item.paid_amount) }}</td>
-              <td>
-                <span class="pill">{{ payableStatusLabel(item.status) }}</span>
-              </td>
-              <td>{{ item.contract_no || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">暂无应付计划，请通过「新增应付计划」或「导入应付计划」录入。</p>
-      <div class="pagination-controls">
-        <span
-          >第 {{ payablePage }} /
-          {{ Math.max(1, Math.ceil(payableTotal / payablePageSize)) }} 页，共
-          {{ payableTotal }} 条</span
-        ><label
-          >每页<select v-model.number="payablePageSize" @change="changePayableSize">
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-            <option :value="100">100</option></select
-          >条</label
-        ><button
-          class="ghost-button"
-          :disabled="payablePage <= 1"
-          type="button"
-          @click="payablePrevPage"
+        <p
+          v-if="payableMessage && !payableModalOpen && !payableCreateModalOpen"
+          class="error-banner"
         >
-          上一页</button
-        ><button
-          class="ghost-button"
-          :disabled="payablePage >= Math.ceil(payableTotal / payablePageSize)"
-          type="button"
-          @click="payableNextPage"
-        >
-          下一页
-        </button>
-      </div>
-    </article>
+          {{ payableMessage }}
+        </p>
+        <div v-if="payables.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>供应商</th>
+                <th>节点</th>
+                <th>应付日期</th>
+                <th>应付金额</th>
+                <th>已付金额</th>
+                <th>状态</th>
+                <th>关联合同号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in payables" :key="item.id">
+                <td>{{ item.supplier_name }}</td>
+                <td>{{ item.node_name }}</td>
+                <td>{{ item.due_date }}</td>
+                <td>{{ formatCurrency(item.plan_amount) }}</td>
+                <td>{{ formatCurrency(item.paid_amount) }}</td>
+                <td>
+                  <span class="pill">{{ payableStatusLabel(item.status) }}</span>
+                </td>
+                <td>{{ item.contract_no || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">
+          暂无应付计划，请通过「新增应付计划」或「导入应付计划」录入。
+        </p>
+        <div class="pagination-controls">
+          <span
+            >第 {{ payablePage }} /
+            {{ Math.max(1, Math.ceil(payableTotal / payablePageSize)) }} 页，共
+            {{ payableTotal }} 条</span
+          ><label
+            >每页<select v-model.number="payablePageSize" @change="changePayableSize">
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option></select
+            >条</label
+          ><button
+            class="ghost-button"
+            :disabled="payablePage <= 1"
+            type="button"
+            @click="payablePrevPage"
+          >
+            上一页</button
+          ><button
+            class="ghost-button"
+            :disabled="payablePage >= Math.ceil(payableTotal / payablePageSize)"
+            type="button"
+            @click="payableNextPage"
+          >
+            下一页
+          </button>
+        </div>
+      </template>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closePlansModal">关闭</button>
+      </template>
+    </ModalPanel>
 
     <ModalPanel v-if="payableCreateModalOpen" title="新增应付计划" @close="closePayableCreateModal">
       <p class="meta">

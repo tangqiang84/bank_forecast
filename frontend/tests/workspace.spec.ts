@@ -377,7 +377,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '合同应收' }).click()
-  await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同 / 应收计划' })).toBeVisible()
   await page.getByRole('button', { name: '新增合同' }).click()
   const contractDialog = page.getByRole('dialog', { name: '新增合同' })
@@ -389,7 +389,10 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await contractDialog.getByRole('button', { name: '保存合同' }).click()
   await expect(contractDialog.getByText('合同「端到端合同」已创建。')).toBeVisible()
   await contractDialog.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.getByRole('button', { name: '新增应收计划' }).click()
+  await page.getByRole('button', { name: '应收计划与应付计划' }).click()
+  const plansDialog = page.getByRole('dialog', { name: '应收计划与应付计划' })
+  await expect(plansDialog).toBeVisible()
+  await plansDialog.getByRole('button', { name: '新增应收计划' }).click()
   const planDialog = page.getByRole('dialog', { name: '新增应收计划' })
   await expect(planDialog).toBeVisible()
   await planDialog.getByLabel('关联合同').selectOption({ label: 'HT-E2E-000 · 示例合同' })
@@ -399,7 +402,8 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await planDialog.getByRole('button', { name: '保存应收计划' }).click()
   await expect(planDialog.getByText('应收计划「首付款」已创建。')).toBeVisible()
   await planDialog.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.getByRole('button', { name: '新增应付计划' }).click()
+  await plansDialog.getByRole('button', { name: '应付计划' }).click()
+  await plansDialog.getByRole('button', { name: '新增应付计划' }).click()
   const payableDialog = page.getByRole('dialog', { name: '新增应付计划' })
   await expect(payableDialog).toBeVisible()
   await payableDialog.getByLabel('供应商名称').fill('端到端供应商')
@@ -412,6 +416,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await payableDialog.getByRole('button', { name: '保存应付计划' }).click()
   await expect(payableDialog.getByText('应付计划「到货款」已创建。')).toBeVisible()
   await payableDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await plansDialog.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
   await expect(
     page

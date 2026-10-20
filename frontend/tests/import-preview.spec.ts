@@ -171,7 +171,7 @@ test('合同导入预览后确认导入', async ({ page }) => {
 
   await login(page)
   await page.getByRole('link', { name: '合同应收' }).click()
-  await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
   const importDialog = page.getByRole('dialog', { name: '导入合同 / 应收计划' })
@@ -817,15 +817,17 @@ test('应付计划面板展示与导入流程', async ({ page }) => {
 
   await login(page)
   await page.getByRole('link', { name: '合同应收' }).click()
-  await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
-  const payablePanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '应付计划', exact: true }),
-  })
-  await expect(payablePanel.getByText('供应商甲')).toBeVisible()
-  await expect(payablePanel.getByText('服务费')).toBeVisible()
-  await expect(payablePanel.getByText('HT-2026-001')).toBeVisible()
-  await expect(payablePanel.getByRole('cell', { name: '未付', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '应收计划与应付计划' }).click()
+  const plansDialog = page.getByRole('dialog', { name: '应收计划与应付计划' })
+  await expect(plansDialog).toBeVisible()
+  await plansDialog.getByRole('button', { name: '应付计划', exact: true }).click()
+  await expect(plansDialog.getByText('供应商甲')).toBeVisible()
+  await expect(plansDialog.getByText('服务费')).toBeVisible()
+  await expect(plansDialog.getByText('HT-2026-001')).toBeVisible()
+  await expect(plansDialog.getByRole('cell', { name: '未付', exact: true })).toBeVisible()
+  await plansDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByRole('button', { name: '导入应付计划' }).click()
   const payableDialog = page.getByRole('dialog', { name: '导入应付计划' })

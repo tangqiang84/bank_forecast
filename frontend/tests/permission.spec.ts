@@ -93,7 +93,7 @@ test('业务负责人在项目页看不到受限操作按钮', async ({ page }) 
   await expect(page.getByRole('button', { name: '批量完成' })).toBeHidden()
 
   await page.getByRole('link', { name: '合同应收' }).click()
-  await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同应收' })).toBeHidden()
   await expect(page.getByRole('button', { name: '运行回款匹配' })).toBeHidden()
 })
