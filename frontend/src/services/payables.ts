@@ -36,6 +36,19 @@ export type PayableImportPayload = {
   remark: string | null
 }
 
+export function createPayablePlan(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: Record<string, unknown>,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/payables`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 export function loadPayables(
   baseUrl: string,
   token: string,

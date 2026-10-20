@@ -159,6 +159,34 @@ async function mockWorkspaceApi(page: Page) {
     }
     await route.fallback()
   })
+  await page.route('**/api/v1/payables', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: { id: 401, supplier_name: '端到端供应商', node_name: '到货款', status: 'unpaid' },
+          trace_id: 'e2e',
+        }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/payables?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { items: [], page: 1, page_size: 20, total: 0 },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
   await page.route('**/api/v1/contracts/receivables**', async (route) =>
     route.fulfill({
       status: 200,
@@ -371,6 +399,19 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await planDialog.getByRole('button', { name: '保存应收计划' }).click()
   await expect(planDialog.getByText('应收计划「首付款」已创建。')).toBeVisible()
   await planDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '新增应付计划' }).click()
+  const payableDialog = page.getByRole('dialog', { name: '新增应付计划' })
+  await expect(payableDialog).toBeVisible()
+  await payableDialog.getByLabel('供应商名称').fill('端到端供应商')
+  await payableDialog
+    .getByLabel('关联合同（可选）')
+    .selectOption({ label: 'HT-E2E-000 · 示例合同' })
+  await payableDialog.getByLabel('节点名称').fill('到货款')
+  await payableDialog.getByLabel('应付日期').fill('2026-11-15')
+  await payableDialog.getByLabel('计划金额').fill('3000')
+  await payableDialog.getByRole('button', { name: '保存应付计划' }).click()
+  await expect(payableDialog.getByText('应付计划「到货款」已创建。')).toBeVisible()
+  await payableDialog.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
   await expect(
     page

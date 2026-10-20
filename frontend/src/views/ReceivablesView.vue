@@ -16,6 +16,7 @@ import {
 import { loadProjects, type Project } from '../services/projects'
 import {
   loadPayables,
+  createPayablePlan,
   previewPayables,
   type PaginatedPayables,
   type PayableImportPayload,
@@ -222,6 +223,70 @@ const payablePreview = ref<GenericImportPreview<PayableImportPayload> | null>(nu
 const payableRetryJson = ref('')
 const payableImportLoading = ref(false)
 const payableImportDone = ref(false)
+const payableCreateModalOpen = ref(false)
+const payableCreateDone = ref(false)
+const payableForm = ref({
+  supplier_name: '',
+  contract_id: '',
+  node_name: '',
+  due_date: '',
+  plan_amount: '',
+  remark: '',
+})
+
+async function openPayableCreateModal() {
+  payableForm.value = {
+    supplier_name: '',
+    contract_id: '',
+    node_name: '',
+    due_date: '',
+    plan_amount: '',
+    remark: '',
+  }
+  payableMessage.value = ''
+  payableCreateDone.value = false
+  payableCreateModalOpen.value = true
+  if (session.user.value && session.token.value && !contractOptions.value.length) {
+    try {
+      const contracts = await loadContracts(base, session.token.value, session.user.value.tenant_id)
+      contractOptions.value = contracts.data.items
+    } catch {
+      contractOptions.value = []
+    }
+  }
+}
+
+function closePayableCreateModal() {
+  payableCreateModalOpen.value = false
+}
+
+async function savePayablePlan() {
+  if (!session.user.value || !session.token.value) return
+  const form = payableForm.value
+  if (!form.supplier_name.trim() || !form.node_name.trim() || !form.due_date) {
+    payableMessage.value = '请填写供应商名称、节点名称和应付日期'
+    return
+  }
+  if (!form.plan_amount || Number(form.plan_amount) <= 0) {
+    payableMessage.value = '请填写大于 0 的计划金额'
+    return
+  }
+  try {
+    await createPayablePlan(base, session.token.value, session.user.value.tenant_id, {
+      supplier_name: form.supplier_name,
+      contract_id: form.contract_id || null,
+      node_name: form.node_name,
+      due_date: form.due_date,
+      plan_amount: form.plan_amount,
+      remark: form.remark,
+    })
+    payableCreateDone.value = true
+    await loadPayableList()
+    payableMessage.value = `应付计划「${form.node_name.trim()}」已创建。`
+  } catch (cause) {
+    payableMessage.value = cause instanceof Error ? cause.message : '应付计划创建失败'
+  }
+}
 
 function payablePrevPage() {
   payablePage.value--
@@ -532,7 +597,7 @@ onMounted(() => {
         <p class="eyebrow">合同应收</p>
         <h2>合同回款计划</h2>
         <p class="lead">
-          应收计划核对与回款匹配；新增合同、新增应收计划和导入通过右上方入口在弹层中操作。
+          应收计划核对与回款匹配；新增合同、新增应收/应付计划和导入通过右上方入口在弹层中操作。
         </p>
       </div>
       <span class="meta">共 {{ total }} 个节点</span>
@@ -563,6 +628,14 @@ onMounted(() => {
       </button>
       <button class="ghost-button" type="button" @click="openImportModal">
         导入合同 / 应收计划
+      </button>
+      <button
+        v-permission="'contract:import'"
+        class="ghost-button"
+        type="button"
+        @click="openPayableCreateModal"
+      >
+        新增应付计划
       </button>
       <button class="ghost-button" type="button" @click="openPayableImport">导入应付计划</button>
       <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
@@ -662,7 +735,9 @@ onMounted(() => {
           <span v-if="payableLoading" class="meta">加载中...</span>
         </div>
       </div>
-      <p v-if="payableMessage && !payableModalOpen" class="error-banner">{{ payableMessage }}</p>
+      <p v-if="payableMessage && !payableModalOpen && !payableCreateModalOpen" class="error-banner">
+        {{ payableMessage }}
+      </p>
       <div v-if="payables.length" class="table-scroll">
         <table>
           <thead>
@@ -691,7 +766,7 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
-      <p v-else class="empty-state">暂无应付计划，请通过「导入应付计划」录入。</p>
+      <p v-else class="empty-state">暂无应付计划，请通过「新增应付计划」或「导入应付计划」录入。</p>
       <div class="pagination-controls">
         <span
           >第 {{ payablePage }} /
@@ -720,6 +795,54 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <ModalPanel v-if="payableCreateModalOpen" title="新增应付计划" @close="closePayableCreateModal">
+      <p class="meta">
+        手工录入应付节点，可关联合同；供应商 + 节点 + 日期 + 金额完全相同的计划判重
+      </p>
+      <label>供应商名称<input v-model.trim="payableForm.supplier_name" /></label
+      ><label
+        >关联合同（可选）<select v-model="payableForm.contract_id">
+          <option value="">不关联合同</option>
+          <option
+            v-for="contract in contractOptions"
+            :key="contract.id"
+            :value="String(contract.id)"
+          >
+            {{ contract.contract_no }} · {{ contract.contract_name }}
+          </option>
+        </select></label
+      ><label>节点名称<input v-model.trim="payableForm.node_name" placeholder="如 到货款" /></label
+      ><label>应付日期<input v-model="payableForm.due_date" type="date" /></label
+      ><label
+        >计划金额<input
+          v-model="payableForm.plan_amount"
+          type="number"
+          min="0.01"
+          step="0.01" /></label
+      ><label>备注<input v-model.trim="payableForm.remark" /></label>
+      <div class="action-group">
+        <button
+          v-permission="'contract:import'"
+          class="primary-button"
+          type="button"
+          @click="savePayablePlan"
+        >
+          保存应付计划</button
+        ><button class="ghost-button" type="button" @click="closePayableCreateModal">取消</button>
+      </div>
+      <p v-if="payableMessage" class="feedback-text">{{ payableMessage }}</p>
+      <template #footer>
+        <button
+          v-if="payableCreateDone"
+          class="primary-button"
+          type="button"
+          @click="closePayableCreateModal"
+        >
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
 
     <ModalPanel v-if="payableModalOpen" title="导入应付计划" @close="closePayableImport">
       <label
