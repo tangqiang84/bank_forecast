@@ -839,9 +839,8 @@ test('规则中心修改规则并回滚版本', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '规则配置与版本管理' })).toBeVisible()
   await expect(page.getByText('当前行业模板：IT 软件与信息服务')).toBeVisible()
 
-  const rulePanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '项目风险规则', exact: true }),
-  })
+  await page.getByRole('button', { name: '项目风险规则' }).click()
+  const rulePanel = page.getByRole('dialog', { name: '项目风险规则' })
   await expect(rulePanel.getByText('存在逾期应收', { exact: true })).toBeVisible()
   await expect(rulePanel.locator('td').getByText('overdue_exists', { exact: true })).toHaveCount(0)
   const helpButton = rulePanel.getByRole('button', { name: '查看存在逾期应收的说明与用法' })
@@ -2228,16 +2227,19 @@ test('规则中心异常分派配置保存与行业预警运行', async ({ page 
 
   await login(page)
   await page.getByRole('link', { name: '规则中心' }).click()
-  await expect(page.getByRole('heading', { name: '异常自动分派' })).toBeVisible()
-  await expect(page.locator('tr', { hasText: '资金缺口' })).toBeVisible()
+  await page.getByRole('button', { name: '异常自动分派' }).click()
+  const assignmentDialog = page.getByRole('dialog', { name: '异常自动分派' })
+  await expect(assignmentDialog).toBeVisible()
+  await expect(assignmentDialog.locator('tr', { hasText: '资金缺口' })).toBeVisible()
 
-  const unknownRow = page.locator('tr', { hasText: '未知收款' })
+  const unknownRow = assignmentDialog.locator('tr', { hasText: '未知收款' })
   await unknownRow.locator('select').selectOption('7')
-  await page.getByRole('button', { name: '保存分派配置' }).click()
+  await assignmentDialog.getByRole('button', { name: '保存分派配置' }).click()
   await expect(page.getByText('异常自动分派配置已保存。')).toBeVisible()
   expect(assignmentBody).toMatchObject({
     assignments: { unknown_receipt: 7, unreceived: null, fund_gap: null },
   })
+  await assignmentDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByRole('button', { name: '立即运行' }).click()
   await expect(page.getByText('行业预警已运行，幂等不重复生成异常。')).toBeVisible()

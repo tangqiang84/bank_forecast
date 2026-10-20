@@ -18,6 +18,7 @@ import {
 } from '../services/rules'
 import { loadSystemUsers, type SystemUser } from '../services/system'
 import type { ProjectRiskRule } from '../services/projects'
+import ModalPanel from '../components/ModalPanel.vue'
 import { apiBase, useSession } from '../session'
 import { exceptionTypeLabel, industryTemplateLabel } from '../utils/labels'
 import { RULE_META, ruleName } from '../utils/riskRules'
@@ -27,6 +28,24 @@ const base = apiBase()
 const rules = ref<ProjectRiskRule[]>([])
 const config = ref<RuleConfig | null>(null)
 const versions = ref<RuleVersion[]>([])
+const assignmentModalOpen = ref(false)
+const rulesModalOpen = ref(false)
+
+function openAssignmentModal() {
+  assignmentModalOpen.value = true
+}
+
+function closeAssignmentModal() {
+  assignmentModalOpen.value = false
+}
+
+function openRulesModal() {
+  rulesModalOpen.value = true
+}
+
+function closeRulesModal() {
+  rulesModalOpen.value = false
+}
 const versionsRule = ref('')
 const ruleHelp = ref<string | null>(null)
 
@@ -250,6 +269,11 @@ onMounted(() => {
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message" class="feedback-text">{{ message }}</p>
 
+    <div class="page-toolbar">
+      <button class="ghost-button" type="button" @click="openAssignmentModal">异常自动分派</button>
+      <button class="ghost-button" type="button" @click="openRulesModal">项目风险规则</button>
+    </div>
+
     <article class="panel workflow-panel">
       <h3>行业模型配置</h3>
       <label
@@ -306,13 +330,8 @@ onMounted(() => {
       </p>
     </article>
 
-    <article class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>异常自动分派</h3>
-          <span class="meta">新异常按类型自动分派给处理人，留空表示不分派</span>
-        </div>
-      </div>
+    <ModalPanel v-if="assignmentModalOpen" title="异常自动分派" @close="closeAssignmentModal">
+      <p class="meta">新异常按类型自动分派给处理人，留空表示不分派</p>
       <p v-if="assignmentError" class="error-banner">{{ assignmentError }}</p>
       <div v-else-if="assignmentItems.length" class="table-scroll">
         <table>
@@ -357,7 +376,10 @@ onMounted(() => {
           保存分派配置
         </button>
       </div>
-    </article>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeAssignmentModal">关闭</button>
+      </template>
+    </ModalPanel>
 
     <article class="panel workflow-panel">
       <h3>行业预警</h3>
@@ -384,14 +406,8 @@ onMounted(() => {
       </div>
     </article>
 
-    <article class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>项目风险规则</h3>
-          <span class="meta">修改自动记录版本，可随时回滚</span>
-        </div>
-        <span v-if="loading" class="meta">加载中...</span>
-      </div>
+    <ModalPanel v-if="rulesModalOpen" title="项目风险规则" @close="closeRulesModal">
+      <p class="meta">修改自动记录版本，可随时回滚 <span v-if="loading">加载中...</span></p>
       <div v-if="rules.length" class="table-scroll">
         <table>
           <thead>
@@ -457,58 +473,61 @@ onMounted(() => {
         </table>
       </div>
       <p v-else class="empty-state">暂无风险规则。</p>
-    </article>
 
-    <article v-if="versionsRule" class="panel table-panel">
-      <div class="section-heading">
-        <div>
-          <h3>版本历史：{{ ruleName(versionsRule) }}（{{ versionsRule }}）</h3>
-          <span class="meta">回滚会把所选版本写回当前规则并记录新版本</span>
+      <div v-if="versionsRule" class="detail-section">
+        <div class="section-heading">
+          <div>
+            <h3>版本历史：{{ ruleName(versionsRule) }}（{{ versionsRule }}）</h3>
+            <span class="meta">回滚会把所选版本写回当前规则并记录新版本</span>
+          </div>
+          <button class="ghost-button" type="button" @click="versionsRule = ''">收起</button>
         </div>
-        <button class="ghost-button" type="button" @click="versionsRule = ''">收起</button>
+        <div v-if="versions.length" class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>版本</th>
+                <th>阈值</th>
+                <th>扣分</th>
+                <th>扣分上限</th>
+                <th>启用</th>
+                <th>来源</th>
+                <th>备注</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="version in versions" :key="version.id">
+                <td>v{{ version.version_no }}</td>
+                <td>{{ version.threshold }}</td>
+                <td>{{ version.penalty }}</td>
+                <td>{{ version.max_penalty ?? '-' }}</td>
+                <td>{{ version.enabled ? '是' : '否' }}</td>
+                <td>
+                  <span class="pill">{{ versionSourceLabel(version.change_source) }}</span>
+                </td>
+                <td>{{ version.remark || '-' }}</td>
+                <td>{{ version.created_at }}</td>
+                <td>
+                  <button
+                    v-permission="'project:rule'"
+                    class="text-button"
+                    type="button"
+                    @click="rollback(version)"
+                  >
+                    回滚到此版本
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">该规则还没有版本记录，保存一次后自动生成基线版本。</p>
       </div>
-      <div v-if="versions.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>版本</th>
-              <th>阈值</th>
-              <th>扣分</th>
-              <th>扣分上限</th>
-              <th>启用</th>
-              <th>来源</th>
-              <th>备注</th>
-              <th>时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="version in versions" :key="version.id">
-              <td>v{{ version.version_no }}</td>
-              <td>{{ version.threshold }}</td>
-              <td>{{ version.penalty }}</td>
-              <td>{{ version.max_penalty ?? '-' }}</td>
-              <td>{{ version.enabled ? '是' : '否' }}</td>
-              <td>
-                <span class="pill">{{ versionSourceLabel(version.change_source) }}</span>
-              </td>
-              <td>{{ version.remark || '-' }}</td>
-              <td>{{ version.created_at }}</td>
-              <td>
-                <button
-                  v-permission="'project:rule'"
-                  class="text-button"
-                  type="button"
-                  @click="rollback(version)"
-                >
-                  回滚到此版本
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">该规则还没有版本记录，保存一次后自动生成基线版本。</p>
-    </article>
+      <template #footer>
+        <button class="primary-button" type="button" @click="closeRulesModal">关闭</button>
+      </template>
+    </ModalPanel>
   </section>
 </template>
