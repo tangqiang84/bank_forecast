@@ -751,18 +751,22 @@ onMounted(() => {
       </div>
     </article>
     <ModalPanel v-if="plansModalOpen" title="应收计划与应付计划" @close="closePlansModal">
-      <div class="page-toolbar">
+      <div class="tab-bar" role="tablist">
         <button
-          class="ghost-button"
-          :class="{ 'primary-button': planTab === 'receivable' }"
+          class="tab-item"
+          :class="{ 'tab-item-active': planTab === 'receivable' }"
+          role="tab"
+          :aria-selected="planTab === 'receivable'"
           type="button"
           @click="planTab = 'receivable'"
         >
           应收计划
         </button>
         <button
-          class="ghost-button"
-          :class="{ 'primary-button': planTab === 'payable' }"
+          class="tab-item"
+          :class="{ 'tab-item-active': planTab === 'payable' }"
+          role="tab"
+          :aria-selected="planTab === 'payable'"
           type="button"
           @click="planTab = 'payable'"
         >

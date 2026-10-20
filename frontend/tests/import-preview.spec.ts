@@ -822,7 +822,7 @@ test('应付计划面板展示与导入流程', async ({ page }) => {
   await page.getByRole('button', { name: '应收计划与应付计划' }).click()
   const plansDialog = page.getByRole('dialog', { name: '应收计划与应付计划' })
   await expect(plansDialog).toBeVisible()
-  await plansDialog.getByRole('button', { name: '应付计划', exact: true }).click()
+  await plansDialog.getByRole('tab', { name: '应付计划', exact: true }).click()
   await expect(plansDialog.getByText('供应商甲')).toBeVisible()
   await expect(plansDialog.getByText('服务费')).toBeVisible()
   await expect(plansDialog.getByText('HT-2026-001')).toBeVisible()

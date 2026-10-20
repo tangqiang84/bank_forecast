@@ -402,7 +402,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await planDialog.getByRole('button', { name: '保存应收计划' }).click()
   await expect(planDialog.getByText('应收计划「首付款」已创建。')).toBeVisible()
   await planDialog.getByRole('button', { name: '关闭', exact: true }).click()
-  await plansDialog.getByRole('button', { name: '应付计划' }).click()
+  await plansDialog.getByRole('tab', { name: '应付计划' }).click()
   await plansDialog.getByRole('button', { name: '新增应付计划' }).click()
   const payableDialog = page.getByRole('dialog', { name: '新增应付计划' })
   await expect(payableDialog).toBeVisible()

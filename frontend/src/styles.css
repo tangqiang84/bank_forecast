@@ -1226,6 +1226,33 @@ textarea {
   line-height: 1.6;
 }
 
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.tab-item {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tab-item:hover {
+  color: var(--color-primary);
+}
+
+.tab-item-active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 .attachment-list {
   display: block;
 }
