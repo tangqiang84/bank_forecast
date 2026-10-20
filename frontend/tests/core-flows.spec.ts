@@ -842,13 +842,24 @@ test('规则中心修改规则并回滚版本', async ({ page }) => {
   const rulePanel = page.locator('article').filter({
     has: page.getByRole('heading', { name: '项目风险规则', exact: true }),
   })
+  await expect(rulePanel.getByText('存在逾期应收', { exact: true })).toBeVisible()
+  await expect(rulePanel.locator('td').getByText('overdue_exists', { exact: true })).toHaveCount(0)
+  const helpButton = rulePanel.getByRole('button', { name: '查看存在逾期应收的说明与用法' })
+  await expect(helpButton).toBeVisible()
+  await helpButton.click()
+  await expect(rulePanel.getByText(/监控项目逾期未收金额/)).toBeVisible()
+  await expect(rulePanel.getByText(/字段标识：overdue_exists/)).toBeVisible()
+  await helpButton.click()
+  await expect(rulePanel.getByText(/监控项目逾期未收金额/)).toHaveCount(0)
   await rulePanel.locator('input[type="number"]').first().fill('1')
   await rulePanel.getByRole('button', { name: '保存' }).first().click()
   await expect(page.getByText(/已保存并记录新版本/)).toBeVisible()
   expect(ruleUpdated).toMatchObject({ threshold: 1 })
 
   await page.getByRole('button', { name: '版本' }).click()
-  await expect(page.getByRole('heading', { name: '版本历史：overdue_exists' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: '版本历史：存在逾期应收（overdue_exists）' }),
+  ).toBeVisible()
   await expect(page.getByText('v1')).toBeVisible()
   await page.getByRole('button', { name: '回滚到此版本' }).first().click()
   await expect(page.getByText(/已回滚到版本 v2/)).toBeVisible()

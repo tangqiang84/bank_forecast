@@ -20,6 +20,7 @@ import { loadSystemUsers, type SystemUser } from '../services/system'
 import type { ProjectRiskRule } from '../services/projects'
 import { apiBase, useSession } from '../session'
 import { exceptionTypeLabel, industryTemplateLabel } from '../utils/labels'
+import { RULE_META, ruleName } from '../utils/riskRules'
 
 const session = useSession()
 const base = apiBase()
@@ -27,6 +28,11 @@ const rules = ref<ProjectRiskRule[]>([])
 const config = ref<RuleConfig | null>(null)
 const versions = ref<RuleVersion[]>([])
 const versionsRule = ref('')
+const ruleHelp = ref<string | null>(null)
+
+function toggleRuleHelp(ruleCode: string) {
+  ruleHelp.value = ruleHelp.value === ruleCode ? null : ruleCode
+}
 const industry = ref('it_software')
 const loading = ref(false)
 const error = ref('')
@@ -74,7 +80,7 @@ async function saveRule(rule: ProjectRiskRule) {
         enabled: rule.enabled,
       },
     )
-    message.value = `风险规则 ${rule.rule_code} 已保存并记录新版本。`
+    message.value = `风险规则「${ruleName(rule.rule_code)}」已保存并记录新版本。`
     if (versionsRule.value === rule.rule_code) await showVersions(rule.rule_code)
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '风险规则保存失败'
@@ -103,7 +109,7 @@ async function rollback(version: RuleVersion) {
       version.rule_code,
       version.version_no,
     )
-    message.value = `规则 ${version.rule_code} 已回滚到版本 v${version.version_no}。`
+    message.value = `规则「${ruleName(version.rule_code)}」已回滚到版本 v${version.version_no}。`
     await load()
     await showVersions(version.rule_code)
   } catch (cause) {
@@ -399,27 +405,54 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rule in rules" :key="rule.rule_code">
-              <td>{{ rule.rule_code }}</td>
-              <td><input v-model="rule.threshold" type="number" step="0.01" /></td>
-              <td><input v-model="rule.penalty" type="number" step="1" /></td>
-              <td><input v-model="rule.max_penalty" type="number" step="1" /></td>
-              <td><input v-model="rule.enabled" type="checkbox" /></td>
-              <td>
-                <div class="action-group">
-                  <button
-                    v-permission="'project:rule'"
-                    class="text-button"
-                    type="button"
-                    @click="saveRule(rule)"
+            <template v-for="rule in rules" :key="rule.rule_code">
+              <tr>
+                <td>
+                  <span class="rule-identity"
+                    ><strong>{{ ruleName(rule.rule_code) }}</strong
+                    ><button
+                      v-if="RULE_META[rule.rule_code]"
+                      class="rule-help-icon"
+                      type="button"
+                      :aria-expanded="ruleHelp === rule.rule_code"
+                      :aria-label="`查看${ruleName(rule.rule_code)}的说明与用法`"
+                      @click="toggleRuleHelp(rule.rule_code)"
+                    >
+                      ?
+                    </button></span
                   >
-                    保存</button
-                  ><button class="text-button" type="button" @click="showVersions(rule.rule_code)">
-                    版本
-                  </button>
-                </div>
-              </td>
-            </tr>
+                </td>
+                <td><input v-model="rule.threshold" type="number" step="0.01" /></td>
+                <td><input v-model="rule.penalty" type="number" step="1" /></td>
+                <td><input v-model="rule.max_penalty" type="number" step="1" /></td>
+                <td><input v-model="rule.enabled" type="checkbox" /></td>
+                <td>
+                  <div class="action-group">
+                    <button
+                      v-permission="'project:rule'"
+                      class="text-button"
+                      type="button"
+                      @click="saveRule(rule)"
+                    >
+                      保存</button
+                    ><button
+                      class="text-button"
+                      type="button"
+                      @click="showVersions(rule.rule_code)"
+                    >
+                      版本
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="ruleHelp === rule.rule_code">
+                <td colspan="6">
+                  <p class="rule-help">
+                    {{ RULE_META[rule.rule_code]?.description }}（字段标识：{{ rule.rule_code }}）
+                  </p>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -429,7 +462,7 @@ onMounted(() => {
     <article v-if="versionsRule" class="panel table-panel">
       <div class="section-heading">
         <div>
-          <h3>版本历史：{{ versionsRule }}</h3>
+          <h3>版本历史：{{ ruleName(versionsRule) }}（{{ versionsRule }}）</h3>
           <span class="meta">回滚会把所选版本写回当前规则并记录新版本</span>
         </div>
         <button class="ghost-button" type="button" @click="versionsRule = ''">收起</button>
