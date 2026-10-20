@@ -123,6 +123,53 @@ class ProjectControllerTest {
         .andExpect(jsonPath("$.data.timeline[?(@.type == 'payment')]").exists());
   }
 
+  @Test
+  void negativeCashflowRuleTriggersOnlyWhenNetCashflowIsNegative() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    jdbcTemplate.update("insert into project (tenant_id, project_no, project_name, customer_name, project_status) values (?, ?, ?, ?, 'active')",
+        tenantId, "PRJ-NEG-" + suffix, "负现金流项目", "测试客户");
+    jdbcTemplate.update("insert into project (tenant_id, project_no, project_name, customer_name, project_status) values (?, ?, ?, ?, 'active')",
+        tenantId, "PRJ-POS-" + suffix, "正现金流项目", "测试客户");
+    Long negProjectId = jdbcTemplate.queryForObject("select id from project where project_no = ?", Long.class, "PRJ-NEG-" + suffix);
+    Long posProjectId = jdbcTemplate.queryForObject("select id from project where project_no = ?", Long.class, "PRJ-POS-" + suffix);
+    insertAllocatedTransaction(tenantId, suffix, "NEG", negProjectId, "expense", "200.00");
+    insertAllocatedTransaction(tenantId, suffix, "POS", posProjectId, "income", "300.00");
+
+    mockMvc.perform(get("/api/v1/projects?page=1&page_size=50")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-NEG-" + suffix + "')].risk_factors.negative_cashflow.triggered").value(org.hamcrest.Matchers.contains(true)))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-NEG-" + suffix + "')].risk_factors.negative_cashflow.deduction").value(org.hamcrest.Matchers.contains(15.0)))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-NEG-" + suffix + "')].risk_score").value(org.hamcrest.Matchers.contains(85)))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-NEG-" + suffix + "')].risk_items[0]").value("项目关联流水净现金流为负"))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-POS-" + suffix + "')].risk_factors.negative_cashflow.triggered").value(org.hamcrest.Matchers.contains(false)))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-POS-" + suffix + "')].risk_factors.negative_cashflow.deduction").value(org.hamcrest.Matchers.contains(0)))
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-POS-" + suffix + "')].risk_score").value(org.hamcrest.Matchers.contains(100)));
+  }
+
+  private void insertAllocatedTransaction(Long tenantId, String suffix, String tag, Long projectId, String direction, String amount) {
+    jdbcTemplate.update("insert into contract (tenant_id, contract_no, contract_name, customer_name, project_id, project_no, project_name, contract_amount, status) values (?, ?, ?, ?, ?, ?, ?, 1000.00, 'active')",
+        tenantId, "CON-CF-" + tag + "-" + suffix, "现金流合同", "测试客户", projectId, "PRJ-" + tag + "-" + suffix, "现金流项目");
+    Long contractId = jdbcTemplate.queryForObject("select id from contract where contract_no = ?", Long.class, "CON-CF-" + tag + "-" + suffix);
+    jdbcTemplate.update("insert into contract_receivable_plan (tenant_id, contract_id, project_id, node_name, node_type, due_date, plan_amount, paid_amount, status) values (?, ?, ?, ?, 'milestone', '2026-12-01', 1000.00, 1000.00, 'paid')",
+        tenantId, contractId, projectId, "验收款-" + tag + "-" + suffix);
+    Long planId = jdbcTemplate.queryForObject("select id from contract_receivable_plan where contract_id = ?", Long.class, contractId);
+    jdbcTemplate.update("insert into bank_transaction (tenant_id, bank_account_id, import_job_id, transaction_no, transaction_date, booking_date, direction, amount, match_status) "
+        + "select ?, min(id), 0, ?, '2026-09-15', '2026-09-15', ?, " + amount + ", 'matched' from bank_account where tenant_id = ?",
+        tenantId, "TX-CF-" + tag + "-" + suffix, direction, tenantId);
+    Long transactionId = jdbcTemplate.queryForObject("select id from bank_transaction where transaction_no = ?", Long.class, "TX-CF-" + tag + "-" + suffix);
+    jdbcTemplate.update("insert into match_job (tenant_id, job_type, scope_type, status, started_at) values (?, 'receivable', 'all', 'success', current_timestamp)", tenantId);
+    Long jobId = jdbcTemplate.queryForObject("select max(id) from match_job where tenant_id = ?", Long.class, tenantId);
+    jdbcTemplate.update("insert into match_result (tenant_id, match_job_id, match_group_id, allocation_mode, allocated_amount, bank_transaction_id, contract_id, contract_receivable_plan_id, project_id, match_type, confidence_level, match_status, match_reason) values (?, ?, ?, 'single', " + amount + ", ?, ?, ?, ?, 'manual', 'high', 'confirmed', '现金流规则验证')",
+        tenantId, jobId, "MG-CF-" + tag + "-" + suffix, transactionId, contractId, planId, projectId);
+    Long resultId = jdbcTemplate.queryForObject("select max(id) from match_result where tenant_id = ?", Long.class, tenantId);
+    jdbcTemplate.update("insert into match_result_allocation (tenant_id, match_group_id, match_result_id, bank_transaction_id, contract_receivable_plan_id, allocated_amount, status) values (?, ?, ?, ?, ?, " + amount + ", 'confirmed')",
+        tenantId, "MG-CF-" + tag + "-" + suffix, resultId, transactionId, planId);
+  }
+
   private Long tenantId() {
     return jdbcTemplate.queryForObject("select tenant_id from user_account where login_name = ?", Long.class, "finance01");
   }
