@@ -98,19 +98,28 @@ public class MatchingService {
         unknown++;
         createException(tenantId, "unknown_receipt", "bank_transaction", transactionId,
             "未知收款：" + text(transaction.get("counterparty_name")),
-            "到账流水 " + text(transaction.get("transaction_no")) + " 未匹配到合同应收计划", "medium", null);
+            "到账流水 " + text(transaction.get("transaction_no")) + " 未匹配到合同应收计划", "medium", null, null);
         continue;
       }
       String transactionStatus = candidate.partial ? "suggested" : "matched";
-      insertMatchGroup(tenantId, jobId, candidate, transactionStatus);
+      Long firstResultId = insertMatchGroup(tenantId, jobId, candidate, transactionStatus);
       processedTransactions.addAll(candidate.transactionIds());
-      if (candidate.partial) {
+      if ("suggested".equals(transactionStatus)) {
         suggested++;
-        createException(tenantId, "partial_receipt", "contract_receivable_plan", candidate.planId,
-            "部分收款：" + candidate.contractName,
-            "待人工确认：计划金额 " + candidate.planAmount + "，本次到账 " + candidate.transactionAmount
-                + "，确认前累计到账 " + candidate.paidAmount,
-            "high", candidate.dueDate);
+        if (candidate.partial) {
+          // 部分收款：复用按计划维度去重的 partial_receipt 工单，并写入承载的 match_group_id
+          createException(tenantId, "partial_receipt", "contract_receivable_plan", candidate.planId,
+              "部分收款：" + candidate.contractName,
+              "待人工确认：计划金额 " + candidate.planAmount + "，本次到账 " + candidate.transactionAmount
+                  + "，确认前累计到账 " + candidate.paidAmount,
+              "high", candidate.dueDate, candidate.matchGroupId);
+        } else {
+          // 其他待确认建议：新建 match_review 承载工单（match_group_id 唯一约束保证幂等）
+          createException(tenantId, "match_review", "match_result", firstResultId,
+              "待核销：" + candidate.contractName,
+              "系统建议匹配待人工核销：建议金额 " + candidate.transactionAmount + "，匹配依据：" + candidate.reason,
+              "medium", candidate.dueDate, candidate.matchGroupId);
+        }
       } else {
         matched++;
         applyFinancialEffect(tenantId, candidate.matchGroupId, transactionStatus);
@@ -130,6 +139,8 @@ public class MatchingService {
     data.put("suggested", suggested);
     data.put("unknown", unknown);
     data.put("overdue", overdue);
+    data.put("auto_matched_count", matched);
+    data.put("pending_review_count", suggested);
     return data;
   }
 
@@ -675,13 +686,16 @@ public class MatchingService {
     return allocation;
   }
 
-  private void insertMatchGroup(Long tenantId, Long jobId, MatchCandidate candidate, String status) {
+  private Long insertMatchGroup(Long tenantId, Long jobId, MatchCandidate candidate, String status) {
+    Long firstResultId = null;
     for (MatchAllocation allocation : candidate.allocations) {
       Long resultId = insertMatchResult(tenantId, jobId, candidate, allocation, status);
+      if (firstResultId == null) firstResultId = resultId;
       jdbcTemplate.update(
           "insert into match_result_allocation (tenant_id, match_group_id, match_result_id, bank_transaction_id, contract_receivable_plan_id, allocated_amount, status) values (?, ?, ?, ?, ?, ?, ?)",
           tenantId, candidate.matchGroupId, resultId, allocation.transactionId, allocation.planId, allocation.allocatedAmount, status);
     }
+    return firstResultId;
   }
 
   private Long insertMatchResult(Long tenantId, Long jobId, MatchCandidate candidate, MatchAllocation allocation, String status) {
@@ -886,26 +900,27 @@ public class MatchingService {
       if (createException(tenantId, "unreceived", "contract_receivable_plan", number(plan.get("id")),
           "应收未收：" + text(plan.get("contract_name")),
           "应收日期 " + plan.get("due_date") + " 已到期，计划金额 " + plan.get("plan_amount") + "，累计到账 " + plan.get("paid_amount"),
-          "high", sqlDate(plan.get("due_date")))) created++;
+          "high", sqlDate(plan.get("due_date")), null)) created++;
     }
     return created;
   }
 
   private boolean createException(Long tenantId, String type, String sourceType, Long sourceId, String title,
-      String description, String severity, LocalDate dueDate) {
+      String description, String severity, LocalDate dueDate, String matchGroupId) {
     try {
       jdbcTemplate.update(
-          "insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, title, description, status, severity, due_date) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, title, description, status, severity, due_date, match_group_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           tenantId, "EXC-" + UUID.randomUUID().toString().replace("-", ""), type, sourceType, sourceId, title,
-          description, "new", severity, dueDate == null ? null : Date.valueOf(dueDate));
+          description, "new", severity, dueDate == null ? null : Date.valueOf(dueDate), matchGroupId);
       autoAssignService.autoAssignBySource(tenantId, type, sourceType, sourceId);
       return true;
     } catch (DuplicateKeyException ex) {
       if ("partial_receipt".equals(type)) {
+        // 按计划维度去重的复用工单：重开并刷新承载的 match_group_id 为最新待确认组
         jdbcTemplate.update(
-            "update exception_case set title = ?, description = ?, status = 'new', closed_at = null, due_date = ?, updated_at = ? "
+            "update exception_case set title = ?, description = ?, status = 'new', closed_at = null, due_date = ?, match_group_id = ?, updated_at = ? "
                 + "where tenant_id = ? and exception_type = ? and source_type = ? and source_id = ? and deleted_at is null",
-            title, description, dueDate == null ? null : Date.valueOf(dueDate), Timestamp.valueOf(LocalDateTime.now()),
+            title, description, dueDate == null ? null : Date.valueOf(dueDate), matchGroupId, Timestamp.valueOf(LocalDateTime.now()),
             tenantId, type, sourceType, sourceId);
       }
       return false;

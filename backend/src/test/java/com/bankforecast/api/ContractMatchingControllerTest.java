@@ -400,6 +400,59 @@ class ContractMatchingControllerTest {
     org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
   }
 
+  @Test
+  void partialReceiptExceptionCarriesMatchGroupAndRunStaysIdempotent() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    String groupId = jdbcTemplate.queryForObject("select match_group_id from match_result where id = ?", String.class, resultId);
+    Long planId = jdbcTemplate.queryForObject("select contract_receivable_plan_id from match_result where id = ?", Long.class, resultId);
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    // 承载工单写入 match_group_id（P4-3）
+    org.junit.jupiter.api.Assertions.assertEquals(groupId, jdbcTemplate.queryForObject(
+        "select match_group_id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_type = 'contract_receivable_plan' and source_id = ?",
+        String.class, tenantId, planId));
+
+    // 重复运行不产生新匹配组和新工单（幂等），响应含自动核销/待人工摘要
+    mockMvc.perform(post("/api/v1/matching/receivables/run").header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.suggested").value(0))
+        .andExpect(jsonPath("$.data.auto_matched_count").isNumber())
+        .andExpect(jsonPath("$.data.pending_review_count").isNumber());
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_id = ?",
+        Integer.class, tenantId, planId).intValue());
+
+    // 同一计划再次部分收款：复用同一工单并刷新承载的 match_group_id 为最新待确认组
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statement = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + "TX-A2-" + suffix + ",2020-01-02,income,300.00,丙方科技" + suffix + ",首付款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "statement2.csv", "text/csv", statement.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/receivables/run").header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.suggested").value(1))
+        .andExpect(jsonPath("$.data.pending_review_count").value(1));
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_id = ?",
+        Integer.class, tenantId, planId).intValue());
+    String latestGroupId = jdbcTemplate.queryForObject(
+        "select mr.match_group_id from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id where bt.transaction_no = ?",
+        String.class, "TX-A2-" + suffix);
+    org.junit.jupiter.api.Assertions.assertEquals(latestGroupId, jdbcTemplate.queryForObject(
+        "select match_group_id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_id = ?",
+        String.class, tenantId, planId));
+    org.junit.jupiter.api.Assertions.assertEquals("new", jdbcTemplate.queryForObject(
+        "select status from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_id = ?",
+        String.class, tenantId, planId));
+  }
+
   private Long createPartialMatch(Long tenantId, String suffix) throws Exception {
     String token = loginToken();
     String contractNo = "CT-A-" + suffix;
