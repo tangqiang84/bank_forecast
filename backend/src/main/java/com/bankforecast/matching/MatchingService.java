@@ -426,6 +426,7 @@ public class MatchingService {
     Long tenantId = principal.getTenantId();
     Map<String, Object> exception = findException(tenantId, exceptionId);
     ensureExceptionOpen(exception);
+    ensureMatchGroupDecided(tenantId, exception);
     String actionText = note == null || note.trim().isEmpty() ? "已处理异常" : note.trim();
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
     jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, updated_at = ? where id = ? and tenant_id = ? and status in ('new', 'in_progress')",
@@ -446,6 +447,7 @@ public class MatchingService {
     if (!"resolved".equals(text(exception.get("status")))) {
       throw new BusinessException(ErrorCode.EXCEPTION_NOT_ACTIONABLE, "异常事项需先处理完成，再执行关闭");
     }
+    ensureMatchGroupDecided(tenantId, exception);
     String actionText = note == null || note.trim().isEmpty() ? "关闭异常事项" : note.trim();
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
     jdbcTemplate.update("update exception_case set status = 'closed', description = ?, closed_at = ?, updated_at = ? where id = ? and tenant_id = ? and status = 'resolved'",
@@ -461,6 +463,7 @@ public class MatchingService {
     Long tenantId = principal.getTenantId();
     Map<String, Object> exception = findException(tenantId, exceptionId);
     ensureExceptionOpen(exception);
+    ensureMatchGroupDecided(tenantId, exception);
     String actionText = requireActionText(note);
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
     jdbcTemplate.update("update exception_case set status = 'false_positive', description = ?, closed_at = ?, updated_at = ? where id = ? and tenant_id = ? and status <> 'closed'",
@@ -505,7 +508,7 @@ public class MatchingService {
 
   private Map<String, Object> findException(Long tenantId, Long exceptionId) {
     List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-        "select id, exception_no, exception_type, source_type, source_id, title, description, owner_user_id, status, severity, due_date, closed_at, created_at, updated_at "
+        "select id, exception_no, exception_type, source_type, source_id, title, description, owner_user_id, status, severity, due_date, closed_at, created_at, updated_at, match_group_id "
             + "from exception_case where id = ? and tenant_id = ? and deleted_at is null",
         exceptionId, tenantId);
     if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "异常事项不存在");
@@ -895,6 +898,19 @@ public class MatchingService {
             + "and match_status = 'suggested' and deleted_at is null",
         Integer.class, tenantId, planId);
     return pendingResults != null && pendingResults > 0;
+  }
+
+  // P4-5 关单守卫：承载工单的关联匹配组仍 suggested 时禁止处理完成/关闭/标记误报
+  private void ensureMatchGroupDecided(Long tenantId, Map<String, Object> exception) {
+    String groupId = text(exception.get("match_group_id"));
+    if (groupId.isEmpty()) return;
+    Integer pending = jdbcTemplate.queryForObject(
+        "select count(*) from match_result where tenant_id = ? and match_group_id = ? "
+            + "and match_status = 'suggested' and deleted_at is null",
+        Integer.class, tenantId, groupId);
+    if (pending != null && pending > 0) {
+      throw new BusinessException(ErrorCode.MATCH_GROUP_UNDECIDED, "请先确认或打回匹配");
+    }
   }
 
   private void writeExceptionLog(Long tenantId, Long exceptionId, String actionType, AuthPrincipal principal, String actionText) {

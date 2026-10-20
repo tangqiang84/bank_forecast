@@ -70,6 +70,8 @@ public class GlobalExceptionHandler {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
     } else if (ex.getCode() == ErrorCode.PERMISSION_DENIED) {
       status = HttpStatus.FORBIDDEN;
+    } else if (ex.getCode() == ErrorCode.MATCH_GROUP_UNDECIDED) {
+      status = HttpStatus.CONFLICT;
     } else {
       status = HttpStatus.BAD_REQUEST;
     }

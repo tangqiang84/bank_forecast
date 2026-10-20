@@ -220,10 +220,22 @@ class ContractMatchingControllerTest {
     String token = loginToken();
     Long tenantId = tenantId();
     String suffix = UUID.randomUUID().toString().replace("-", "");
-    createPartialMatch(tenantId, suffix);
+    // 使用无匹配合同的流水生成 unknown_receipt 工单（无 match_group_id，不受 P4-5 关单守卫拦截）
+    Long accountId = jdbcTemplate.queryForObject("select min(id) from bank_account where tenant_id = ?", Long.class, tenantId);
+    String statement = "transaction_no,transaction_date,direction,amount,counterparty_name,summary\n"
+        + "TX-LC-" + suffix + ",2026-09-01,income,100.00,无合同客户" + suffix + ",无合同回款\n";
+    mockMvc.perform(multipart("/api/v1/imports/bank-statements")
+            .file(new MockMultipartFile("file", "statement.csv", "text/csv", statement.getBytes(StandardCharsets.UTF_8)))
+            .param("bank_account_id", String.valueOf(accountId))
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/receivables/run")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk());
+    Long transactionId = jdbcTemplate.queryForObject("select id from bank_transaction where tenant_id = ? and transaction_no = ?", Long.class, tenantId, "TX-LC-" + suffix);
     Long exceptionId = jdbcTemplate.queryForObject(
-        "select id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' "
-            + "and source_type = 'contract_receivable_plan' order by id desc limit 1", Long.class, tenantId);
+        "select id from exception_case where tenant_id = ? and exception_type = 'unknown_receipt' "
+            + "and source_type = 'bank_transaction' and source_id = ?", Long.class, tenantId, transactionId);
 
     mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/assign")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
@@ -398,6 +410,47 @@ class ContractMatchingControllerTest {
     mockMvc.perform(post("/api/v1/matching/results/" + firstResultId + "/reject").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"暂不确认\"}")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
     org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
+  }
+
+  @Test
+  void carrierExceptionGuardBlocksCloseUntilMatchGroupDecided() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    Long exceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and match_group_id = "
+            + "(select match_group_id from match_result where id = ?)", Long.class, tenantId, resultId);
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    // 未裁决：处理完成/标记误报/批量处理完成均被 409 拦截，工单状态不变
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/resolve")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"直接处理\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(45014));
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/false-positive")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"误报\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(45014));
+    mockMvc.perform(post("/api/v1/matching/exceptions/batch-action")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"exception_ids\":[" + exceptionId + "],\"action\":\"resolve\",\"text\":\"批量处理\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(45014));
+    org.junit.jupiter.api.Assertions.assertEquals("new", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, exceptionId));
+
+    // 确认核销后工单自动 resolved（P4-4），可正常复核关闭
+    mockMvc.perform(post("/api/v1/matching/results/" + resultId + "/confirm")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + exceptionId + "/close")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"复核关闭\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("closed", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, exceptionId));
   }
 
   @Test

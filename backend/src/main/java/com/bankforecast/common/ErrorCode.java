@@ -15,6 +15,7 @@ public final class ErrorCode {
   public static final int DUPLICATE_DATA = 43001;
   public static final int MATCH_RESULT_NOT_ACTIONABLE = 43002;
   public static final int EXCEPTION_NOT_ACTIONABLE = 43003;
+  public static final int MATCH_GROUP_UNDECIDED = 45014;
   public static final int SYSTEM_ERROR = 50001;
   public static final int REPORT_TYPE_INVALID = 46001;
   public static final int REPORT_GENERATE_FAILED = 46003;
