@@ -108,6 +108,27 @@ async function mockWorkspaceApi(page: Page) {
       }),
     }),
   )
+  await page.route('**/api/v1/projects', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: {
+            id: 101,
+            project_no: 'PRJ-E2E-001',
+            project_name: '端到端手工项目',
+            project_status: 'active',
+          },
+          trace_id: 'e2e',
+        }),
+      })
+      return
+    }
+    await route.fallback()
+  })
   await page.route('**/api/v1/projects/risk-rules', async (route) =>
     route.fulfill({
       status: 200,
@@ -294,6 +315,16 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await rulesDialog.getByRole('button', { name: '查看存在逾期应收的说明与用法' }).click()
   await expect(rulesDialog.getByText(/监控项目逾期未收金额/)).toHaveCount(0)
   await page.getByRole('button', { name: '关闭弹层' }).click()
+
+  await expect(page.getByRole('button', { name: '新增项目' })).toBeVisible()
+  await page.getByRole('button', { name: '新增项目' }).click()
+  const createDialog = page.getByRole('dialog', { name: '新增项目' })
+  await expect(createDialog).toBeVisible()
+  await createDialog.getByLabel('项目编号').fill('PRJ-E2E-001')
+  await createDialog.getByLabel('项目名称').fill('端到端手工项目')
+  await createDialog.getByRole('button', { name: '保存项目' }).click()
+  await expect(createDialog.getByText('项目「端到端手工项目」已创建。')).toBeVisible()
+  await createDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByRole('link', { name: '匹配结果' }).click()
   await expect(page.getByRole('heading', { name: '回款匹配工作台' })).toBeVisible()

@@ -76,6 +76,49 @@ class ProjectControllerTest {
   }
 
   @Test
+  void createsProjectManuallyAndRejectsDuplicateAndInvalid() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    mockMvc.perform(post("/api/v1/projects")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"project_no\":\"PRJ-NEW-" + suffix + "\",\"project_name\":\"手工新建项目\",\"customer_name\":\"手工客户\",\"project_manager\":\"王五\",\"start_date\":\"2026-10-01\",\"remark\":\"手工录入\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.project_no").value("PRJ-NEW-" + suffix))
+        .andExpect(jsonPath("$.data.project_name").value("手工新建项目"))
+        .andExpect(jsonPath("$.data.project_status").value("active"));
+    mockMvc.perform(get("/api/v1/projects?page=1&page_size=50")
+            .header("Authorization", "Bearer " + token)
+            .header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.project_no == 'PRJ-NEW-" + suffix + "')]").exists());
+    Integer auditCount = jdbcTemplate.queryForObject(
+        "select count(*) from audit_log where action = 'CREATE_PROJECT' and detail like ?", Integer.class, "%PRJ-NEW-" + suffix + "%");
+    org.junit.jupiter.api.Assertions.assertTrue(auditCount != null && auditCount > 0, "CREATE_PROJECT 审计应已记录");
+
+    mockMvc.perform(post("/api/v1/projects")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"project_no\":\"PRJ-NEW-" + suffix + "\",\"project_name\":\"重复编号项目\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("项目编号已存在"));
+
+    mockMvc.perform(post("/api/v1/projects")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"project_name\":\"缺少编号\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("project_no 不能为空"));
+    mockMvc.perform(post("/api/v1/projects")
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"project_no\":\"PRJ-BAD-" + suffix + "\",\"project_name\":\"非法状态\",\"project_status\":\"unknown\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("项目状态不合法"));
+  }
+
+  @Test
   void filtersByProjectManagerAndDetailShowsPaymentsAndTimeline() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();

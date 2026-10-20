@@ -4,6 +4,7 @@ import ModalPanel from '../components/ModalPanel.vue'
 import ProjectDetail from '../components/ProjectDetail.vue'
 import {
   batchUpdateProjectStatus,
+  createProject,
   loadProjectRiskRules,
   loadProjects,
   previewProjects,
@@ -58,6 +59,66 @@ const edit = ref<Project | null>(null)
 const editDone = ref(false)
 const importModalOpen = ref(false)
 const importDone = ref(false)
+const createModalOpen = ref(false)
+const createDone = ref(false)
+const createForm = ref({
+  project_no: '',
+  project_name: '',
+  customer_name: '',
+  project_manager: '',
+  project_status: 'active',
+  start_date: '',
+  delivery_date: '',
+  acceptance_date: '',
+  remark: '',
+})
+
+function openCreateModal() {
+  createForm.value = {
+    project_no: '',
+    project_name: '',
+    customer_name: '',
+    project_manager: '',
+    project_status: 'active',
+    start_date: '',
+    delivery_date: '',
+    acceptance_date: '',
+    remark: '',
+  }
+  message.value = ''
+  createDone.value = false
+  createModalOpen.value = true
+}
+
+function closeCreateModal() {
+  createModalOpen.value = false
+}
+
+async function saveCreate() {
+  if (!session.user.value || !session.token.value) return
+  if (!createForm.value.project_no.trim() || !createForm.value.project_name.trim()) {
+    message.value = '请填写项目编号和项目名称'
+    return
+  }
+  try {
+    await createProject(base, session.token.value, session.user.value.tenant_id, {
+      project_no: createForm.value.project_no,
+      project_name: createForm.value.project_name,
+      customer_name: createForm.value.customer_name,
+      project_manager: createForm.value.project_manager,
+      project_status: createForm.value.project_status,
+      start_date: createForm.value.start_date || null,
+      delivery_date: createForm.value.delivery_date || null,
+      acceptance_date: createForm.value.acceptance_date || null,
+      remark: createForm.value.remark,
+    })
+    message.value = `项目「${createForm.value.project_name.trim()}」已创建。`
+    createDone.value = true
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '项目创建失败'
+  }
+}
 const rulesModalOpen = ref(false)
 const ruleDone = ref(false)
 const ruleHelp = ref<string | null>(null)
@@ -73,6 +134,7 @@ const projectDetailId = ref<number | null>(null)
 const anyModalOpen = computed(
   () =>
     importModalOpen.value ||
+    createModalOpen.value ||
     rulesModalOpen.value ||
     edit.value !== null ||
     projectDetailId.value !== null,
@@ -315,13 +377,23 @@ onMounted(() => {
       <div>
         <p class="eyebrow">项目资金</p>
         <h2>项目资金与风险</h2>
-        <p class="lead">查看项目回款健康度；导入项目、风险规则维护、项目编辑与详情通过弹层操作。</p>
+        <p class="lead">
+          查看项目回款健康度；新增项目、导入项目、风险规则维护、项目编辑与详情通过弹层操作。
+        </p>
       </div>
       <span class="meta">共 {{ total }} 个项目</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
     <div class="page-toolbar">
+      <button
+        v-permission="'project:manage'"
+        class="ghost-button"
+        type="button"
+        @click="openCreateModal"
+      >
+        新增项目
+      </button>
       <button class="ghost-button" type="button" @click="openImportModal">导入项目</button>
       <button class="ghost-button" type="button" @click="openRulesModal">项目风险规则</button>
     </div>
@@ -424,7 +496,8 @@ onMounted(() => {
         </table>
       </div>
       <p v-else class="empty-state">
-        暂无项目数据，请通过上方「导入项目」按钮导入 CSV 或从合同导入带入项目。
+        暂无项目数据，请通过上方「新增项目」按钮手工录入、「导入项目」按钮导入 CSV
+        或从合同导入带入项目。
       </p>
       <div class="pagination-controls">
         <span
@@ -588,6 +661,42 @@ onMounted(() => {
       <p v-if="message" class="feedback-text">{{ message }}</p>
       <template #footer>
         <button v-if="ruleDone" class="primary-button" type="button" @click="closeRulesModal">
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="createModalOpen" title="新增项目" @close="closeCreateModal">
+      <p class="meta">手工录入项目主数据，项目编号在租户内唯一，保存后立即出现在项目清单</p>
+      <label
+        >项目编号<input v-model.trim="createForm.project_no" placeholder="如 PRJ-2026-001" /></label
+      ><label>项目名称<input v-model.trim="createForm.project_name" /></label
+      ><label>客户名称<input v-model.trim="createForm.customer_name" /></label
+      ><label>负责人<input v-model.trim="createForm.project_manager" /></label
+      ><label
+        >状态<select v-model="createForm.project_status">
+          <option value="active">进行中</option>
+          <option value="paused">已暂停</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
+        </select></label
+      ><label>开始日期<input v-model="createForm.start_date" type="date" /></label
+      ><label>交付日期<input v-model="createForm.delivery_date" type="date" /></label
+      ><label>验收日期<input v-model="createForm.acceptance_date" type="date" /></label
+      ><label>备注<input v-model.trim="createForm.remark" /></label>
+      <div class="action-group">
+        <button
+          v-permission="'project:manage'"
+          class="primary-button"
+          type="button"
+          @click="saveCreate"
+        >
+          保存项目</button
+        ><button class="ghost-button" type="button" @click="closeCreateModal">取消</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="createDone" class="primary-button" type="button" @click="closeCreateModal">
           关闭
         </button>
       </template>

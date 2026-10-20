@@ -49,6 +49,13 @@ public class ProjectController {
   }
 
   @RequirePermission("project:manage")
+  @PostMapping
+  public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> request) {
+    AuthPrincipal principal = requireAuth();
+    return ApiResponse.ok(projectService.create(principal.getTenantId(), request));
+  }
+
+  @RequirePermission("project:manage")
   @PutMapping("/{id:\\d+}")
   public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @RequestBody Map<String, Object> request) {
     AuthPrincipal principal = requireAuth();

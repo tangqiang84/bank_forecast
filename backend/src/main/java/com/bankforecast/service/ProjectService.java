@@ -5,6 +5,8 @@ import com.bankforecast.common.BusinessException;
 import com.bankforecast.common.ErrorCode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -12,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -55,6 +59,31 @@ public class ProjectService {
     if (threshold.compareTo(BigDecimal.ZERO) < 0 || penalty.compareTo(BigDecimal.ZERO) < 0 || (maxPenalty != null && maxPenalty.compareTo(BigDecimal.ZERO) < 0)) throw new BusinessException(ErrorCode.PARAM_ERROR, "风险规则参数不能为负数");
     boolean enabled = request.get("enabled") == null || Boolean.parseBoolean(String.valueOf(request.get("enabled")));
     return ruleCenterService.updateRule(tenantId, userId, ruleCode, threshold, penalty, maxPenalty, enabled, "manual", null);
+  }
+
+  public Map<String, Object> create(Long tenantId, Map<String, Object> request) {
+    String projectNo = requiredText(request, "project_no"), projectName = requiredText(request, "project_name");
+    String customerName = optionalText(request, "customer_name"), projectManager = optionalText(request, "project_manager"), projectStatus = optionalText(request, "project_status");
+    if (projectStatus == null) projectStatus = "active";
+    if (!Arrays.asList("active", "completed", "paused", "cancelled").contains(projectStatus)) throw new BusinessException(ErrorCode.PARAM_ERROR, "项目状态不合法");
+    java.sql.Date startDate = optionalDate(request, "start_date"), deliveryDate = optionalDate(request, "delivery_date"), acceptanceDate = optionalDate(request, "acceptance_date");
+    String remark = optionalText(request, "remark");
+    Integer exists = jdbcTemplate.queryForObject("select count(*) from project where tenant_id = ? and project_no = ? and deleted_at is null", Integer.class, tenantId, projectNo);
+    if (exists != null && exists > 0) throw new BusinessException(ErrorCode.PARAM_ERROR, "项目编号已存在");
+    KeyHolder keyHolder = new GeneratedKeyHolder();
+    String status = projectStatus;
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement("insert into project (tenant_id, project_no, project_name, customer_name, project_manager, project_status, start_date, delivery_date, acceptance_date, remark) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
+      ps.setLong(1, tenantId); ps.setString(2, projectNo); ps.setString(3, projectName);
+      ps.setString(4, customerName); ps.setString(5, projectManager); ps.setString(6, status);
+      ps.setDate(7, startDate); ps.setDate(8, deliveryDate); ps.setDate(9, acceptanceDate); ps.setString(10, remark);
+      return ps;
+    }, keyHolder);
+    Number key = keyHolder.getKey();
+    if (key == null) throw new BusinessException(ErrorCode.ROW_DATA_ERROR, "项目创建失败");
+    Long id = key.longValue();
+    auditService.record("CREATE_PROJECT", "project", String.valueOf(id), request.toString());
+    return jdbcTemplate.queryForMap("select id, project_no, project_name, customer_name, project_manager, project_status, start_date, delivery_date, acceptance_date, remark, created_at, updated_at from project where id = ? and tenant_id = ?", id, tenantId);
   }
 
   public Map<String, Object> update(Long tenantId, Long userId, Long id, Map<String, Object> request) {

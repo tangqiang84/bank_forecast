@@ -90,6 +90,19 @@ export type ProjectRiskRule = {
   enabled: boolean
   updated_at: string
 }
+export function createProject(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: Record<string, unknown>,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/projects`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 export function updateProject(
   baseUrl: string,
   token: string,
