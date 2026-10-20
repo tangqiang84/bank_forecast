@@ -413,6 +413,53 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void exceptionListEmbedsMatchSummaryAndSupportsAmountAndCreatedFilters() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    String groupId = jdbcTemplate.queryForObject("select match_group_id from match_result where id = ?", String.class, resultId);
+    String contractNo = "CT-A-" + suffix;
+    String txnNo = "TX-A-" + suffix;
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+    String today = java.time.LocalDate.now().toString();
+
+    // 承载工单内嵌 match_summary；非承载工单（unreceived）为 null
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='partial_receipt')].match_summary.match_group_id").value(org.hamcrest.Matchers.contains(groupId)))
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='partial_receipt')].match_summary.match_status").value(org.hamcrest.Matchers.contains("suggested")))
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='partial_receipt')].match_summary.confidence").value(org.hamcrest.Matchers.contains("medium")))
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='partial_receipt')].match_summary.txn_no").value(org.hamcrest.Matchers.contains(txnNo)))
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='partial_receipt')].match_summary.contract_no").value(org.hamcrest.Matchers.contains(contractNo)))
+        .andExpect(jsonPath("$.data.items[?(@.exception_type=='unreceived')].match_summary").value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
+
+    // 金额区间（工单金额口径：承载工单取匹配组金额；无金额工单在设筛选时不返回）
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&amount_min=400&amount_max=600")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(1))
+        .andExpect(jsonPath("$.data.items[0].exception_type").value("partial_receipt"))
+        .andExpect(jsonPath("$.data.items[0].match_summary.amount").value(500.0));
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&amount_min=600")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(0));
+
+    // 创建日期范围
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&created_from=" + today + "&created_to=" + today)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(2));
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo + "&created_from=" + java.time.LocalDate.now().plusDays(1))
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(0));
+  }
+
+  @Test
   void carrierExceptionGuardBlocksCloseUntilMatchGroupDecided() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();

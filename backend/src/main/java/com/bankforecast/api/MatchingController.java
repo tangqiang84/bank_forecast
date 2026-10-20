@@ -7,6 +7,7 @@ import com.bankforecast.api.dto.RejectMatchResultRequest;
 import com.bankforecast.matching.MatchingService;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -76,8 +77,13 @@ public class MatchingController {
       @RequestParam(required = false) String status,
       @RequestParam(name = "active_only", defaultValue = "false") boolean activeOnly,
       @RequestParam(name = "owner_user_id", required = false) Long ownerUserId,
-      @RequestParam(required = false) String queue) {
-    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly, ownerUserId, queue));
+      @RequestParam(required = false) String queue,
+      @RequestParam(name = "amount_min", required = false) BigDecimal amountMin,
+      @RequestParam(name = "amount_max", required = false) BigDecimal amountMax,
+      @RequestParam(name = "created_from", required = false) LocalDate createdFrom,
+      @RequestParam(name = "created_to", required = false) LocalDate createdTo) {
+    return ApiResponse.ok(matchingService.listExceptions(page, pageSize, contractNo, projectNo, dateFrom, dateTo, status, activeOnly, ownerUserId, queue,
+        amountMin, amountMax, createdFrom, createdTo));
   }
 
   @RequirePermission("exception:view")

@@ -254,30 +254,52 @@ public class MatchingService {
     return resultView(tenantId, resultId);
   }
   public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
-      LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly, Long ownerUserId, String queue) {
+      LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly, Long ownerUserId, String queue,
+      BigDecimal amountMin, BigDecimal amountMax, LocalDate createdFrom, LocalDate createdTo) {
     AuthPrincipal principal = requireAuth();
     int safePage = Math.max(page, 1);
     int safeSize = Math.min(Math.max(pageSize, 1), 100);
     int offset = (safePage - 1) * safeSize;
+    // P4-6：金额区间按「工单金额」过滤（承载工单取匹配组金额，流水类工单取流水金额，无金额工单在设筛选时不返回）；
+    // created_from/created_to 为创建日期范围；既有 date_from/date_to 保持 due_date 口径不变
     String filter = " where e.tenant_id = ? and e.deleted_at is null "
         + "and (? is null or c.contract_no = ?) and (? is null or c.project_no = ?) "
         + "and (? is null or e.due_date >= ?) and (? is null or e.due_date <= ?) "
         + "and (? is null or e.status = ?) "
         + "and (? is null or e.owner_user_id = ?)"
+        + "and (? is null or coalesce(ms.amount, sbt.amount) >= ?) "
+        + "and (? is null or coalesce(ms.amount, sbt.amount) <= ?) "
+        + "and (? is null or date(e.created_at) >= ?) and (? is null or date(e.created_at) <= ?)"
         + queueFilter(queue, principal.getUserId())
         + (activeOnly ? " and e.status in ('new', 'in_progress')" : "");
     Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
-        dateFrom, dateFrom, dateTo, dateTo, status, status, ownerUserId, ownerUserId};
+        dateFrom, dateFrom, dateTo, dateTo, status, status, ownerUserId, ownerUserId,
+        amountMin, amountMin, amountMax, amountMax, createdFrom, createdFrom, createdTo, createdTo};
     String joins = " from exception_case e left join contract_receivable_plan p on e.source_type = 'contract_receivable_plan' and p.id = e.source_id "
         + "left join contract c on c.id = p.contract_id "
-        + "left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id";
+        + "left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id"
+        + " left join bank_transaction sbt on e.source_type = 'bank_transaction' and sbt.id = e.source_id"
+        + " left join (select mr.tenant_id, mr.match_group_id, "
+        + "substring_index(group_concat(bt.transaction_no order by mr.id), ',', 1) as txn_no, "
+        + "sum(mr.allocated_amount) as amount, "
+        + "substring_index(group_concat(mr.confidence_level order by mr.id), ',', 1) as confidence_level, "
+        + "substring_index(group_concat(mr.match_status order by mr.id), ',', 1) as match_status, "
+        + "substring_index(group_concat(mc.contract_no order by mr.id), ',', 1) as contract_no "
+        + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+        + "left join contract mc on mc.id = mr.contract_id where mr.deleted_at is null "
+        + "group by mr.tenant_id, mr.match_group_id) ms on ms.tenant_id = e.tenant_id and ms.match_group_id = e.match_group_id";
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
         "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, u.display_name as owner_name, e.status, "
             + "case when e.status = 'closed' then '已关闭' when e.status = 'false_positive' then '误报' "
             + "when e.status = 'resolved' then '待关闭' when e.status = 'in_progress' or e.owner_user_id is not null then '处理中' "
             + "else '待分派' end as stage, "
-            + "e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at"
+            + "e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at, "
+            + "e.match_group_id, ms.txn_no as match_txn_no, ms.amount as match_amount, "
+            + "ms.confidence_level as match_confidence_level, ms.match_status as match_status, ms.contract_no as match_contract_no"
             + joins + filter + " order by e.id desc limit ? offset ?", append(args, safeSize, offset));
+    for (Map<String, Object> item : items) {
+      embedMatchSummary(item);
+    }
     Integer total = jdbcTemplate.queryForObject("select count(*)" + joins + filter, args, Integer.class);
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("items", items);
@@ -285,6 +307,28 @@ public class MatchingService {
     data.put("page_size", safeSize);
     data.put("total", total == null ? 0 : total);
     return data;
+  }
+
+  // P4-6：承载工单内嵌匹配摘要（无 match_group_id 的工单 match_summary 为 null）
+  private void embedMatchSummary(Map<String, Object> item) {
+    Object amount = item.remove("match_amount");
+    Object txnNo = item.remove("match_txn_no");
+    Object confidence = item.remove("match_confidence_level");
+    Object matchStatus = item.remove("match_status");
+    Object matchContractNo = item.remove("match_contract_no");
+    String groupId = text(item.get("match_group_id"));
+    if (groupId.isEmpty()) {
+      item.put("match_summary", null);
+      return;
+    }
+    Map<String, Object> summary = new LinkedHashMap<>();
+    summary.put("match_group_id", groupId);
+    summary.put("match_status", matchStatus);
+    summary.put("confidence", confidence);
+    summary.put("txn_no", txnNo);
+    summary.put("amount", amount);
+    summary.put("contract_no", matchContractNo);
+    item.put("match_summary", summary);
   }
 
   private String queueFilter(String queue, Long currentUserId) {
