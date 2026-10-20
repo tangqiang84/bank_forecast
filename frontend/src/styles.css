@@ -1253,6 +1253,18 @@ textarea {
   font-weight: 600;
 }
 
+.mini-row-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.mini-row-meta {
+  flex: 1;
+  text-align: left;
+}
+
 .bank-icon {
   display: inline-flex;
   align-items: center;

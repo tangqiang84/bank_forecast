@@ -218,9 +218,11 @@ onMounted(load)
       </div>
       <div class="mini-list">
         <div v-for="template in templates" :key="template.bank_code" class="mini-row">
-          <BankIcon :bank-code="template.bank_code" :bank-name="template.bank_name" />
-          <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong>
-          <span class="meta">{{ template.format }} · {{ template.recognition }}</span>
+          <span class="mini-row-identity"
+            ><BankIcon :bank-code="template.bank_code" :bank-name="template.bank_name" />
+            <strong>{{ template.bank_name }}（{{ template.bank_code }}）</strong></span
+          >
+          <span class="meta mini-row-meta">{{ template.format }} · {{ template.recognition }}</span>
           <button class="text-button" type="button" @click="openMappingModal(template)">
             字段映射
           </button>
