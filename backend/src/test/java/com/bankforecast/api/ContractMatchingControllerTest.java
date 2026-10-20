@@ -414,6 +414,112 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void matchReviewTicketLifecycleStatsAndPermissionScope() throws Exception {
+    String financeToken = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String tenant = String.valueOf(tenantId);
+
+    // 独立构造 suggested 匹配组 + match_review 承载工单（run 当前不产生 match_review，直接 SQL 构造；
+    // 不能复用 partial 组的 match_group_id——uk_exception_tenant_match_group 唯一）
+    Long baseResultId = createPartialMatch(tenantId, suffix);
+    Long txnId = jdbcTemplate.queryForObject("select bank_transaction_id from match_result where id = ?", Long.class, baseResultId);
+    Long contractId = jdbcTemplate.queryForObject("select contract_id from match_result where id = ?", Long.class, baseResultId);
+    Long planId = jdbcTemplate.queryForObject("select contract_receivable_plan_id from match_result where id = ?", Long.class, baseResultId);
+    jdbcTemplate.update("insert into match_job (tenant_id, job_type, scope_type, status, started_at) values (?, 'receivable', 'all', 'success', now())", tenantId);
+    Long jobId = jdbcTemplate.queryForObject("select max(id) from match_job where tenant_id = ?", Long.class, tenantId);
+    String reviewGroupId = "MG-TEST-" + suffix;
+    jdbcTemplate.update(
+        "insert into match_result (tenant_id, match_job_id, match_group_id, allocation_mode, allocated_amount, "
+            + "bank_transaction_id, contract_id, contract_receivable_plan_id, match_type, confidence_level, match_status, match_reason) "
+            + "values (?, ?, ?, 'single', 500.00, ?, ?, ?, 'single', 'medium', 'suggested', '测试建议')",
+        tenantId, jobId, reviewGroupId, txnId, contractId, planId);
+    Long reviewResultId = jdbcTemplate.queryForObject(
+        "select id from match_result where tenant_id = ? and match_group_id = ?", Long.class, tenantId, reviewGroupId);
+
+    // match_review 计入待分派统计口径
+    String financeAuth = "Bearer " + financeToken;
+    Integer unassignedBefore = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and status = 'new' and owner_user_id is null and deleted_at is null",
+        Integer.class, tenantId);
+    jdbcTemplate.update(
+        "insert into exception_case (tenant_id, exception_no, exception_type, source_type, source_id, title, description, status, severity, match_group_id) "
+            + "values (?, ?, 'match_review', 'match_result', ?, '待核销：测试合同', '系统建议匹配待人工核销', 'new', 'medium', ?)",
+        tenantId, "EXC-TEST-" + suffix, reviewResultId, reviewGroupId);
+    Long reviewExceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and exception_no = ?", Long.class, tenantId, "EXC-TEST-" + suffix);
+    Integer unassignedAfter = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and status = 'new' and owner_user_id is null and deleted_at is null",
+        Integer.class, tenantId);
+    org.junit.jupiter.api.Assertions.assertEquals(unassignedBefore + 1, unassignedAfter.intValue());
+
+    // 权限分流两个方向
+    Integer totalAll = jdbcTemplate.queryForObject(
+        "select count(*) from exception_case where tenant_id = ? and deleted_at is null", Integer.class, tenantId);
+    String adminToken = loginToken("admin01");
+    Long ceoRoleId = jdbcTemplate.queryForObject(
+        "select id from role where tenant_id = ? and role_code = 'CEO'", Long.class, tenantId);
+    String ceoToken = loginToken("ceo01");
+    try {
+      // 仅 matching:view：只见 match_review 类工单
+      mockMvc.perform(put("/api/v1/system/roles/" + ceoRoleId + "/permissions")
+              .contentType(MediaType.APPLICATION_JSON).content("{\"permission_codes\":[\"matching:view\"]}")
+              .header("Authorization", "Bearer " + adminToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk());
+      mockMvc.perform(get("/api/v1/matching/exceptions?page_size=100")
+              .header("Authorization", "Bearer " + ceoToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.total").value(1))
+          .andExpect(jsonPath("$.data.items[*].exception_type")
+              .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("match_review"))));
+
+      // 仅 exception:view：不见 match_review 类工单
+      mockMvc.perform(put("/api/v1/system/roles/" + ceoRoleId + "/permissions")
+              .contentType(MediaType.APPLICATION_JSON).content("{\"permission_codes\":[\"exception:view\"]}")
+              .header("Authorization", "Bearer " + adminToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk());
+      mockMvc.perform(get("/api/v1/matching/exceptions?page_size=100")
+              .header("Authorization", "Bearer " + ceoToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.total").value(totalAll - 1))
+          .andExpect(jsonPath("$.data.items[*].exception_type")
+              .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.not("match_review"))));
+    } finally {
+      // 恢复 CEO 角色默认权限，避免影响其他用例
+      jdbcTemplate.update("delete from role_permission where tenant_id = ? and role_id = ?", tenantId, ceoRoleId);
+      for (String code : new String[] {"dashboard:view", "account:view", "transaction:view", "contract:view",
+          "project:view", "matching:view", "exception:view", "attachment:view", "reconciliation:view",
+          "report:view", "report:download", "forecast:view"}) {
+        jdbcTemplate.update("insert into role_permission (tenant_id, role_id, permission_id) "
+            + "select ?, ?, id from permission where permission_code = ?", tenantId, ceoRoleId, code);
+      }
+    }
+
+    // match_review 工单同样受关单守卫约束
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + reviewExceptionId + "/resolve")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"直接处理\"}")
+            .header("Authorization", financeAuth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(45014));
+
+    // 确认核销组 → match_review 工单自动 resolved（确认核销，自动关闭）→ 可复核关闭
+    mockMvc.perform(post("/api/v1/matching/results/" + reviewResultId + "/confirm")
+            .header("Authorization", financeAuth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("resolved", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, reviewExceptionId));
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from exception_action_log where exception_case_id = ? and action_type = 'CONFIRM' "
+            + "and action_text = '确认核销，自动关闭'",
+        Integer.class, reviewExceptionId).intValue());
+    mockMvc.perform(post("/api/v1/matching/exceptions/" + reviewExceptionId + "/close")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"复核关闭\"}")
+            .header("Authorization", financeAuth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("closed", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, reviewExceptionId));
+  }
+
+  @Test
   void exceptionListScopesByPermission() throws Exception {
     String financeToken = loginToken();
     Long tenantId = tenantId();
