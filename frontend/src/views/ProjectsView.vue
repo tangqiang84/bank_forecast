@@ -59,6 +59,48 @@ const importModalOpen = ref(false)
 const importDone = ref(false)
 const rulesModalOpen = ref(false)
 const ruleDone = ref(false)
+const ruleHelp = ref<string | null>(null)
+
+const RULE_META: Record<string, { name: string; description: string }> = {
+  overdue_exists: {
+    name: '存在逾期应收',
+    description:
+      '监控项目逾期未收金额（已到期但未收足的应收计划金额合计）。当逾期金额大于阈值时触发，默认阈值 0 表示存在任意逾期即触发，默认扣 30 分。',
+  },
+  overdue_ratio_high: {
+    name: '逾期占比过高',
+    description:
+      '监控逾期金额占项目应收总额的比例。阈值填小数（如 0.5 表示 50%），当占比大于阈值时触发，默认扣 15 分。',
+  },
+  paid_rate_low: {
+    name: '回款率过低',
+    description:
+      '监控项目回款率（已收金额 ÷ 应收总额，应收为 0 时按 100% 计）。当回款率低于阈值（默认 0.5）时触发，默认扣 30 分，用于识别回款严重滞后的项目。',
+  },
+  paid_rate_mid: {
+    name: '回款率偏低',
+    description:
+      '与「回款率过低」使用同一指标、阈值更宽松的预警线。当回款率低于阈值（默认 0.8）时触发，默认扣 15 分；两条规则可同时启用形成分级预警。',
+  },
+  open_exception_count: {
+    name: '待处理异常',
+    description:
+      '监控项目关联的待处理异常数量（未关闭且未标记误报的应收异常）。当数量达到阈值（默认 1 条）时触发，按每条异常扣分（默认每条 10 分），总扣分不超过上限（默认 30 分）。',
+  },
+  negative_cashflow: {
+    name: '净现金流为负',
+    description:
+      '监控项目关联银行流水的净现金流（已确认匹配的收入减支出）。当净现金流低于阈值（默认 0，即为负）时触发，默认扣 15 分。',
+  },
+}
+
+function ruleName(rule: ProjectRiskRule) {
+  return RULE_META[rule.rule_code]?.name ?? rule.rule_code
+}
+
+function toggleRuleHelp(ruleCode: string) {
+  ruleHelp.value = ruleHelp.value === ruleCode ? null : ruleCode
+}
 const projectDetailId = ref<number | null>(null)
 const anyModalOpen = computed(
   () =>
@@ -89,6 +131,7 @@ function openRulesModal() {
 
 function closeRulesModal() {
   rulesModalOpen.value = false
+  ruleHelp.value = null
 }
 
 function openProject(id: number) {
@@ -272,7 +315,7 @@ async function saveRule(rule: ProjectRiskRule) {
         enabled: rule.enabled,
       },
     )
-    message.value = `风险规则 ${rule.rule_code} 已保存。`
+    message.value = `风险规则「${ruleName(rule)}」已保存。`
     ruleDone.value = true
     await load()
   } catch (cause) {
@@ -535,21 +578,44 @@ onMounted(() => {
     </ModalPanel>
 
     <ModalPanel v-if="rulesModalOpen" title="项目风险规则" @close="closeRulesModal">
-      <p class="meta">规则引擎计算项目健康度，保存后作用于后续项目汇总</p>
-      <div v-for="rule in rules" v-if="rules.length" :key="rule.rule_code" class="rule-row">
-        <strong>{{ rule.rule_code }}</strong
-        ><label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label
-        ><label>扣分<input v-model="rule.penalty" type="number" step="1" /></label
-        ><label class="checkbox-label"><input v-model="rule.enabled" type="checkbox" />启用</label
-        ><button
-          v-permission="'project:rule'"
-          class="text-button"
-          type="button"
-          @click="saveRule(rule)"
-        >
-          保存
-        </button>
-      </div>
+      <p class="meta">
+        规则引擎计算项目健康度：初始 100 分，命中启用规则即扣分，最低 0 分；80 分及以上为健康、60–79
+        为预警、低于 60 为危险。保存后作用于后续项目汇总。
+      </p>
+      <template v-if="rules.length">
+        <div v-for="rule in rules" :key="rule.rule_code" class="rule-block">
+          <div class="rule-row">
+            <span class="rule-identity"
+              ><strong>{{ ruleName(rule) }}</strong
+              ><button
+                v-if="RULE_META[rule.rule_code]"
+                class="rule-help-icon"
+                type="button"
+                :aria-expanded="ruleHelp === rule.rule_code"
+                :aria-label="`查看${ruleName(rule)}的说明与用法`"
+                @click="toggleRuleHelp(rule.rule_code)"
+              >
+                ?
+              </button></span
+            >
+            <label>阈值<input v-model="rule.threshold" type="number" step="0.01" /></label
+            ><label>扣分<input v-model="rule.penalty" type="number" step="1" /></label
+            ><label class="checkbox-label"
+              ><input v-model="rule.enabled" type="checkbox" />启用</label
+            ><button
+              v-permission="'project:rule'"
+              class="text-button"
+              type="button"
+              @click="saveRule(rule)"
+            >
+              保存
+            </button>
+          </div>
+          <p v-if="ruleHelp === rule.rule_code" class="rule-help">
+            {{ RULE_META[rule.rule_code]?.description }}（字段标识：{{ rule.rule_code }}）
+          </p>
+        </div>
+      </template>
       <p v-else class="empty-state">暂无风险规则。</p>
       <p v-if="message" class="feedback-text">{{ message }}</p>
       <template #footer>

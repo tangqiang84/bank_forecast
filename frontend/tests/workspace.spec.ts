@@ -112,7 +112,31 @@ async function mockWorkspaceApi(page: Page) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 1,
+            rule_code: 'overdue_exists',
+            threshold: '0',
+            penalty: '30',
+            max_penalty: null,
+            enabled: true,
+            updated_at: '2026-10-20T00:00:00',
+          },
+          {
+            id: 2,
+            rule_code: 'paid_rate_low',
+            threshold: '0.5',
+            penalty: '30',
+            max_penalty: null,
+            enabled: true,
+            updated_at: '2026-10-20T00:00:00',
+          },
+        ],
+        trace_id: 'e2e',
+      }),
     }),
   )
   await page.route('**/api/v1/projects?**', async (route) =>
@@ -256,7 +280,19 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await expect(page.getByRole('button', { name: '导入项目' })).toBeVisible()
   await expect(page.getByRole('button', { name: '项目风险规则' })).toBeVisible()
   await page.getByRole('button', { name: '项目风险规则' }).click()
-  await expect(page.getByRole('dialog', { name: '项目风险规则' })).toBeVisible()
+  const rulesDialog = page.getByRole('dialog', { name: '项目风险规则' })
+  await expect(rulesDialog).toBeVisible()
+  await expect(rulesDialog.getByText('存在逾期应收', { exact: true })).toBeVisible()
+  await expect(rulesDialog.getByText('回款率过低', { exact: true })).toBeVisible()
+  await expect(rulesDialog.getByText('overdue_exists', { exact: true })).toHaveCount(0)
+  await expect(
+    rulesDialog.getByRole('button', { name: '查看存在逾期应收的说明与用法' }),
+  ).toBeVisible()
+  await rulesDialog.getByRole('button', { name: '查看存在逾期应收的说明与用法' }).click()
+  await expect(rulesDialog.getByText(/监控项目逾期未收金额/)).toBeVisible()
+  await expect(rulesDialog.getByText(/字段标识：overdue_exists/)).toBeVisible()
+  await rulesDialog.getByRole('button', { name: '查看存在逾期应收的说明与用法' }).click()
+  await expect(rulesDialog.getByText(/监控项目逾期未收金额/)).toHaveCount(0)
   await page.getByRole('button', { name: '关闭弹层' }).click()
 
   await page.getByRole('link', { name: '匹配结果' }).click()
