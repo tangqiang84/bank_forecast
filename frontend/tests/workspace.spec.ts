@@ -96,6 +96,69 @@ async function mockWorkspaceApi(page: Page) {
       body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
     }),
   )
+  await page.route('**/api/v1/contracts', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: {
+            id: 201,
+            contract_no: 'HT-E2E-001',
+            contract_name: '端到端合同',
+            status: 'active',
+          },
+          trace_id: 'e2e',
+        }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/contracts?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          items: [
+            {
+              id: 200,
+              contract_no: 'HT-E2E-000',
+              contract_name: '示例合同',
+              customer_name: '示例客户',
+              project_name: null,
+              contract_amount: '10000.00',
+              receivable_amount: '0.00',
+              paid_amount: '0.00',
+            },
+          ],
+          total: 1,
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
+  await page.route('**/api/v1/receivable-plans', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: { id: 301, contract_id: 200, node_name: '首付款', status: 'unpaid' },
+          trace_id: 'e2e',
+        }),
+      })
+      return
+    }
+    await route.fallback()
+  })
   await page.route('**/api/v1/contracts/receivables**', async (route) =>
     route.fulfill({
       status: 200,
@@ -288,6 +351,26 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await page.getByRole('link', { name: '合同应收' }).click()
   await expect(page.getByRole('heading', { name: '合同回款计划' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同 / 应收计划' })).toBeVisible()
+  await page.getByRole('button', { name: '新增合同' }).click()
+  const contractDialog = page.getByRole('dialog', { name: '新增合同' })
+  await expect(contractDialog).toBeVisible()
+  await contractDialog.getByLabel('合同编号').fill('HT-E2E-001')
+  await contractDialog.getByLabel('合同名称').fill('端到端合同')
+  await contractDialog.getByLabel('客户名称').fill('端到端客户')
+  await contractDialog.getByLabel('合同金额').fill('10000')
+  await contractDialog.getByRole('button', { name: '保存合同' }).click()
+  await expect(contractDialog.getByText('合同「端到端合同」已创建。')).toBeVisible()
+  await contractDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '新增应收计划' }).click()
+  const planDialog = page.getByRole('dialog', { name: '新增应收计划' })
+  await expect(planDialog).toBeVisible()
+  await planDialog.getByLabel('关联合同').selectOption({ label: 'HT-E2E-000 · 示例合同' })
+  await planDialog.getByLabel('节点名称').fill('首付款')
+  await planDialog.getByLabel('应收日期').fill('2026-11-01')
+  await planDialog.getByLabel('计划金额').fill('4000')
+  await planDialog.getByRole('button', { name: '保存应收计划' }).click()
+  await expect(planDialog.getByText('应收计划「首付款」已创建。')).toBeVisible()
+  await planDialog.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
   await expect(
     page

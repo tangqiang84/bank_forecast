@@ -133,6 +133,32 @@ export function importContracts(baseUrl: string, token: string, tenantId: number
   )
 }
 
+export function createContract(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: Record<string, unknown>,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/contracts`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createReceivablePlan(
+  baseUrl: string,
+  token: string,
+  tenantId: number,
+  payload: Record<string, unknown>,
+) {
+  return fetchJson<ApiResponse<Record<string, unknown>>>(`${baseUrl}/api/v1/receivable-plans`, {
+    method: 'POST',
+    headers: { ...authHeaders(token, tenantId), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 export function loadContracts(
   baseUrl: string,
   token: string,

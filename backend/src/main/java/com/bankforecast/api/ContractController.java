@@ -10,6 +10,8 @@ import com.bankforecast.service.ContractService;
 import java.time.LocalDate;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,6 +33,12 @@ public class ContractController {
   @GetMapping("/receivables")
   public ApiResponse<Map<String, Object>> receivables(@RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "20") int pageSize, @RequestParam(name = "contract_no", required = false) String contractNo, @RequestParam(name = "project_no", required = false) String projectNo, @RequestParam(name = "date_from", required = false) LocalDate dateFrom, @RequestParam(name = "date_to", required = false) LocalDate dateTo, @RequestParam(required = false) String status) {
     return ApiResponse.ok(contractService.receivables(requireAuth().getTenantId(), page, pageSize, contractNo, projectNo, dateFrom, dateTo, status));
+  }
+
+  @RequirePermission("contract:import")
+  @PostMapping
+  public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> request) {
+    return ApiResponse.ok(contractService.create(requireAuth().getTenantId(), request));
   }
 
   @RequirePermission("contract:view")

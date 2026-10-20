@@ -4,11 +4,16 @@ import ContractDetail from '../components/ContractDetail.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   previewContracts,
+  createContract,
+  createReceivablePlan,
+  loadContracts,
   loadReceivables,
   runMatching,
+  type Contract,
   type ContractImportPayload,
   type Receivable,
 } from '../services/receivables'
+import { loadProjects, type Project } from '../services/projects'
 import {
   loadPayables,
   previewPayables,
@@ -56,6 +61,153 @@ const message = ref('')
 const error = ref('')
 const importModalOpen = ref(false)
 const importDone = ref(false)
+const contractModalOpen = ref(false)
+const contractDone = ref(false)
+const contractForm = ref({
+  contract_no: '',
+  contract_name: '',
+  customer_name: '',
+  contract_amount: '',
+  project_id: '',
+  sign_date: '',
+  start_date: '',
+  end_date: '',
+  status: 'active',
+})
+const planModalOpen = ref(false)
+const planDone = ref(false)
+const planForm = ref({
+  contract_id: '',
+  node_name: '',
+  node_type: 'milestone',
+  due_date: '',
+  plan_amount: '',
+})
+const contractOptions = ref<Contract[]>([])
+const projectOptions = ref<Project[]>([])
+
+async function openContractModal() {
+  contractForm.value = {
+    contract_no: '',
+    contract_name: '',
+    customer_name: '',
+    contract_amount: '',
+    project_id: '',
+    sign_date: '',
+    start_date: '',
+    end_date: '',
+    status: 'active',
+  }
+  message.value = ''
+  contractDone.value = false
+  contractModalOpen.value = true
+  if (session.user.value && session.token.value && !projectOptions.value.length) {
+    try {
+      const projects = await loadProjects(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        1,
+        100,
+        {},
+      )
+      projectOptions.value = projects.data.items
+    } catch {
+      projectOptions.value = []
+    }
+  }
+}
+
+function closeContractModal() {
+  contractModalOpen.value = false
+}
+
+async function saveContract() {
+  if (!session.user.value || !session.token.value) return
+  const form = contractForm.value
+  if (!form.contract_no.trim() || !form.contract_name.trim() || !form.customer_name.trim()) {
+    message.value = '请填写合同编号、合同名称和客户名称'
+    return
+  }
+  if (!form.contract_amount || Number(form.contract_amount) <= 0) {
+    message.value = '请填写大于 0 的合同金额'
+    return
+  }
+  try {
+    await createContract(base, session.token.value, session.user.value.tenant_id, {
+      contract_no: form.contract_no,
+      contract_name: form.contract_name,
+      customer_name: form.customer_name,
+      contract_amount: form.contract_amount,
+      project_id: form.project_id || null,
+      sign_date: form.sign_date || null,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      status: form.status,
+    })
+    message.value = `合同「${form.contract_name.trim()}」已创建。`
+    contractDone.value = true
+    contractOptions.value = []
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '合同创建失败'
+  }
+}
+
+async function openPlanModal() {
+  planForm.value = {
+    contract_id: '',
+    node_name: '',
+    node_type: 'milestone',
+    due_date: '',
+    plan_amount: '',
+  }
+  message.value = ''
+  planDone.value = false
+  planModalOpen.value = true
+  if (session.user.value && session.token.value && !contractOptions.value.length) {
+    try {
+      const contracts = await loadContracts(base, session.token.value, session.user.value.tenant_id)
+      contractOptions.value = contracts.data.items
+    } catch {
+      contractOptions.value = []
+    }
+  }
+}
+
+function closePlanModal() {
+  planModalOpen.value = false
+}
+
+async function savePlan() {
+  if (!session.user.value || !session.token.value) return
+  const form = planForm.value
+  if (!form.contract_id) {
+    message.value = '请选择关联合同'
+    return
+  }
+  if (!form.node_name.trim() || !form.due_date) {
+    message.value = '请填写节点名称和应收日期'
+    return
+  }
+  if (!form.plan_amount || Number(form.plan_amount) <= 0) {
+    message.value = '请填写大于 0 的计划金额'
+    return
+  }
+  try {
+    await createReceivablePlan(base, session.token.value, session.user.value.tenant_id, {
+      contract_id: form.contract_id,
+      node_name: form.node_name,
+      node_type: form.node_type,
+      due_date: form.due_date,
+      plan_amount: form.plan_amount,
+    })
+    message.value = `应收计划「${form.node_name.trim()}」已创建。`
+    planDone.value = true
+    await load()
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '应收计划创建失败'
+  }
+}
 const contractDetailId = ref<number | null>(null)
 const payables = ref<PayablePlan[]>([])
 const payablePage = ref(1)
@@ -379,13 +531,36 @@ onMounted(() => {
       <div>
         <p class="eyebrow">合同应收</p>
         <h2>合同回款计划</h2>
-        <p class="lead">应收计划核对与回款匹配；合同 / 应收计划导入通过右上方入口在弹层中操作。</p>
+        <p class="lead">
+          应收计划核对与回款匹配；新增合同、新增应收计划和导入通过右上方入口在弹层中操作。
+        </p>
       </div>
       <span class="meta">共 {{ total }} 个节点</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
-    <p v-if="message && !importModalOpen" class="feedback-text">{{ message }}</p>
+    <p
+      v-if="message && !importModalOpen && !contractModalOpen && !planModalOpen"
+      class="feedback-text"
+    >
+      {{ message }}
+    </p>
     <div class="page-toolbar">
+      <button
+        v-permission="'contract:import'"
+        class="ghost-button"
+        type="button"
+        @click="openContractModal"
+      >
+        新增合同
+      </button>
+      <button
+        v-permission="'contract:import'"
+        class="ghost-button"
+        type="button"
+        @click="openPlanModal"
+      >
+        新增应收计划
+      </button>
       <button class="ghost-button" type="button" @click="openImportModal">
         导入合同 / 应收计划
       </button>
@@ -645,6 +820,105 @@ onMounted(() => {
           type="button"
           @click="closePayableImport"
         >
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="contractModalOpen" title="新增合同" @close="closeContractModal">
+      <p class="meta">手工录入合同主数据，合同编号在租户内唯一，保存后可继续录入应收计划</p>
+      <label
+        >合同编号<input
+          v-model.trim="contractForm.contract_no"
+          placeholder="如 HT-2026-001" /></label
+      ><label>合同名称<input v-model.trim="contractForm.contract_name" /></label
+      ><label>客户名称<input v-model.trim="contractForm.customer_name" /></label
+      ><label
+        >合同金额<input
+          v-model="contractForm.contract_amount"
+          type="number"
+          min="0.01"
+          step="0.01" /></label
+      ><label
+        >关联项目（可选）<select v-model="contractForm.project_id">
+          <option value="">不关联项目</option>
+          <option v-for="project in projectOptions" :key="project.id" :value="String(project.id)">
+            {{ project.project_no }} · {{ project.project_name }}
+          </option>
+        </select></label
+      ><label
+        >状态<select v-model="contractForm.status">
+          <option value="active">生效中</option>
+          <option value="closed">已关闭</option>
+          <option value="disabled">已停用</option>
+        </select></label
+      ><label>签订日期<input v-model="contractForm.sign_date" type="date" /></label
+      ><label>开始日期<input v-model="contractForm.start_date" type="date" /></label
+      ><label>结束日期<input v-model="contractForm.end_date" type="date" /></label>
+      <div class="action-group">
+        <button
+          v-permission="'contract:import'"
+          class="primary-button"
+          type="button"
+          @click="saveContract"
+        >
+          保存合同</button
+        ><button class="ghost-button" type="button" @click="closeContractModal">取消</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button
+          v-if="contractDone"
+          class="primary-button"
+          type="button"
+          @click="closeContractModal"
+        >
+          关闭
+        </button>
+      </template>
+    </ModalPanel>
+
+    <ModalPanel v-if="planModalOpen" title="新增应收计划" @close="closePlanModal">
+      <p class="meta">
+        手工录入应收节点并关联合同，同一合同下节点名称唯一，金额合计不能超过合同金额
+      </p>
+      <label
+        >关联合同<select v-model="planForm.contract_id">
+          <option value="" disabled>请选择合同</option>
+          <option
+            v-for="contract in contractOptions"
+            :key="contract.id"
+            :value="String(contract.id)"
+          >
+            {{ contract.contract_no }} · {{ contract.contract_name }}
+          </option>
+        </select></label
+      ><label>节点名称<input v-model.trim="planForm.node_name" placeholder="如 首付款" /></label
+      ><label
+        >节点类型<select v-model="planForm.node_type">
+          <option value="advance">预付款</option>
+          <option value="milestone">里程碑</option>
+          <option value="acceptance">验收款</option>
+          <option value="warranty">质保金</option>
+          <option value="maintenance">维保款</option>
+        </select></label
+      ><label>应收日期<input v-model="planForm.due_date" type="date" /></label
+      ><label
+        >计划金额<input v-model="planForm.plan_amount" type="number" min="0.01" step="0.01"
+      /></label>
+      <div class="action-group">
+        <button
+          v-permission="'contract:import'"
+          class="primary-button"
+          type="button"
+          @click="savePlan"
+        >
+          保存应收计划</button
+        ><button class="ghost-button" type="button" @click="closePlanModal">取消</button>
+      </div>
+      <p v-if="message" class="feedback-text">{{ message }}</p>
+      <template #footer>
+        <button v-if="planDone" class="primary-button" type="button" @click="closePlanModal">
           关闭
         </button>
       </template>
