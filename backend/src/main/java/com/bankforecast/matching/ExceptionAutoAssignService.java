@@ -13,7 +13,7 @@ public class ExceptionAutoAssignService {
 
   public static final String[] EXCEPTION_TYPES = {
       "unreceived", "partial_receipt", "unknown_receipt",
-      "bank_unrecorded", "finance_unmatched", "timing_difference", "fund_gap"};
+      "bank_unrecorded", "finance_unmatched", "timing_difference", "fund_gap", "match_review"};
   public static final String CONFIG_PREFIX = "exception_assign.";
 
   private final JdbcTemplate jdbcTemplate;

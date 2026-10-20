@@ -414,6 +414,53 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void exceptionListScopesByPermission() throws Exception {
+    String financeToken = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    createPartialMatch(tenantId, suffix);
+    String contractNo = "CT-A-" + suffix;
+    String tenant = String.valueOf(tenantId);
+
+    // 基线：finance01（双权限）可见 partial_receipt + unreceived 两条
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo)
+            .header("Authorization", "Bearer " + financeToken).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(2));
+
+    String adminToken = loginToken("admin01");
+    Long ceoRoleId = jdbcTemplate.queryForObject(
+        "select id from role where tenant_id = ? and role_code = 'CEO'", Long.class, tenantId);
+    try {
+      // CEO 角色收窄为仅 matching:view
+      mockMvc.perform(put("/api/v1/system/roles/" + ceoRoleId + "/permissions")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"permission_codes\":[\"matching:view\"]}")
+              .header("Authorization", "Bearer " + adminToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk());
+
+      String ceoToken = loginToken("ceo01");
+      // 任一权限可访问列表与 stats；仅 matching:view 时只见 match_review 类工单（当前无 → 0）
+      mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo)
+              .header("Authorization", "Bearer " + ceoToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.total").value(0));
+      mockMvc.perform(get("/api/v1/matching/exceptions/stats")
+              .header("Authorization", "Bearer " + ceoToken).header("X-Tenant-Id", tenant))
+          .andExpect(status().isOk());
+    } finally {
+      // 恢复 CEO 角色默认权限，避免影响其他用例
+      jdbcTemplate.update("delete from role_permission where tenant_id = ? and role_id = ?", tenantId, ceoRoleId);
+      for (String code : new String[] {"dashboard:view", "account:view", "transaction:view", "contract:view",
+          "project:view", "matching:view", "exception:view", "attachment:view", "reconciliation:view",
+          "report:view", "report:download", "forecast:view"}) {
+        jdbcTemplate.update("insert into role_permission (tenant_id, role_id, permission_id) "
+            + "select ?, ?, id from permission where permission_code = ?", tenantId, ceoRoleId, code);
+      }
+    }
+  }
+
+  @Test
   void exceptionStatsExtendTodayNewLargeAmountAndReviewPending() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();
@@ -682,9 +729,13 @@ class ContractMatchingControllerTest {
   }
 
   private String loginToken() throws Exception {
+    return loginToken("finance01");
+  }
+
+  private String loginToken(String loginName) throws Exception {
     MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"login_name\":\"finance01\",\"password\":\"test-password-123\"}"))
+            .content("{\"login_name\":\"" + loginName + "\",\"password\":\"test-password-123\"}"))
         .andExpect(status().isOk()).andReturn();
     String body = result.getResponse().getContentAsString();
     String token = body.substring(body.indexOf("access_token") + 15);

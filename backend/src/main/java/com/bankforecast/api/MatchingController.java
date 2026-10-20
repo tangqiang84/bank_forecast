@@ -65,7 +65,7 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.resultAllocations(id));
   }
 
-  @RequirePermission("exception:view")
+  @RequirePermission({"exception:view", "matching:view"})
   @GetMapping("/exceptions")
   public ApiResponse<Map<String, Object>> exceptions(
       @RequestParam(defaultValue = "1") int page,
@@ -86,13 +86,13 @@ public class MatchingController {
         amountMin, amountMax, createdFrom, createdTo));
   }
 
-  @RequirePermission("exception:view")
+  @RequirePermission({"exception:view", "matching:view"})
   @GetMapping("/exceptions/stats")
   public ApiResponse<Map<String, Object>> exceptionStats() {
     return ApiResponse.ok(matchingService.exceptionStats());
   }
 
-  @RequirePermission("exception:view")
+  @RequirePermission({"exception:view", "matching:view"})
   @GetMapping("/exceptions/{id}")
   public ApiResponse<Map<String, Object>> exceptionDetail(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.exceptionDetail(id));
@@ -152,7 +152,7 @@ public class MatchingController {
     return ApiResponse.ok(matchingService.batchExceptionAction(request));
   }
 
-  @RequirePermission("exception:view")
+  @RequirePermission({"exception:view", "matching:view"})
   @GetMapping("/exceptions/{id}/logs")
   public ApiResponse<List<Map<String, Object>>> exceptionLogs(@PathVariable Long id) {
     return ApiResponse.ok(matchingService.listExceptionLogs(id));

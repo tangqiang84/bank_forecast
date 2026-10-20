@@ -34,6 +34,7 @@ public class MatchingService {
   private final com.bankforecast.rule.RuleCenterService ruleCenterService;
   private final ExceptionAutoAssignService autoAssignService;
   private final CounterpartyAliasService counterpartyAliasService;
+  private final com.bankforecast.security.PermissionRepository permissionRepository;
   private final int customerNameMinLength;
   private final boolean customerNameAllowContains;
 
@@ -41,6 +42,7 @@ public class MatchingService {
       com.bankforecast.rule.RuleCenterService ruleCenterService,
       ExceptionAutoAssignService autoAssignService,
       CounterpartyAliasService counterpartyAliasService,
+      com.bankforecast.security.PermissionRepository permissionRepository,
       @Value("${bank-forecast.import.customer-name-min-length}") int customerNameMinLength,
       @Value("${bank-forecast.import.customer-name-allow-contains}") boolean customerNameAllowContains) {
     this.jdbcTemplate = jdbcTemplate;
@@ -48,6 +50,7 @@ public class MatchingService {
     this.ruleCenterService = ruleCenterService;
     this.autoAssignService = autoAssignService;
     this.counterpartyAliasService = counterpartyAliasService;
+    this.permissionRepository = permissionRepository;
     this.customerNameMinLength = customerNameMinLength;
     this.customerNameAllowContains = customerNameAllowContains;
   }
@@ -271,6 +274,7 @@ public class MatchingService {
         + "and (? is null or coalesce(ms.amount, sbt.amount) <= ?) "
         + "and (? is null or date(e.created_at) >= ?) and (? is null or date(e.created_at) <= ?)"
         + queueFilter(queue, principal.getUserId())
+        + exceptionTypeScope(principal)
         + (activeOnly ? " and e.status in ('new', 'in_progress')" : "");
     Object[] args = {principal.getTenantId(), contractNo, contractNo, projectNo, projectNo,
         dateFrom, dateFrom, dateTo, dateTo, status, status, ownerUserId, ownerUserId,
@@ -335,8 +339,19 @@ public class MatchingService {
           + "left join contract mc on mc.id = mr.contract_id where mr.deleted_at is null "
           + "group by mr.tenant_id, mr.match_group_id) ms on ms.tenant_id = e.tenant_id and ms.match_group_id = e.match_group_id";
 
-  private String queueFilter(String queue, Long currentUserId) {
-    if (queue == null || queue.trim().isEmpty()) return "";
+  // P4-8：列表按权限服务端分流——仅 matching:view 只见待核销（match_review）工单；
+  // 仅 exception:view 见异常域工单；两者都有见全部（兜底 1=0 不可达，拦截器已保证任一权限）
+  private String exceptionTypeScope(AuthPrincipal principal) {
+    Set<String> permissions = permissionRepository.findPermissionCodes(principal.getTenantId(), principal.getRoles());
+    boolean canException = permissions.contains("exception:view");
+    boolean canMatching = permissions.contains("matching:view");
+    if (canException && canMatching) return "";
+    if (canMatching) return " and e.exception_type = 'match_review'";
+    if (canException) return " and e.exception_type <> 'match_review'";
+    return " and 1 = 0";
+  }
+
+  private String queueFilter(String queue, Long currentUserId) {    if (queue == null || queue.trim().isEmpty()) return "";
     switch (queue.trim()) {
       case "mine":
         return " and e.owner_user_id = " + currentUserId + " and e.status in ('new', 'in_progress')";

@@ -69,6 +69,33 @@ class ExceptionAutoAssignTest {
   }
 
   @Test
+  void matchReviewTypeAcceptedInAssignmentConfig() throws Exception {
+    String token = loginToken("finance01");
+    Long tenantId = jdbcTemplate.queryForObject(
+        "select tenant_id from user_account where login_name = 'finance01'", Long.class);
+    Long cashierId = jdbcTemplate.queryForObject(
+        "select id from user_account where login_name = 'cashier01' and tenant_id = ?", Long.class, tenantId);
+
+    // match_review（待核销）接入自动分派配置（P4-8）
+    mockMvc.perform(put("/api/v1/rules/exception-assignment")
+            .header("Authorization", "Bearer " + token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"assignments\":{\"match_review\":" + cashierId + "}}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.exception_type == 'match_review')].owner_user_id")
+            .value(org.hamcrest.Matchers.contains(cashierId.intValue())));
+
+    // 清理配置
+    mockMvc.perform(put("/api/v1/rules/exception-assignment")
+            .header("Authorization", "Bearer " + token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"assignments\":{\"match_review\":\"\"}}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[?(@.exception_type == 'match_review')].owner_user_id")
+            .value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
+  }
+
+  @Test
   void assignmentValidationAndPermission() throws Exception {
     String token = loginToken("finance01");
     mockMvc.perform(put("/api/v1/rules/exception-assignment")
