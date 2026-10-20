@@ -196,7 +196,7 @@ class ContractMatchingControllerTest {
     Long planId = jdbcTemplate.queryForObject("select contract_receivable_plan_id from match_result where id = ?", Long.class, resultId);
     org.junit.jupiter.api.Assertions.assertEquals("unmatched", jdbcTemplate.queryForObject("select match_status from bank_transaction where id = ?", String.class, transactionId));
     org.junit.jupiter.api.Assertions.assertEquals("0.00", jdbcTemplate.queryForObject("select paid_amount from contract_receivable_plan where id = ?", String.class, planId));
-    org.junit.jupiter.api.Assertions.assertEquals("resolved", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
+    org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
     mockMvc.perform(post("/api/v1/matching/results/" + resultId + "/reject")
             .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"重复操作\"}")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
@@ -398,6 +398,58 @@ class ContractMatchingControllerTest {
     mockMvc.perform(post("/api/v1/matching/results/" + firstResultId + "/reject").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"暂不确认\"}")
             .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId))).andExpect(status().isOk());
     org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject("select status from exception_case where source_id = ? and exception_type = 'partial_receipt'", String.class, planId));
+  }
+
+  @Test
+  void confirmAndRejectSyncCarrierException() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    // 打回路径
+    Long rejectResultId = createPartialMatch(tenantId, suffix + "R");
+    Long rejectExceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and match_group_id = "
+            + "(select match_group_id from match_result where id = ?)", Long.class, tenantId, rejectResultId);
+
+    // 打回原因必填（P4-1 契约）
+    mockMvc.perform(post("/api/v1/matching/results/" + rejectResultId + "/reject")
+            .contentType(MediaType.APPLICATION_JSON).content("{}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(40001));
+
+    // 打回：工单保持打开转 in_progress，留痕「匹配组已打回：原因，待人工跟进」
+    mockMvc.perform(post("/api/v1/matching/results/" + rejectResultId + "/reject")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"付款方待核实\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("in_progress", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, rejectExceptionId));
+    org.junit.jupiter.api.Assertions.assertNull(jdbcTemplate.queryForObject(
+        "select closed_at from exception_case where id = ?", java.sql.Timestamp.class, rejectExceptionId));
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from exception_action_log where exception_case_id = ? and action_type = 'REJECT' "
+            + "and action_text = '匹配组已打回：付款方待核实，待人工跟进'",
+        Integer.class, rejectExceptionId).intValue());
+
+    // 确认路径：工单自动 resolved + 留痕「确认核销，自动关闭」
+    Long confirmResultId = createPartialMatch(tenantId, suffix + "C");
+    Long confirmExceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and match_group_id = "
+            + "(select match_group_id from match_result where id = ?)", Long.class, tenantId, confirmResultId);
+    mockMvc.perform(post("/api/v1/matching/results/" + confirmResultId + "/confirm")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk());
+    org.junit.jupiter.api.Assertions.assertEquals("resolved", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, confirmExceptionId));
+    org.junit.jupiter.api.Assertions.assertNotNull(jdbcTemplate.queryForObject(
+        "select closed_at from exception_case where id = ?", java.sql.Timestamp.class, confirmExceptionId));
+    org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+        "select count(*) from exception_action_log where exception_case_id = ? and action_type = 'CONFIRM' "
+            + "and action_text = '确认核销，自动关闭'",
+        Integer.class, confirmExceptionId).intValue());
   }
 
   @Test

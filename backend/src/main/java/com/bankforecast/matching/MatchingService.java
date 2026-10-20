@@ -220,7 +220,7 @@ public class MatchingService {
         "update match_result_allocation set status = 'confirmed', updated_at = ? where tenant_id = ? and match_group_id = ? and status = 'suggested' and deleted_at is null",
         now, tenantId, groupId);
     applyFinancialEffect(tenantId, groupId, "manual_confirmed");
-    closePartialExceptions(tenantId, groupId, principal, "CONFIRM", "人工确认匹配组 " + groupId);
+    syncCarrierExceptions(tenantId, groupId, principal, "CONFIRM", null);
     auditService.record("CONFIRM_MATCH_RESULT", "match_result", String.valueOf(resultId),
         "match_group_id=" + groupId + ", updated_results=" + updated);
     return resultView(tenantId, resultId);
@@ -232,7 +232,10 @@ public class MatchingService {
     Long tenantId = principal.getTenantId();
     Map<String, Object> result = findActionableResult(tenantId, resultId);
     String groupId = text(result.get("match_group_id"));
-    String rejectReason = reason == null || reason.trim().isEmpty() ? "未填写原因" : reason.trim();
+    if (reason == null || reason.trim().isEmpty()) {
+      throw new BusinessException(ErrorCode.PARAM_ERROR, "打回原因必填");
+    }
+    String rejectReason = reason.trim();
     String matchReason = text(result.get("match_reason")) + "；人工拒绝：" + rejectReason;
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
     int updated = jdbcTemplate.update(
@@ -245,12 +248,11 @@ public class MatchingService {
     jdbcTemplate.update(
         "update match_result_allocation set status = 'rejected', updated_at = ? where tenant_id = ? and match_group_id = ? and status = 'suggested' and deleted_at is null",
         now, tenantId, groupId);
-    closePartialExceptions(tenantId, groupId, principal, "REJECT", "人工拒绝匹配组 " + groupId + "：" + rejectReason);
+    syncCarrierExceptions(tenantId, groupId, principal, "REJECT", rejectReason);
     auditService.record("REJECT_MATCH_RESULT", "match_result", String.valueOf(resultId),
         "reason=" + rejectReason + ", match_group_id=" + groupId);
     return resultView(tenantId, resultId);
   }
-
   public Map<String, Object> listExceptions(int page, int pageSize, String contractNo, String projectNo,
       LocalDate dateFrom, LocalDate dateTo, String status, boolean activeOnly, Long ownerUserId, String queue) {
     AuthPrincipal principal = requireAuth();
@@ -846,6 +848,59 @@ public class MatchingService {
             + "join contract_receivable_plan p on p.id = a.contract_receivable_plan_id join contract c on c.id = p.contract_id "
             + "where a.tenant_id = ? and a.match_group_id = ? and a.deleted_at is null order by a.id asc",
         tenantId, matchGroupId);
+  }
+
+  // P4-4：确认/打回与承载工单状态同步（与 match_result 更新同一事务）
+  private void syncCarrierExceptions(Long tenantId, String matchGroupId, AuthPrincipal principal, String actionType, String reason) {
+    List<Map<String, Object>> carriers = jdbcTemplate.queryForList(
+        "select id, exception_type, source_id, description from exception_case where tenant_id = ? and match_group_id = ? and deleted_at is null",
+        tenantId, matchGroupId);
+    if (carriers.isEmpty()) {
+      // 存量无 match_group_id 关联的工单：按原计划维度兜底（P4-16 存量迁移完成后不再出现）
+      closePartialExceptions(tenantId, matchGroupId, principal, actionType,
+          "CONFIRM".equals(actionType) ? "人工确认匹配组 " + matchGroupId : "人工拒绝匹配组 " + matchGroupId + "：" + reason);
+      return;
+    }
+    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+    for (Map<String, Object> carrier : carriers) {
+      Long exceptionId = number(carrier.get("id"));
+      if ("CONFIRM".equals(actionType)) {
+        // partial_receipt 复用工单保护：同计划仍有其他待确认组时保持打开
+        boolean pendingRemain = "partial_receipt".equals(text(carrier.get("exception_type")))
+            && hasPendingSuggested(tenantId, number(carrier.get("source_id")));
+        if (pendingRemain) {
+          jdbcTemplate.update("update exception_case set status = case when status = 'new' then 'in_progress' else status end, description = ?, updated_at = ? "
+                  + "where id = ? and tenant_id = ?",
+              truncate(text(carrier.get("description")) + "；确认核销；仍有待确认候选", 2000), now, exceptionId, tenantId);
+          writeExceptionLog(tenantId, exceptionId, actionType, principal, "确认核销；仍有待确认候选");
+        } else {
+          jdbcTemplate.update("update exception_case set status = 'resolved', description = ?, closed_at = ?, updated_at = ? "
+                  + "where id = ? and tenant_id = ?",
+              truncate(text(carrier.get("description")) + "；确认核销，自动关闭", 2000), now, now, exceptionId, tenantId);
+          writeExceptionLog(tenantId, exceptionId, actionType, principal, "确认核销，自动关闭");
+        }
+      } else {
+        String logText = "匹配组已打回：" + reason + "，待人工跟进";
+        jdbcTemplate.update("update exception_case set status = case when status = 'new' then 'in_progress' else status end, description = ?, updated_at = ? "
+                + "where id = ? and tenant_id = ?",
+            truncate(text(carrier.get("description")) + "；" + logText, 2000), now, exceptionId, tenantId);
+        writeExceptionLog(tenantId, exceptionId, actionType, principal, logText);
+      }
+    }
+  }
+
+  private boolean hasPendingSuggested(Long tenantId, Long planId) {
+    Integer pendingResults = jdbcTemplate.queryForObject(
+        "select count(*) from match_result where tenant_id = ? and contract_receivable_plan_id = ? "
+            + "and match_status = 'suggested' and deleted_at is null",
+        Integer.class, tenantId, planId);
+    return pendingResults != null && pendingResults > 0;
+  }
+
+  private void writeExceptionLog(Long tenantId, Long exceptionId, String actionType, AuthPrincipal principal, String actionText) {
+    jdbcTemplate.update(
+        "insert into exception_action_log (tenant_id, exception_case_id, action_type, action_by, action_text) values (?, ?, ?, ?, ?)",
+        tenantId, exceptionId, actionType, principal.getUserId(), actionText);
   }
 
   private void closePartialException(Long tenantId, Long planId, AuthPrincipal principal, String actionType, String actionText) {
