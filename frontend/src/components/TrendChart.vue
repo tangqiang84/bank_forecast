@@ -214,7 +214,7 @@ const endDate = computed(() => props.dates[props.dates.length - 1] ?? '')
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: #5b6472;
+  color: var(--text-secondary);
 }
 .trend-chart-legend-swatch {
   display: inline-block;
@@ -229,13 +229,13 @@ const endDate = computed(() => props.dates[props.dates.length - 1] ?? '')
 }
 .trend-axis-label {
   font-size: 10px;
-  fill: #8a93a3;
+  fill: var(--text-muted);
 }
 .trend-axis-label--end {
   text-anchor: end;
 }
 .trend-zero-line {
-  stroke: #d5dae3;
+  stroke: var(--border-color);
   stroke-dasharray: 4 3;
   stroke-width: 1;
 }

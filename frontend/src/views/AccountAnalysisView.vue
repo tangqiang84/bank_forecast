@@ -55,17 +55,19 @@ async function proposeClose() {
   }
 }
 
+// 账户分布配色（商务简约换肤，方向 A）：低饱和藏青—青绿—砖红商务色谱，保持 10 色可区分度。
+// 原值含 #7c3aed 紫、#c026d3 品红等高饱和色，违反风格红线；旧值见 git tag pre-topnav-baseline
 const PALETTE = [
-  '#2563eb',
-  '#1a7f37',
-  '#d97706',
-  '#7c3aed',
-  '#0891b2',
-  '#dc2626',
-  '#0d9488',
-  '#c026d3',
-  '#65a30d',
-  '#ea580c',
+  '#1a3a5c',
+  '#2b7a78',
+  '#c4841d',
+  '#5b8ab5',
+  '#4f7d5a',
+  '#c0392b',
+  '#7a8b99',
+  '#8f3b2c',
+  '#6b8f71',
+  '#a8853c',
 ]
 
 async function load() {
@@ -311,13 +313,13 @@ onMounted(load)
 .distribution-track {
   height: 10px;
   overflow: hidden;
-  background: #eef1f6;
-  border-radius: 5px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
 }
 .distribution-bar {
   height: 100%;
-  background: #2563eb;
-  border-radius: 5px;
+  background: var(--color-primary);
+  border-radius: var(--radius-sm);
 }
 .suggestion-list {
   display: grid;
@@ -326,8 +328,8 @@ onMounted(load)
 }
 .suggestion-card {
   padding: 12px;
-  border: 1px solid #e2e7ef;
-  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
 }
 .suggestion-card-header {
   display: flex;
@@ -338,6 +340,6 @@ onMounted(load)
 .suggestion-reasons {
   margin: 8px 0;
   padding-left: 18px;
-  color: #5b6472;
+  color: var(--text-secondary);
 }
 </style>

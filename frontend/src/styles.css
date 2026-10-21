@@ -1,43 +1,57 @@
 :root {
   color-scheme: light;
 
-  --font-family-base: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 商务简约换肤（方向 A，2026-10-21）：中文系统字体栈 + 等宽数字栈，
+     取值对齐 redesign-directions/v2-direction-A-topnav.html；旧值见 git tag pre-topnav-baseline */
+  --font-family-base:
+    'PingFang SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui,
+    -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
 
-  --color-primary: #16324f;
-  --color-primary-hover: #1f4568;
-  --color-primary-soft: #e9eff5;
-  --color-accent: #c9a227;
-  --color-sidebar-bg: #12283f;
+  --color-primary: #1a3a5c;
+  --color-primary-hover: #2a5a8c;
+  --color-primary-soft: #e8edf3;
+  --color-primary-soft-hover: #d8e0ea;
+  --color-accent: #2b7a78;
+  /* 侧栏专属令牌：顶栏改造（阶段 3）后废弃，此处仅同步主色以维持中间态视觉一致 */
+  --color-sidebar-bg: #1a3a5c;
   --color-sidebar-text: rgba(255, 255, 255, 0.72);
   --color-sidebar-hover: rgba(255, 255, 255, 0.06);
   --color-sidebar-active: rgba(255, 255, 255, 0.1);
   --color-sidebar-divider: rgba(255, 255, 255, 0.14);
 
-  --bg-page: #f5f7fa;
+  --bg-page: #f5f6f8;
   --bg-surface: #ffffff;
-  --surface-muted: #f6f8fb;
+  --surface-muted: #f7f8fa;
 
-  --border-color: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --line: #e2e8f0;
+  --border-color: #e5e7eb;
+  --border-strong: #d1d5db;
+  --line: #e5e7eb;
 
-  --text-primary: #1a2b3c;
-  --text-secondary: #5b6b7c;
-  --text-muted: #8496a8;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
 
-  --color-success: #087443;
-  --color-success-bg: #ecfdf3;
-  --color-danger: #b42318;
-  --color-danger-bg: #fff1f0;
-  --color-warning: #9a6700;
-  --color-warning-bg: #fff8e6;
+  --color-success: #2b7a78;
+  --color-success-bg: #ecf6f5;
+  --color-danger: #c0392b;
+  --color-danger-bg: #fdecea;
+  --color-warning: #c4841d;
+  --color-warning-bg: #fdf4e6;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
+  /* 近直角：卡片/弹层 4px，控件/标签 2px（原型仅角标与 tag 有圆角） */
+  --radius-sm: 2px;
+  --radius-md: 4px;
   --radius-pill: 999px;
 
-  --shadow-card: 0 1px 2px rgba(16, 42, 67, 0.06);
-  --shadow-overlay: 0 12px 32px rgba(16, 42, 67, 0.18);
+  /* 零阴影：改以 1px 边框分区（原型无阴影） */
+  --shadow-card: none;
+  --shadow-overlay: none;
+
+  /* 顶栏与内容区尺寸（阶段 3 布局使用） */
+  --topbar-h: 48px;
+  --subnav-h: 40px;
+  --content-max-w: 1400px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -253,9 +267,10 @@ h3 {
   float: right;
   min-width: 18px;
   padding: 0 5px;
-  border-radius: 999px;
-  background: var(--color-accent);
-  color: #12283f;
+  border-radius: var(--radius-pill);
+  /* 商务简约换肤（方向 A）：accent 改深青绿后原深色文字对比不足，改用危险红底白字，符合「待办」语义 */
+  background: var(--color-danger);
+  color: #fff;
   font-size: 11px;
   font-weight: 600;
   text-align: center;
@@ -443,7 +458,7 @@ h3 {
 }
 
 .ghost-button:hover:not(:disabled) {
-  background: #dde7f0;
+  background: var(--color-primary-soft-hover);
 }
 
 .primary-button:disabled,
@@ -1384,7 +1399,7 @@ textarea {
   width: 100%;
   margin: 4px 0 0;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-size: 12px;
@@ -1394,7 +1409,7 @@ textarea {
 .tab-bar {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
   margin-bottom: 12px;
 }
 
@@ -1403,7 +1418,7 @@ textarea {
   border-bottom: 2px solid transparent;
   padding: 8px 16px;
   background: transparent;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
 }

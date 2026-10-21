@@ -121,21 +121,34 @@ function trendSeries(
 ): TrendSeries {
   return { name, color, values: trends.value?.series.map(pick) ?? [] }
 }
-const incomeSeries = computed(() => trendSeries('收入', '#1a7f37', (point) => point.income))
-const expenseSeries = computed(() => trendSeries('支出', '#c0392b', (point) => point.expense))
-const netSeries = computed(() => trendSeries('净流入', '#2563eb', (point) => point.net_inflow))
-const balanceSeries = computed(() => trendSeries('总余额', '#2563eb', (point) => point.balance))
+// 趋势系列配色（商务简约换肤，方向 A）：统一为低饱和藏青—青绿—砖红商务色谱。
+// 原值含 #7c3aed 紫与高饱和 #2563eb 蓝，违反「禁紫/禁霓虹」风格红线；旧值见 git tag pre-topnav-baseline
+const TREND_COLORS = {
+  income: '#2b7a78',
+  expense: '#c0392b',
+  netInflow: '#1a3a5c',
+  balance: '#5b8ab5',
+  openException: '#c4841d',
+  matchRate: '#7a8b99',
+  receivable: '#4f7d5a',
+  overdue: '#8f3b2c',
+} as const
+
+const incomeSeries = computed(() => trendSeries('收入', TREND_COLORS.income, (p) => p.income))
+const expenseSeries = computed(() => trendSeries('支出', TREND_COLORS.expense, (p) => p.expense))
+const netSeries = computed(() => trendSeries('净流入', TREND_COLORS.netInflow, (p) => p.net_inflow))
+const balanceSeries = computed(() => trendSeries('总余额', TREND_COLORS.balance, (p) => p.balance))
 const exceptionSeries = computed(() =>
-  trendSeries('未闭环异常', '#d97706', (point) => point.open_exceptions),
+  trendSeries('未闭环异常', TREND_COLORS.openException, (p) => p.open_exceptions),
 )
 const matchRateSeries = computed(() =>
-  trendSeries('匹配率', '#7c3aed', (point) => point.match_rate),
+  trendSeries('匹配率', TREND_COLORS.matchRate, (p) => p.match_rate),
 )
 const receivableSeries = computed(() =>
-  trendSeries('应收总额', '#0891b2', (point) => point.receivable_total),
+  trendSeries('应收总额', TREND_COLORS.receivable, (p) => p.receivable_total),
 )
 const overdueSeries = computed(() =>
-  trendSeries('逾期未收', '#dc2626', (point) => point.overdue_receivable),
+  trendSeries('逾期未收', TREND_COLORS.overdue, (p) => p.overdue_receivable),
 )
 const snapshotMissing = computed(
   () =>
