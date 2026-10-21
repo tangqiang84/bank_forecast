@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { gotoNav } from './helpers/nav'
 import { expect, test, type Page } from '@playwright/test'
 
 function ok(data: unknown) {
@@ -143,7 +144,7 @@ test('导入向导卡片按权限过滤且质量卡渲染', async ({ page }) => 
   await mockBase(page, ['dashboard:view', 'project:import'])
 
   await login(page)
-  await page.getByRole('link', { name: '导入向导' }).click()
+  await gotoNav(page, '导入向导')
   await expect(page).toHaveURL(/#\/imports$/)
   await expect(page.getByRole('heading', { name: '导入向导' })).toBeVisible()
 

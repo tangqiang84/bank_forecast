@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { gotoNav } from './helpers/nav'
 import { expect, test, type Page } from '@playwright/test'
 
 const ALL_PERMISSIONS = [
@@ -170,7 +171,7 @@ test('合同导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '合同与应收' }).click()
+  await gotoNav(page, '合同与应收')
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
@@ -279,7 +280,7 @@ test('财务记录导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '财务对账' }).click()
+  await gotoNav(page, '财务对账')
   await expect(page.getByRole('heading', { name: '银行账 / 财务账对账' })).toBeVisible()
 
   await page.getByRole('button', { name: '对账', exact: true }).click()
@@ -386,7 +387,7 @@ test('项目导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '项目资金' }).click()
+  await gotoNav(page, '项目资金')
   await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入项目' }).click()
@@ -510,7 +511,7 @@ test('回单导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '流水查询' }).click()
+  await gotoNav(page, '流水查询')
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入回单' }).click()
@@ -618,7 +619,7 @@ test('流水导入疑似重复行勾选后随确认入账', async ({ page }) => 
   })
 
   await login(page)
-  await page.getByRole('link', { name: '流水查询' }).click()
+  await gotoNav(page, '流水查询')
   await page.getByRole('button', { name: '导入流水' }).click()
   const statementPanel = page.getByRole('dialog', { name: '导入流水' })
   await statementPanel.locator('input[type="file"]').setInputFiles({
@@ -816,7 +817,7 @@ test('应付计划面板展示与导入流程', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '合同与应收' }).click()
+  await gotoNav(page, '合同与应收')
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '应收计划与应付计划' }).click()

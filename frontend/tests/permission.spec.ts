@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { expectAllGroupTabsVisible } from './helpers/nav'
 
 const BUSINESS_PERMISSIONS = [
   'project:view',
@@ -225,6 +226,8 @@ test('CFO 默认落驾驶舱且角标显示待分派加待复核', async ({ page
   await mockRoleApi(page, 'finance01', 'CFO')
   await loginWith(page)
   await expect(page).toHaveURL(/#\/dashboard$/)
+  // 顶栏形态（方向 A）：二级条只显示当前组，断言角标前先切到回款处理组
+  await page.getByRole('button', { name: '第二步 · 回款处理', exact: true }).click()
   await expect(page.getByRole('link', { name: /待办处理/ }).locator('.nav-badge')).toHaveText('5')
 })
 
@@ -300,31 +303,23 @@ test('管理员六组默认全部展开且角标按 CFO 口径显示', async ({ 
   await mockAdminApi(page)
   await loginWith(page)
 
-  // P6-1：ADMIN 落地用户与权限（landingPath 本期不变），六组默认全部展开
+  // P6-1：ADMIN 落地用户与权限（landingPath 本期不变）。
+  // 顶栏形态（方向 A）无「分组展开」概念，等价断言为：六组一级 tab 均可见，
+  // 且逐组切换后该组二级链接可见（证明 ADMIN 六组全部可达）
   await expect(page).toHaveURL(/#\/system$/)
-  for (const group of [
-    '第一步 · 数据接入',
-    '第二步 · 回款处理',
-    '第三步 · 财务对账',
-    '经营洞察',
-    '基础资料',
-    '系统设置',
-  ]) {
-    await expect(page.getByRole('button', { name: group })).toHaveAttribute('aria-expanded', 'true')
-  }
-  await expect(page.getByRole('link', { name: '银行账户管理' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '导入模板配置' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /待办处理/ })).toBeVisible()
-  await expect(page.getByRole('link', { name: '合同与应收' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '财务对账' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '管理驾驶舱' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '资金报表' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '现金流预测' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '账户分析' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '项目资金' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '流水查询' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '规则中心' })).toBeVisible()
+  await expectAllGroupTabsVisible(page)
   await expect(page.getByRole('link', { name: '用户与权限' })).toBeVisible()
+  for (const [group, firstItem] of [
+    ['第一步 · 数据接入', '银行账户管理'],
+    ['第二步 · 回款处理', '合同与应收'],
+    ['第三步 · 财务对账', '财务对账'],
+    ['经营洞察', '管理驾驶舱'],
+    ['基础资料', '项目资金'],
+  ] as const) {
+    await page.getByRole('button', { name: group, exact: true }).click()
+    await expect(page.getByRole('link', { name: firstItem })).toBeVisible()
+  }
   // P6-1：角标按 CFO 口径，待分派 3 + 待复核 2 = 5
+  await page.getByRole('button', { name: '第二步 · 回款处理', exact: true }).click()
   await expect(page.getByRole('link', { name: /待办处理/ }).locator('.nav-badge')).toHaveText('5')
 })

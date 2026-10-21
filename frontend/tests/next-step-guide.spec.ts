@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { gotoNav } from './helpers/nav'
 
 // 下一步引导条（P6-6）隔离 E2E：mock backend，仅验证前端规则与跳转，不证明真实服务可用
 
@@ -178,7 +179,7 @@ test('流水页有待办时显示「去处理」引导并可点击跳转', async
   await mockReports(page, [])
   await login(page)
 
-  await page.getByRole('link', { name: '流水查询' }).click()
+  await gotoNav(page, '流水查询')
   await expect(page).toHaveURL(/#\/transactions$/)
   const guide = page.locator('.next-step-guide')
   await expect(guide).toContainText('流水已就绪，还有 5 笔回款待核销')
@@ -195,7 +196,7 @@ test('流水页待办为 0 时不显示「去处理」引导', async ({ page }) 
   await mockReports(page, [])
   await login(page)
 
-  await page.getByRole('link', { name: '流水查询' }).click()
+  await gotoNav(page, '流水查询')
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
   await expect(page.locator('.next-step-guide')).toHaveCount(0)
 })
@@ -220,7 +221,7 @@ test('对账页本月无对账任务时显示「运行对账」引导', async ({
   await mockReports(page, [])
   await login(page)
 
-  await page.getByRole('link', { name: '财务对账' }).click()
+  await gotoNav(page, '财务对账')
   await expect(page).toHaveURL(/#\/reconciliation$/)
   const guide = page.locator('.next-step-guide')
   await expect(guide).toContainText('本月还没运行对账，点击右上角「运行对账」开始')
@@ -235,7 +236,7 @@ test('待办清零且月末时工作台显示「去对账」引导', async ({ pa
   await mockReports(page, [])
   await login(page)
 
-  await page.getByRole('link', { name: '待办处理' }).click()
+  await gotoNav(page, '待办处理')
   await expect(page).toHaveURL(/#\/exceptions$/)
   const guide = page.locator('.next-step-guide')
   await expect(guide).toContainText('今日待办已清零，本月财务对账还没做')
@@ -254,7 +255,7 @@ test('待办清零、本月已对账且月末时显示「去生成」月报引�
   await mockReports(page, [])
   await login(page)
 
-  await page.getByRole('link', { name: '待办处理' }).click()
+  await gotoNav(page, '待办处理')
   await expect(page).toHaveURL(/#\/exceptions$/)
   const guide = page.locator('.next-step-guide')
   await expect(guide).toContainText('本月月报还没生成')
