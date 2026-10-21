@@ -40,6 +40,25 @@ async function mockBusinessApi(page: Page) {
       }),
     }),
   )
+  await page.route('**/api/v1/auth/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          id: 5,
+          tenant_id: 1,
+          login_name: 'biz01',
+          display_name: '业务负责人',
+          roles: ['BUSINESS'],
+          permissions: BUSINESS_PERMISSIONS,
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
   await page.route('**/api/v1/projects/risk-rules', async (route) =>
     route.fulfill({
       status: 200,
@@ -108,7 +127,7 @@ test('业务负责人直接访问无权限路由进入 403 提示页', async ({ 
   await mockBusinessApi(page)
   await loginAsBusiness(page)
 
-  await page.goto('/#/reports')
+  await page.goto('/?direct=1#/reports')
   await expect(page).toHaveURL(/#\/403$/)
   await expect(page.getByRole('heading', { name: '没有访问权限' })).toBeVisible()
 })

@@ -37,7 +37,8 @@ const router = createRouter({
       component: WorkspaceLayout,
       meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'workspace-root', redirect: () => landingPath(useSession().user.value) },
+        // 根路径占位：实际落地由路由守卫 landingPath 按角色决定
+        { path: '', name: 'workspace-root', component: ForbiddenView },
         { path: '403', name: 'forbidden', component: ForbiddenView },
         {
           path: 'dashboard',
@@ -201,6 +202,8 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.requiresAuth && !session.loggedIn.value) return '/login'
   if (to.meta.guest && session.loggedIn.value) return landingPath(session.user.value)
+  // 角色默认落地页（P4-19）：根路径在用户加载完成后按角色跳转
+  if (to.name === 'workspace-root') return landingPath(session.user.value)
   const required = to.meta.permission as string | string[] | undefined
   if (required && session.loggedIn.value) {
     const codes = Array.isArray(required) ? required : [required]
