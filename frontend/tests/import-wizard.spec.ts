@@ -77,6 +77,7 @@ async function mockBase(page: Page, permissions: string[], roles: string[] = [])
 
 async function login(page: Page) {
   await page.goto('/')
+  await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/dashboard$/)
@@ -377,6 +378,7 @@ test('无 import:view 权限的用户确认成功后不显示任务详情链接'
 
   // BUSINESS 角色（有 project:import、无 import:view）落地到第一个可见菜单项：导入向导
   await page.goto('/')
+  await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/imports$/)

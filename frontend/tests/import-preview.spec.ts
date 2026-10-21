@@ -82,6 +82,7 @@ async function mockLoginAndDashboard(page: Page) {
 
 async function login(page: Page) {
   await page.goto('/')
+  await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/dashboard$/)

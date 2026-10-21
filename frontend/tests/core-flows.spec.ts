@@ -87,6 +87,7 @@ async function mockLoginAndDashboard(page: Page) {
 
 async function login(page: Page) {
   await page.goto('/')
+  await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/dashboard$/)
@@ -1868,12 +1869,21 @@ test('驾驶舱收付区块与资金缺口提示', async ({ page }) => {
     payablePanel.getByText(/未来 7 天应付 500\.00 · 未来 30 天应付 2,000\.00/),
   ).toBeVisible()
 
-  const gapPanel = page.locator('article').filter({
-    has: page.getByRole('heading', { name: '资金缺口', exact: true }),
+  // 方向 A（Q-01 修正）：资金缺口改以结论横幅表达，红绿灯并入「风险项目红绿灯」面板
+  const gapBanner = page.locator('.conclusion-banner')
+  await expect(gapBanner.getByText(/未来 30 天存在资金缺口/)).toBeVisible()
+  await expect(gapBanner.getByText('-900.00')).toBeVisible()
+  await expect(
+    gapBanner.getByText(/余额 100\.00 · 未来 30 天应收 3,000\.00 · 应付 4,000\.00/),
+  ).toBeVisible()
+
+  const lightsPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '风险项目红绿灯', exact: true }),
   })
-  await expect(gapPanel.getByText('-900.00')).toBeVisible()
-  await expect(gapPanel.getByText('未来 30 天存在资金缺口')).toBeVisible()
-  await expect(gapPanel.getByText(/余额 100\.00 · 应收 3,000\.00 · 应付 4,000\.00/)).toBeVisible()
+  await expect(lightsPanel.getByText('预警 1')).toBeVisible()
+  await expect(
+    lightsPanel.getByText(/余额 100\.00 · 应收 3,000\.00 · 应付 4,000\.00/),
+  ).toBeVisible()
 
   const riskPanel = page.locator('article').filter({
     has: page.getByRole('heading', { name: '风险项目排行', exact: true }),

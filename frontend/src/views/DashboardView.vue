@@ -126,19 +126,31 @@ async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
   try {
-    const [dash, account, recentTx] = await Promise.all([
+    const [dash, account] = await Promise.all([
       loadDashboardOverview(apiBase(), session.token.value, session.user.value.tenant_id),
       loadAccounts(apiBase(), session.token.value, session.user.value.tenant_id),
-      loadTransactions(apiBase(), session.token.value, session.user.value.tenant_id, 1, 5),
     ])
     overview.value = dash.data
     accounts.value = account.data.items
-    recentTransactions.value = recentTx.data.items
-    recentTxError.value = ''
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '驾驶舱加载失败'
   } finally {
     loading.value = false
+  }
+  // 近期流水摘要为辅助区块：独立容错请求，失败只影响本区块，不阻断驾驶舱主体
+  try {
+    const recentTx = await loadTransactions(
+      apiBase(),
+      session.token.value,
+      session.user.value.tenant_id,
+      1,
+      5,
+    )
+    recentTransactions.value = recentTx.data.items
+    recentTxError.value = ''
+  } catch (cause) {
+    recentTransactions.value = []
+    recentTxError.value = cause instanceof Error ? cause.message : '近期流水加载失败'
   }
 }
 function percentText(value: number | null) {
