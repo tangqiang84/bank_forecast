@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSession, apiBase } from '../session'
 import { loadExceptionStats } from '../services/receivables'
@@ -9,10 +9,9 @@ const route = useRoute()
 const session = useSession()
 
 // 顶栏形态（方向 A，2026-10-21）：一级 tab 横排六组，二级条只渲染当前组子项。
-// 原侧栏「分组折叠 + 角色默认展开」在顶栏形态下退化为「按角色默认选中组」；
-// 用户手动点一级 tab 后写入 localStorage，路由命中时以路由所属组为准（保证深链/刷新后二级条正确）。
-const ACTIVE_GROUP_KEY = 'nav-active-group'
-
+// 原侧栏「分组折叠 + 角色默认展开」退化为「按角色默认选中组」。
+// 优先级：手动选中组 > 路由所属组 > 角色默认组 > 首个可见组。
+// 当路由跳到与手动选中组不同的组（如页内「去处理 →」跳转）时清除手动选中，让二级条跟随路由。
 function roleDefaultGroup(): string | null {
   const roles = session.user.value?.roles ?? []
   if (roles.includes('CFO') || roles.includes('ADMIN')) return '第二步 · 回款处理'
@@ -33,18 +32,22 @@ function active(path: string) {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
-// 用户手动选中过的一级组（持久化），路由命中时让位给路由所属组
-const selectedGroup = ref<string | null>(localStorage.getItem(ACTIVE_GROUP_KEY))
+const selectedGroup = ref<string | null>(null)
 
 const routeGroupLabel = computed(
   () =>
     visibleGroups.value.find((group) => group.items.some((link) => active(link.path)))?.label ??
     null,
 )
+
+watch(routeGroupLabel, (group) => {
+  if (group && selectedGroup.value && group !== selectedGroup.value) selectedGroup.value = null
+})
+
 const currentGroupLabel = computed(
   () =>
-    routeGroupLabel.value ??
     selectedGroup.value ??
+    routeGroupLabel.value ??
     roleDefaultGroup() ??
     visibleGroups.value[0]?.label ??
     '',
@@ -61,7 +64,6 @@ const currentGroupIndex = computed(() =>
 
 function selectGroup(label: string) {
   selectedGroup.value = label
-  localStorage.setItem(ACTIVE_GROUP_KEY, label)
 }
 
 // 待办角标（P4-20；P6-1 ADMIN 并入 CFO 口径）：CASHIER 显示我的待办、CFO/ADMIN 显示待分派+待复核，其余角色不显示；为 0 或失败不显示
