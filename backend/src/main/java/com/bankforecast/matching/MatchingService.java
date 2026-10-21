@@ -286,15 +286,22 @@ public class MatchingService {
         + "left join contract c on c.id = p.contract_id "
         + "left join user_account u on u.id = e.owner_user_id and u.tenant_id = e.tenant_id"
         + AMOUNT_JOINS;
+    int largeThreshold = ruleCenterService.largeAmountThreshold(principal.getTenantId());
     List<Map<String, Object>> items = jdbcTemplate.queryForList(
         "select e.id, e.exception_no, e.exception_type, e.source_type, e.source_id, e.title, e.description, e.owner_user_id, u.display_name as owner_name, e.status, "
             + "case when e.status = 'closed' then '已关闭' when e.status = 'false_positive' then '误报' "
             + "when e.status = 'resolved' then '待关闭' when e.status = 'in_progress' or e.owner_user_id is not null then '处理中' "
             + "else '待分派' end as stage, "
             + "e.severity, e.due_date, e.closed_at, e.created_at, e.updated_at, "
-            + "e.match_group_id, ms.txn_no as match_txn_no, ms.amount as match_amount, "
-            + "ms.confidence_level as match_confidence_level, ms.match_status as match_status, ms.contract_no as match_contract_no"
-            + joins + filter + " order by e.id desc limit ? offset ?", append(args, safeSize, offset));
+            + "coalesce(ms.amount, sbt.amount) as biz_amount, sbt.counterparty_name as source_counterparty, sbt.summary as source_summary, "
+            + "e.match_group_id, ms.first_result_id as match_result_id, ms.txn_no as match_txn_no, ms.amount as match_amount, "
+            + "ms.confidence_level as match_confidence_level, ms.match_status as match_status, ms.contract_no as match_contract_no, "
+            + "ms.counterparty_name as match_counterparty_name, ms.txn_summary as match_txn_summary, ms.node_name as match_node_name"
+            + joins + filter
+            // P4-11：默认处理优先级排序——超期 > 大额 > 创建时间（先创建先处理）
+            + " order by case when e.status in ('new', 'in_progress') and e.due_date is not null and e.due_date < current_date then 0 else 1 end, "
+            + "case when coalesce(ms.amount, sbt.amount) >= ? then 0 else 1 end, e.created_at asc, e.id asc limit ? offset ?",
+        append(args, largeThreshold, safeSize, offset));
     for (Map<String, Object> item : items) {
       embedMatchSummary(item);
     }
@@ -314,6 +321,10 @@ public class MatchingService {
     Object confidence = item.remove("match_confidence_level");
     Object matchStatus = item.remove("match_status");
     Object matchContractNo = item.remove("match_contract_no");
+    Object resultId = item.remove("match_result_id");
+    Object counterpartyName = item.remove("match_counterparty_name");
+    Object txnSummary = item.remove("match_txn_summary");
+    Object nodeName = item.remove("match_node_name");
     String groupId = text(item.get("match_group_id"));
     if (groupId.isEmpty()) {
       item.put("match_summary", null);
@@ -326,21 +337,50 @@ public class MatchingService {
     summary.put("txn_no", txnNo);
     summary.put("amount", amount);
     summary.put("contract_no", matchContractNo);
+    summary.put("result_id", resultId);
+    summary.put("counterparty_name", counterpartyName);
+    summary.put("summary", txnSummary);
+    summary.put("node_name", nodeName);
     item.put("match_summary", summary);
   }
 
   // P4-6/P4-7：工单金额取数（匹配组金额或流水金额）与匹配摘要的共用连接
   private static final String AMOUNT_JOINS =
       " left join bank_transaction sbt on e.source_type = 'bank_transaction' and sbt.id = e.source_id"
-          + " left join (select mr.tenant_id, mr.match_group_id, "
+          + " left join (select mr.tenant_id, mr.match_group_id, min(mr.id) as first_result_id, "
           + "substring_index(group_concat(bt.transaction_no order by mr.id), ',', 1) as txn_no, "
+          + "substring_index(group_concat(bt.counterparty_name order by mr.id), ',', 1) as counterparty_name, "
+          + "substring_index(group_concat(bt.summary order by mr.id), ',', 1) as txn_summary, "
+          + "substring_index(group_concat(p2.node_name order by mr.id), ',', 1) as node_name, "
           + "sum(mr.allocated_amount) as amount, "
           + "substring_index(group_concat(mr.confidence_level order by mr.id), ',', 1) as confidence_level, "
           + "substring_index(group_concat(mr.match_status order by mr.id), ',', 1) as match_status, "
           + "substring_index(group_concat(mc.contract_no order by mr.id), ',', 1) as contract_no "
           + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
-          + "left join contract mc on mc.id = mr.contract_id where mr.deleted_at is null "
+          + "left join contract mc on mc.id = mr.contract_id "
+          + "left join contract_receivable_plan p2 on p2.id = mr.contract_receivable_plan_id "
+          + "where mr.deleted_at is null "
           + "group by mr.tenant_id, mr.match_group_id) ms on ms.tenant_id = e.tenant_id and ms.match_group_id = e.match_group_id";
+
+  // P4-11：批量确认核销——对承载工单执行匹配组确认（需要 matching:confirm 权限）
+  private void confirmCarrierMatch(Long exceptionId, AuthPrincipal principal) {
+    Set<String> permissions = permissionRepository.findPermissionCodes(principal.getTenantId(), principal.getRoles());
+    if (!permissions.contains("matching:confirm")) {
+      throw new BusinessException(ErrorCode.PERMISSION_DENIED, "没有执行该操作的权限");
+    }
+    Map<String, Object> exception = findException(principal.getTenantId(), exceptionId);
+    String groupId = text(exception.get("match_group_id"));
+    if (groupId.isEmpty()) {
+      throw new BusinessException(ErrorCode.PARAM_ERROR, "该工单不是待核销工单");
+    }
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "select id from match_result where tenant_id = ? and match_group_id = ? and match_status = 'suggested' and deleted_at is null order by id limit 1",
+        principal.getTenantId(), groupId);
+    if (rows.isEmpty()) {
+      throw new BusinessException(ErrorCode.MATCH_RESULT_NOT_ACTIONABLE, "匹配结果已被处理，不能重复确认或拒绝");
+    }
+    confirmResult(number(rows.get(0).get("id")));
+  }
 
   // P4-8：列表按权限服务端分流——仅 matching:view 只见待核销（match_review）工单；
   // 仅 exception:view 见异常域工单；两者都有见全部（兜底 1=0 不可达，拦截器已保证任一权限）
@@ -565,6 +605,7 @@ public class MatchingService {
       else if ("resolve".equals(action)) { resolveException(id, text); updated++; }
       else if ("close".equals(action)) { closeException(id, text); updated++; }
       else if ("false_positive".equals(action)) { markFalsePositive(id, text); updated++; }
+      else if ("confirm_match".equals(action)) { confirmCarrierMatch(id, principal); updated++; }
       else throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的批量异常操作");
     }
     Map<String, Object> result = new LinkedHashMap<>();

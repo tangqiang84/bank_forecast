@@ -401,7 +401,7 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await page.getByRole('link', { name: '异常事项' }).click()
   await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
 
-  const row = page.locator('.exception-row', { hasText: 'EXC-0001' })
+  const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await expect(row.getByText('未知收款待确认')).toBeVisible()
   await expect(row.locator('.pill')).toHaveText('新发现')
 
@@ -2394,7 +2394,7 @@ test('异常详情生成解释草稿', async ({ page }) => {
 
   await login(page)
   await page.getByRole('link', { name: '异常事项' }).click()
-  const row = page.locator('.exception-row', { hasText: 'EXC-0001' })
+  const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
   const detailDialog = page.getByRole('dialog', { name: '异常事项详情' })
   await detailDialog.getByRole('button', { name: '生成解释草稿' }).click()

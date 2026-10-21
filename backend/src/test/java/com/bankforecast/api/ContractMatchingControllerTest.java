@@ -414,6 +414,51 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void workbenchListOrderingSummaryFieldsAndBatchConfirm() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    String contractNo = "CT-A-" + suffix;
+    String auth = "Bearer " + token;
+    String tenant = String.valueOf(tenantId);
+
+    // 默认排序（超期 > 大额 > 创建时间）下超期的部分收款工单在前；摘要含节点/付款方/结果 id；行有工单金额
+    mockMvc.perform(get("/api/v1/matching/exceptions?contract_no=" + contractNo)
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.items[0].exception_type").value("partial_receipt"))
+        .andExpect(jsonPath("$.data.items[0].biz_amount").value(500.0))
+        .andExpect(jsonPath("$.data.items[0].match_summary.result_id").value(resultId))
+        .andExpect(jsonPath("$.data.items[0].match_summary.node_name").value("首付款"))
+        .andExpect(jsonPath("$.data.items[0].match_summary.counterparty_name")
+            .value(org.hamcrest.Matchers.startsWith("丙方科技")));
+
+    Long exceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and exception_type = 'partial_receipt' and source_id = "
+            + "(select contract_receivable_plan_id from match_result where id = ?)", Long.class, tenantId, resultId);
+
+    // 批量确认核销：组确认 + 承载工单自动 resolved
+    mockMvc.perform(post("/api/v1/matching/exceptions/batch-action")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"exception_ids\":[" + exceptionId + "],\"action\":\"confirm_match\",\"text\":\"\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.updated").value(1));
+    org.junit.jupiter.api.Assertions.assertEquals("confirmed", jdbcTemplate.queryForObject(
+        "select match_status from match_result where id = ?", String.class, resultId));
+    org.junit.jupiter.api.Assertions.assertEquals("resolved", jdbcTemplate.queryForObject(
+        "select status from exception_case where id = ?", String.class, exceptionId));
+
+    // 重复批量确认 → 43002
+    mockMvc.perform(post("/api/v1/matching/exceptions/batch-action")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"exception_ids\":[" + exceptionId + "],\"action\":\"confirm_match\",\"text\":\"\"}")
+            .header("Authorization", auth).header("X-Tenant-Id", tenant))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(43002));
+  }
+
+  @Test
   void matchReviewTicketLifecycleStatsAndPermissionScope() throws Exception {
     String financeToken = loginToken();
     Long tenantId = tenantId();

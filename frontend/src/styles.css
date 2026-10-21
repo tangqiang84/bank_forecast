@@ -980,6 +980,49 @@ td {
   background: #fff;
 }
 
+.dense-table-wrap {
+  overflow-x: auto;
+}
+
+.dense-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dense-table th,
+.dense-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.dense-table th {
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dense-table .amount-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dense-table .summary-cell {
+  max-width: 220px;
+}
+
+.dense-table .action-cell {
+  white-space: nowrap;
+}
+
+.dense-table tr.flash td {
+  background: var(--color-primary-soft);
+  transition: background 1.2s ease;
+}
+
 .pagination-controls {
   display: flex;
   align-items: center;

@@ -7,9 +7,11 @@ import {
   batchExceptionAction,
   closeException,
   commentException,
+  confirmMatchResult,
   loadExceptions,
   loadExceptionStats,
   markFalsePositive,
+  rejectMatchResult,
   resolveException,
   runMatching,
   uploadExceptionAttachment,
@@ -17,7 +19,7 @@ import {
   type ExceptionStats,
 } from '../services/receivables'
 import { apiBase, useSession } from '../session'
-import { exceptionStatusLabel, exceptionTypeLabel, severityLabel } from '../utils/labels'
+import { confidenceLevelLabel, exceptionStatusLabel, exceptionTypeLabel } from '../utils/labels'
 
 const session = useSession()
 const base = apiBase()
@@ -59,12 +61,18 @@ const exceptionDetailId = ref<number | null>(null)
 const assignTarget = ref<ExceptionCase | null>(null)
 const actionTarget = ref<{
   item: ExceptionCase
-  name: 'comment' | 'resolve' | 'false_positive'
+  name: 'comment' | 'resolve' | 'false_positive' | 'reject'
 } | null>(null)
 const actionText = ref('')
 const actionDone = ref(false)
+const flashId = ref<number | null>(null)
 
-const actionTitles = { comment: '备注', resolve: '处理完成', false_positive: '标记误报' } as const
+const actionTitles = {
+  comment: '备注',
+  resolve: '处理完成',
+  false_positive: '标记误报',
+  reject: '打回',
+} as const
 
 const anyModalOpen = computed(
   () =>
@@ -87,9 +95,12 @@ function cancelAssign() {
   assignTarget.value = null
 }
 
-function askTextAction(item: ExceptionCase, name: 'comment' | 'resolve' | 'false_positive') {
+function askTextAction(
+  item: ExceptionCase,
+  name: 'comment' | 'resolve' | 'false_positive' | 'reject',
+) {
   actionTarget.value = { item, name }
-  actionText.value = '人工处理记录'
+  actionText.value = name === 'reject' ? '' : '人工处理记录'
   actionDone.value = false
   message.value = ''
 }
@@ -199,12 +210,86 @@ async function submitTextAction() {
         item.id,
         text,
       )
-    message.value = '异常事项操作已完成。'
+    if (name === 'reject') {
+      if (!item.match_summary?.result_id) {
+        message.value = '该工单无关联匹配组，无法打回'
+        return
+      }
+      await rejectMatchResult(
+        base,
+        session.token.value,
+        session.user.value.tenant_id,
+        item.match_summary.result_id,
+        text,
+      )
+    }
+    message.value = name === 'reject' ? '已打回，工单转入待跟进。' : '异常事项操作已完成。'
     actionDone.value = true
     await load()
     await loadStats()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
+  }
+}
+function isOpen(item: ExceptionCase) {
+  return item.status !== 'closed' && item.status !== 'false_positive'
+}
+
+function isReviewRow(item: ExceptionCase) {
+  return !!item.match_summary && item.match_summary.match_status === 'suggested'
+}
+
+function formatAmount(value: string | null | undefined) {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = Number(value)
+  if (Number.isNaN(num)) return value
+  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2 })
+}
+
+function suggestionText(item: ExceptionCase) {
+  const summary = item.match_summary
+  if (!summary) return '-'
+  const parts = [summary.contract_no, summary.node_name].filter(Boolean)
+  return parts.length ? parts.join(' / ') : '-'
+}
+
+function overdueText(item: ExceptionCase) {
+  if (!item.due_date) return '-'
+  const days = Math.floor(
+    (Date.parse(`${item.due_date}T00:00:00`) -
+      Date.parse(new Date().toISOString().slice(0, 10) + 'T00:00:00')) /
+      86400000,
+  )
+  if (days < 0 && isOpen(item)) return `超期 ${-days} 天`
+  if (days >= 0 && isOpen(item)) return `剩余 ${days} 天`
+  return '-'
+}
+
+// 处理完自动高亮下一笔（行从队列消失后聚焦同位置行）
+async function afterRowAction(item: ExceptionCase) {
+  const index = rows.value.findIndex((row) => row.id === item.id)
+  await load()
+  await loadStats()
+  const next = rows.value[Math.min(Math.max(index, 0), rows.value.length - 1)]
+  flashId.value = next && next.id !== item.id ? next.id : null
+  if (flashId.value !== null) {
+    window.setTimeout(() => (flashId.value = null), 1500)
+  }
+}
+
+async function confirmCarrier(item: ExceptionCase) {
+  if (!session.user.value || !session.token.value || !item.match_summary?.result_id) return
+  try {
+    await confirmMatchResult(
+      base,
+      session.token.value,
+      session.user.value.tenant_id,
+      item.match_summary.result_id,
+    )
+    message.value = '已确认核销。'
+    await afterRowAction(item)
+  } catch (cause) {
+    message.value = cause instanceof Error ? cause.message : '确认核销失败'
   }
 }
 async function close(item: ExceptionCase) {
@@ -346,6 +431,14 @@ onMounted(() => {
     </article>
     <div class="page-toolbar">
       <button
+        v-permission="'matching:confirm'"
+        class="ghost-button"
+        :disabled="!selected.length"
+        type="button"
+        @click="batch('confirm_match')"
+      >
+        批量确认核销</button
+      ><button
         v-permission="'exception:handle'"
         class="ghost-button"
         :disabled="!selected.length"
@@ -423,81 +516,124 @@ onMounted(() => {
           </select></label
         >
       </div>
-      <div v-if="rows.length" class="list-stack">
-        <div v-for="item in rows" :key="item.id" class="exception-row">
-          <div>
-            <input v-model="selected" type="checkbox" :value="item.id" /><strong>{{
-              item.title
-            }}</strong>
-            <p class="meta">
-              {{ item.exception_no }} · {{ exceptionTypeLabel(item.exception_type) }} ·
-              {{ severityLabel(item.severity) }}
-            </p>
-            <p class="meta">{{ item.description }}</p>
-            <p class="meta">
-              责任人：{{
-                item.owner_name || (item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派')
-              }}
-              · 截止：{{ item.due_date || '-' }}
-            </p>
-          </div>
-          <div class="exception-actions">
-            <span class="pill">{{ item.stage || exceptionStatusLabel(item.status) }}</span>
-            <div class="action-group">
-              <button class="text-button" type="button" @click="openException(item.id)">详情</button
-              ><button
-                v-if="
-                  !item.owner_user_id &&
-                  item.status !== 'closed' &&
-                  item.status !== 'false_positive'
-                "
-                v-permission="'exception:assign'"
-                class="small-primary-button"
-                type="button"
-                @click="askAssign(item)"
-              >
-                分派给我</button
-              ><button
-                v-if="item.status !== 'closed' && item.status !== 'false_positive'"
-                v-permission="'exception:handle'"
-                class="text-button"
-                type="button"
-                @click="askTextAction(item, 'comment')"
-              >
-                备注</button
-              ><button
-                v-if="['new', 'in_progress'].includes(item.status)"
-                v-permission="'exception:handle'"
-                class="small-primary-button"
-                type="button"
-                @click="askTextAction(item, 'resolve')"
-              >
-                处理完成</button
-              ><button
-                v-if="item.status === 'resolved'"
-                v-permission="'exception:handle'"
-                class="small-danger-button"
-                type="button"
-                @click="close(item)"
-              >
-                关闭</button
-              ><button
-                v-if="item.status !== 'closed' && item.status !== 'false_positive'"
-                v-permission="'exception:handle'"
-                class="small-danger-button"
-                type="button"
-                @click="askTextAction(item, 'false_positive')"
-              >
-                标记误报</button
-              ><label
-                v-if="item.status !== 'closed' && item.status !== 'false_positive'"
-                v-permission="'attachment:manage'"
-                class="attachment-button"
-                >上传附件<input type="file" @change="upload(item, $event)"
-              /></label>
-            </div>
-          </div>
-        </div>
+      <div v-if="rows.length" class="dense-table-wrap">
+        <table class="dense-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="amount-cell">金额</th>
+              <th>付款方户名</th>
+              <th>流水摘要</th>
+              <th>建议合同/节点</th>
+              <th>建议依据</th>
+              <th>类型</th>
+              <th>账龄/超期</th>
+              <th>责任人</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in rows" :key="item.id" :class="{ flash: flashId === item.id }">
+              <td><input v-model="selected" type="checkbox" :value="item.id" /></td>
+              <td class="amount-cell">{{ formatAmount(item.biz_amount) }}</td>
+              <td>
+                {{ item.match_summary?.counterparty_name || item.source_counterparty || '-' }}
+              </td>
+              <td class="summary-cell" :title="item.description">
+                {{ item.match_summary?.summary || item.source_summary || item.title }}
+              </td>
+              <td>{{ suggestionText(item) }}</td>
+              <td>
+                {{ item.match_summary ? confidenceLevelLabel(item.match_summary.confidence) : '-' }}
+              </td>
+              <td>
+                {{ exceptionTypeLabel(item.exception_type) }}
+                <p class="meta">{{ item.exception_no }}</p>
+              </td>
+              <td>{{ overdueText(item) }}</td>
+              <td>
+                {{
+                  item.owner_name || (item.owner_user_id ? `用户 ${item.owner_user_id}` : '未分派')
+                }}
+              </td>
+              <td>
+                <span class="pill">{{ item.stage || exceptionStatusLabel(item.status) }}</span>
+              </td>
+              <td class="action-cell">
+                <template v-if="isReviewRow(item)">
+                  <button
+                    v-permission="'matching:confirm'"
+                    class="small-primary-button"
+                    type="button"
+                    @click="confirmCarrier(item)"
+                  >
+                    确认核销</button
+                  ><button
+                    v-permission="'matching:confirm'"
+                    class="text-button"
+                    type="button"
+                    @click="askTextAction(item, 'reject')"
+                  >
+                    打回
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="!item.owner_user_id && isOpen(item)"
+                    v-permission="'exception:assign'"
+                    class="small-primary-button"
+                    type="button"
+                    @click="askAssign(item)"
+                  >
+                    认领给我</button
+                  ><button
+                    v-if="isOpen(item)"
+                    v-permission="'exception:handle'"
+                    class="text-button"
+                    type="button"
+                    @click="askTextAction(item, 'comment')"
+                  >
+                    备注</button
+                  ><button
+                    v-if="['new', 'in_progress'].includes(item.status)"
+                    v-permission="'exception:handle'"
+                    class="small-primary-button"
+                    type="button"
+                    @click="askTextAction(item, 'resolve')"
+                  >
+                    处理完成</button
+                  ><button
+                    v-if="item.status === 'resolved'"
+                    v-permission="'exception:handle'"
+                    class="small-danger-button"
+                    type="button"
+                    @click="close(item)"
+                  >
+                    关闭</button
+                  ><button
+                    v-if="isOpen(item)"
+                    v-permission="'exception:handle'"
+                    class="text-button"
+                    type="button"
+                    @click="askTextAction(item, 'false_positive')"
+                  >
+                    误报
+                  </button>
+                </template>
+                <button class="text-button" type="button" @click="openException(item.id)">
+                  详情
+                </button>
+                <label
+                  v-if="isOpen(item)"
+                  v-permission="'attachment:manage'"
+                  class="attachment-button"
+                  >附件<input type="file" @change="upload(item, $event)"
+                /></label>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <p v-else class="empty-state">暂无异常事项。运行回款匹配或财务对账后查看异常。</p>
       <div class="pagination-controls">

@@ -38,6 +38,9 @@ export type ExceptionCase = {
   owner_name?: string | null
   stage?: string
   closed_at?: string | null
+  biz_amount?: string | null
+  source_counterparty?: string | null
+  source_summary?: string | null
   match_group_id?: string | null
   match_summary?: ExceptionMatchSummary | null
 }
@@ -49,6 +52,10 @@ export type ExceptionMatchSummary = {
   txn_no: string
   amount: string
   contract_no: string | null
+  result_id?: number
+  counterparty_name?: string | null
+  summary?: string | null
+  node_name?: string | null
 }
 
 export type ExceptionOwnerStat = {
