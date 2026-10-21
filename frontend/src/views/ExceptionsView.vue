@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import WorkbenchDetail from '../components/WorkbenchDetail.vue'
 import MatchArchive from '../components/MatchArchive.vue'
 import ModalPanel from '../components/ModalPanel.vue'
@@ -10,6 +11,7 @@ import {
   commentException,
   confirmMatchResult,
   loadExceptions,
+  loadExceptionDetail,
   loadExceptionStats,
   markFalsePositive,
   rejectMatchResult,
@@ -24,6 +26,7 @@ import { confidenceLevelLabel, exceptionStatusLabel, exceptionTypeLabel } from '
 
 const session = useSession()
 const base = apiBase()
+const route = useRoute()
 const rows = ref<ExceptionCase[]>([])
 const stats = ref<ExceptionStats | null>(null)
 type WorkbenchView = 'mine' | 'unassigned' | 'pending_close' | 'all'
@@ -41,6 +44,7 @@ const amountMax = ref('')
 const createdFrom = ref('')
 const createdTo = ref('')
 const runSummary = ref('')
+const initialMatchId = computed(() => Number(route.query.match_result) || null)
 const selected = ref<number[]>([])
 const page = ref(1)
 
@@ -81,18 +85,39 @@ const anyModalOpen = computed(
 )
 
 function openException(id: number) {
+  detailOverride.value = null
   exceptionDetailId.value = id
+}
+
+// 深链（/exceptions/:id 重定向而来）：行不在当前页时用详情接口构造兜底行
+async function openExceptionDeepLink(id: number) {
+  exceptionDetailId.value = id
+  detailOverride.value = null
+  if (rows.value.some((row) => row.id === id)) return
+  if (!session.user.value || !session.token.value) return
+  try {
+    const data = (
+      await loadExceptionDetail(base, session.token.value, session.user.value.tenant_id, id)
+    ).data
+    detailOverride.value = data.exception as ExceptionCase
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '异常事项加载失败'
+  }
 }
 
 function closeExceptionDetail() {
   exceptionDetailId.value = null
+  detailOverride.value = null
 }
 
-// 抽屉导航与处理完自动跳下一笔
+// 抽屉导航与处理完自动跳下一笔；detailOverride 为深链兜底行（不在当前列表页内）
+const detailOverride = ref<ExceptionCase | null>(null)
 const detailIndex = computed(() =>
   rows.value.findIndex((row) => row.id === exceptionDetailId.value),
 )
-const detailItem = computed(() => (detailIndex.value >= 0 ? rows.value[detailIndex.value] : null))
+const detailItem = computed(() =>
+  detailIndex.value >= 0 ? rows.value[detailIndex.value] : detailOverride.value,
+)
 let advanceFrom: { id: number; index: number } | null = null
 
 function prevDetail() {
@@ -126,6 +151,7 @@ function maybeAdvanceDetail() {
   advanceFrom = null
   if (exceptionDetailId.value !== id) return
   if (rows.value.some((row) => row.id === id)) return
+  detailOverride.value = null
   const next = rows.value[Math.min(Math.max(index, 0), rows.value.length - 1)]
   exceptionDetailId.value = next ? next.id : null
 }
@@ -395,21 +421,41 @@ function changeSize() {
   page.value = 1
   load()
 }
-onMounted(() => {
-  load()
+onMounted(async () => {
+  await load()
   loadStats()
   window.addEventListener('workspace-refresh', load)
+  // 深链：/exceptions/:id → ?exception=<id>（自动打开抽屉）；/matching/:id → ?match_result=<id>（全部记录视图打开归档详情）
+  const exceptionQuery = Number(route.query.exception)
+  if (exceptionQuery) await openExceptionDeepLink(exceptionQuery)
+  const matchQuery = Number(route.query.match_result)
+  if (matchQuery) view.value = 'all'
 })
+
+// 页面内导航（同组件 query 变化不触发 onMounted）
+watch(
+  () => route.query.exception,
+  (val) => {
+    const id = Number(val)
+    if (id) openExceptionDeepLink(id)
+  },
+)
+watch(
+  () => route.query.match_result,
+  (val) => {
+    if (Number(val)) view.value = 'all'
+  },
+)
 </script>
 
 <template>
   <section class="page-shell">
     <header class="hero-band">
       <div>
-        <p class="eyebrow">异常事项</p>
-        <h2>异常处理工作台</h2>
+        <p class="eyebrow">回款处理</p>
+        <h2>回款处理工作台</h2>
         <p class="lead">
-          按责任人和状态推进应收未收、未知收款、财务差异及账户闲置异常，保留备注、附件和闭环记录。
+          按责任人和状态推进待核销、待认领、应收未收、财务差异及账户闲置事项，保留备注、附件和闭环记录。
         </p>
       </div>
     </header>
@@ -706,7 +752,7 @@ onMounted(() => {
       </div>
     </article>
 
-    <MatchArchive v-if="view === 'all'" />
+    <MatchArchive v-if="view === 'all'" :initial-match-id="initialMatchId" />
 
     <ModalPanel
       v-if="assignTarget"

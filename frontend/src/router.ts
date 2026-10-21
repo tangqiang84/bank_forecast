@@ -15,7 +15,6 @@ import AccountsView from './views/AccountsView.vue'
 import AccountAnalysisView from './views/AccountAnalysisView.vue'
 import ReceivablesView from './views/ReceivablesView.vue'
 import ProjectsView from './views/ProjectsView.vue'
-import MatchingView from './views/MatchingView.vue'
 import ExceptionsView from './views/ExceptionsView.vue'
 import ReportsView from './views/ReportsView.vue'
 import RulesView from './views/RulesView.vue'
@@ -84,14 +83,23 @@ const router = createRouter({
         {
           path: 'matching',
           name: 'matching',
-          component: MatchingView,
-          meta: { permission: 'matching:view' },
+          redirect: { name: 'exceptions' },
+        },
+        {
+          path: 'matching/:id',
+          name: 'matching-detail',
+          redirect: (to) => ({ name: 'exceptions', query: { match_result: String(to.params.id) } }),
         },
         {
           path: 'exceptions',
           name: 'exceptions',
           component: ExceptionsView,
-          meta: { permission: 'exception:view' },
+          meta: { permission: ['exception:view', 'matching:view'] },
+        },
+        {
+          path: 'exceptions/:id',
+          name: 'exception-detail',
+          redirect: (to) => ({ name: 'exceptions', query: { exception: String(to.params.id) } }),
         },
         {
           path: 'reconciliation',
@@ -170,20 +178,6 @@ const router = createRouter({
           meta: { permission: 'project:view' },
         },
         {
-          path: 'matching/:id',
-          name: 'matching-detail',
-          component: EntityDetailView,
-          props: { kind: 'match' },
-          meta: { permission: 'matching:view' },
-        },
-        {
-          path: 'exceptions/:id',
-          name: 'exception-detail',
-          component: EntityDetailView,
-          props: { kind: 'exception' },
-          meta: { permission: 'exception:view' },
-        },
-        {
           path: 'reports/:id',
           name: 'report-detail',
           component: EntityDetailView,
@@ -206,9 +200,12 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.requiresAuth && !session.loggedIn.value) return '/login'
   if (to.meta.guest && session.loggedIn.value) return '/dashboard'
-  const required = to.meta.permission as string | undefined
-  if (required && session.loggedIn.value && !hasPermission(session.user.value, required)) {
-    return { name: 'forbidden' }
+  const required = to.meta.permission as string | string[] | undefined
+  if (required && session.loggedIn.value) {
+    const codes = Array.isArray(required) ? required : [required]
+    if (!codes.some((code) => hasPermission(session.user.value, code))) {
+      return { name: 'forbidden' }
+    }
   }
   return true
 })

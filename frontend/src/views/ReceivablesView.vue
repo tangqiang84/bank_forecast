@@ -8,7 +8,6 @@ import {
   createReceivablePlan,
   loadContracts,
   loadReceivables,
-  runMatching,
   type Contract,
   type ContractImportPayload,
   type Receivable,
@@ -624,16 +623,6 @@ function retryPlaceholder(rows: Array<GenericImportRow<ContractImportPayload>>) 
     2,
   )
 }
-async function matching() {
-  if (!session.user.value || !session.token.value) return
-  try {
-    const result = await runMatching(base, session.token.value, session.user.value.tenant_id)
-    message.value = `匹配完成：匹配 ${result.data.matched ?? 0}，待确认 ${result.data.suggested ?? 0}，未知收款 ${result.data.unknown ?? 0}。`
-    await load()
-  } catch (cause) {
-    message.value = cause instanceof Error ? cause.message : '回款匹配失败'
-  }
-}
 function changeSize() {
   page.value = 1
   load()
@@ -677,9 +666,6 @@ onMounted(() => {
         导入合同 / 应收计划
       </button>
       <button class="ghost-button" type="button" @click="openPayableImport">导入应付计划</button>
-      <button v-permission="'matching:run'" class="ghost-button" type="button" @click="matching">
-        运行回款匹配
-      </button>
     </div>
     <article class="panel table-panel">
       <div class="section-heading">

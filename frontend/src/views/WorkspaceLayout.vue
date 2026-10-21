@@ -6,29 +6,69 @@ import { hasPermission } from '../utils/permission'
 const router = useRouter()
 const route = useRoute()
 const session = useSession()
-const links = [
-  { path: '/dashboard', label: '驾驶舱', permission: 'dashboard:view' },
-  { path: '/accounts', label: '银行账户', permission: 'account:view' },
-  { path: '/accounts/analysis', label: '账户分析', permission: 'account:view' },
-  { path: '/transactions', label: '银行流水', permission: 'transaction:view' },
-  { path: '/receivables', label: '合同应收', permission: 'contract:view' },
-  { path: '/projects', label: '项目资金', permission: 'project:view' },
-  { path: '/matching', label: '匹配结果', permission: 'matching:view' },
-  { path: '/exceptions', label: '异常事项', permission: 'exception:view' },
-  { path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' },
-  { path: '/rules', label: '规则中心', permission: 'project:rule' },
-  { path: '/templates', label: '模板配置', permission: 'template:manage' },
-  { path: '/system', label: '系统管理', permission: 'system:manage' },
-  { path: '/reports', label: '报表中心', permission: 'report:view' },
-  { path: '/forecast', label: '现金预测', permission: 'forecast:view' },
+// 菜单按用户工作流分五组（docs/菜单与角色导航重组方案）；组内按权限过滤，空组隐藏
+const groups = [
+  {
+    label: '经营总览',
+    items: [
+      { path: '/dashboard', label: '驾驶舱', permission: 'dashboard:view' },
+      { path: '/forecast', label: '现金预测', permission: 'forecast:view' },
+      { path: '/reports', label: '报表中心', permission: 'report:view' },
+      { path: '/accounts/analysis', label: '账户分析', permission: 'account:view' },
+    ],
+  },
+  {
+    label: '日常处理',
+    items: [
+      { path: '/transactions', label: '银行流水', permission: 'transaction:view' },
+      {
+        path: '/exceptions',
+        label: '回款处理工作台',
+        permission: ['exception:view', 'matching:view'],
+      },
+      { path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' },
+    ],
+  },
+  {
+    label: '业务台账',
+    items: [
+      { path: '/accounts', label: '银行账户', permission: 'account:view' },
+      { path: '/receivables', label: '合同应收', permission: 'contract:view' },
+      { path: '/projects', label: '项目资金', permission: 'project:view' },
+    ],
+  },
+  {
+    label: '配置中心',
+    items: [
+      { path: '/rules', label: '规则中心', permission: 'project:rule' },
+      { path: '/templates', label: '模板配置', permission: 'template:manage' },
+    ],
+  },
+  {
+    label: '系统管理',
+    items: [{ path: '/system', label: '系统管理', permission: 'system:manage' }],
+  },
 ]
-const visibleLinks = computed(() =>
-  links.filter((link) => hasPermission(session.user.value, link.permission)),
+type NavLink = { path: string; label: string; permission: string | string[] }
+const visibleGroups = computed(() =>
+  groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((link) =>
+        ([] as string[])
+          .concat(link.permission)
+          .some((code) => hasPermission(session.user.value, code)),
+      ),
+    }))
+    .filter((group) => group.items.length > 0),
 )
+const allLinks = computed(() => groups.flatMap((group) => group.items))
 function active(path: string) {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
-const currentTitle = computed(() => links.find((link) => active(link.path))?.label ?? '资金工作台')
+const currentTitle = computed(
+  () => allLinks.value.find((link: NavLink) => active(link.path))?.label ?? '资金工作台',
+)
 function signOut() {
   session.signOut()
   router.push('/login')
@@ -46,13 +86,16 @@ function refresh() {
         <p class="sidebar-brand-title">资金工作台</p>
       </div>
       <nav class="sidebar-nav" aria-label="工作区导航">
-        <RouterLink
-          v-for="link in visibleLinks"
-          :key="link.path"
-          :to="link.path"
-          :class="{ active: active(link.path) }"
-          >{{ link.label }}</RouterLink
-        >
+        <div v-for="group in visibleGroups" :key="group.label" class="nav-group">
+          <p class="nav-group-title">{{ group.label }}</p>
+          <RouterLink
+            v-for="link in group.items"
+            :key="link.path"
+            :to="link.path"
+            :class="{ active: active(link.path) }"
+            >{{ link.label }}</RouterLink
+          >
+        </div>
       </nav>
       <div class="sidebar-user">
         <span class="sidebar-user-name">{{ session.user.value?.display_name }}</span

@@ -34,6 +34,35 @@ const ALL_PERMISSIONS = [
 ]
 
 async function mockWorkspaceApi(page: Page) {
+  await page.route('**/api/v1/matching/exceptions/stats', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          active_count: 0,
+          unassigned_count: 0,
+          my_todo_count: 0,
+          pending_close_count: 0,
+          overdue_count: 0,
+          closed_count: 0,
+          false_positive_count: 0,
+          total_count: 0,
+          closure_rate: 0,
+          avg_resolution_hours: 0,
+          today_new_count: 0,
+          review_pending_count: 0,
+          large_amount_count: 0,
+          large_amount_threshold: 100000,
+          by_type: [],
+          by_owner: [],
+        },
+        trace_id: 'e2e',
+      }),
+    }),
+  )
   await page.route('**/api/v1/auth/login', async (route) =>
     route.fulfill({
       status: 200,
@@ -455,12 +484,9 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await expect(createDialog.getByText('项目「端到端手工项目」已创建。')).toBeVisible()
   await createDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
-  await page.getByRole('link', { name: '匹配结果' }).click()
-  await expect(page.getByRole('heading', { name: '回款匹配工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
   await expect(page.getByRole('button', { name: '运行回款匹配' })).toBeVisible()
-
-  await page.getByRole('link', { name: '异常事项' }).click()
-  await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
 
   await page.getByRole('link', { name: '报表中心' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()

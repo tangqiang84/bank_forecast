@@ -201,60 +201,62 @@ test('导入预览后确认入账', async ({ page }) => {
   await expect(statementPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
-function matchResult(id: number, transactionNo: string, status: string) {
-  return {
-    id,
-    match_group_id: `MG-${id}`,
-    allocation_mode: 'single',
-    allocated_amount: '100.00',
-    allocation_count: 1,
-    allocation_total: '100.00',
-    bank_transaction_id: id + 1000,
-    transaction_no: transactionNo,
-    amount: '100.00',
-    transaction_match_status: status,
-    contract_id: 1,
-    contract_receivable_plan_id: 1,
-    contract_no: 'HT-2026-001',
-    contract_name: '示例合同',
-    node_name: '首期回款',
-    match_type: 'rule',
-    confidence_level: 'medium',
-    match_status: status,
-    match_reason: '对方户名与合同客户一致',
-    confirmed_by: null,
-    confirmed_at: null,
-  }
-}
-
-test('匹配结果确认与拒绝', async ({ page }) => {
+test('待核销工单确认与打回', async ({ page }) => {
   const state = { confirmed: false, rejected: false }
   let confirmRequested = false
   let rejectReason = ''
 
+  const carrierItem = (
+    id: number,
+    excNo: string,
+    resultId: number,
+    txnNo: string,
+    matchStatus: string,
+  ) => ({
+    id,
+    exception_no: excNo,
+    exception_type: 'partial_receipt',
+    title: '部分收款：软件实施合同',
+    description: '待人工确认',
+    status: matchStatus === 'rejected' ? 'in_progress' : 'new',
+    severity: 'high',
+    due_date: '2026-09-30',
+    owner_user_id: null,
+    biz_amount: '100.00',
+    match_group_id: `MG-${id}`,
+    match_summary: {
+      match_group_id: `MG-${id}`,
+      match_status: matchStatus,
+      confidence: 'medium',
+      txn_no: txnNo,
+      amount: '100.00',
+      contract_no: 'CT-1',
+      result_id: resultId,
+      counterparty_name: '甲方科技',
+      summary: '首付款',
+      node_name: '首付款',
+    },
+  })
+
   await mockLoginAndDashboard(page)
-  await page.route('**/api/v1/matching/results?**', async (route) =>
-    route.fulfill({
+  await page.route('**/api/v1/matching/exceptions?**', async (route) => {
+    const items = [
+      ...(state.confirmed ? [] : [carrierItem(701, 'EXC-7001', 501, 'TXN-9001', 'suggested')]),
+      carrierItem(702, 'EXC-7002', 502, 'TXN-9002', state.rejected ? 'rejected' : 'suggested'),
+    ]
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: ok({
-        items: [
-          matchResult(501, 'TXN-9001', state.confirmed ? 'confirmed' : 'suggested'),
-          matchResult(502, 'TXN-9002', state.rejected ? 'rejected' : 'suggested'),
-        ],
-        page: 1,
-        page_size: 20,
-        total: 2,
-      }),
-    }),
-  )
+      body: ok({ items, page: 1, page_size: 20, total: items.length }),
+    })
+  })
   await page.route('**/api/v1/matching/results/501/confirm', async (route) => {
     confirmRequested = true
     state.confirmed = true
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: ok(matchResult(501, 'TXN-9001', 'confirmed')),
+      body: ok({ id: 501, match_status: 'confirmed' }),
     })
   })
   await page.route('**/api/v1/matching/results/502/reject', async (route) => {
@@ -263,68 +265,34 @@ test('匹配结果确认与拒绝', async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: ok(matchResult(502, 'TXN-9002', 'rejected')),
-    })
-  })
-  await page.route('**/api/v1/matching/results/501', async (route) => {
-    if (route.request().method() !== 'GET') return route.fallback()
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: ok({
-        result: matchResult(501, 'TXN-9001', 'confirmed'),
-        transaction: {
-          transaction_no: 'TXN-9001',
-          transaction_date: '2026-09-01',
-          direction: 'income',
-          amount: '100.00',
-        },
-        allocations: [],
-        audit_logs: [
-          {
-            id: 1,
-            action: 'CONFIRM_MATCH_RESULT',
-            detail: '人工确认',
-            created_at: '2026-09-29 10:00:00',
-          },
-        ],
-        exceptions: [],
-      }),
+      body: ok({ id: 502, match_status: 'rejected' }),
     })
   })
 
   await login(page)
-  await page.getByRole('link', { name: '匹配结果' }).click()
-  await expect(page.getByRole('heading', { name: '回款匹配工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
 
-  const confirmRow = page.locator('tr', { hasText: 'TXN-9001' })
-  await confirmRow.getByRole('button', { name: '确认组' }).click()
-  const confirmDialog = page.getByRole('dialog', { name: '确认匹配组' })
-  await confirmDialog.getByRole('button', { name: '取消' }).click()
-  expect(confirmRequested).toBe(false)
-  await confirmRow.getByRole('button', { name: '确认组' }).click()
-  await confirmDialog.getByRole('button', { name: '确认', exact: true }).click()
-  await expect(page.getByText('匹配组已确认，应收和流水状态已更新。')).toBeVisible()
+  // 行内确认核销：一键完成，行从队列消失
+  const confirmRow = page.locator('.dense-table tbody tr', { hasText: 'EXC-7001' })
+  await confirmRow.getByRole('button', { name: '确认核销' }).click()
+  await expect(page.getByText('已确认核销。')).toBeVisible()
   expect(confirmRequested).toBe(true)
-  await expect(confirmRow.locator('.pill')).toHaveText('已确认')
+  await expect(page.locator('.dense-table tbody tr', { hasText: 'EXC-7001' })).toHaveCount(0)
 
-  const rejectRow = page.locator('tr', { hasText: 'TXN-9002' })
-  await rejectRow.getByRole('button', { name: '拒绝组' }).click()
-  const rejectDialog = page.getByRole('dialog', { name: '拒绝匹配组' })
-  await rejectDialog.getByLabel('拒绝原因').fill('人工复核后拒绝')
+  // 行内打回：必填原因，工单留在队列转入待跟进
+  const rejectRow = page.locator('.dense-table tbody tr', { hasText: 'EXC-7002' })
+  await rejectRow.getByRole('button', { name: '打回' }).click()
+  const rejectDialog = page.getByRole('dialog', { name: '打回：EXC-7002' })
+  await rejectDialog.getByLabel('处理说明').fill('付款方待核实')
   await rejectDialog.getByRole('button', { name: '确认', exact: true }).click()
-  await expect(page.getByText('匹配组已拒绝。')).toBeVisible()
-  expect(rejectReason).toBe('人工复核后拒绝')
-  await expect(rejectRow.locator('.pill')).toHaveText('已拒绝')
-
-  await confirmRow.getByRole('button', { name: '详情' }).click()
-  const matchDialog = page.getByRole('dialog', { name: '匹配结果详情' })
-  await expect(matchDialog.getByText('匹配理由')).toBeVisible()
-  await expect(matchDialog.getByText('对方户名与合同客户一致')).toBeVisible()
-  await expect(matchDialog.getByText('已确认').first()).toBeVisible()
-  await expect(matchDialog.getByText('处理时间轴')).toBeVisible()
-  await expect(matchDialog.getByText('确认匹配结果')).toBeVisible()
-  await matchDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(rejectDialog.getByText('已打回，工单转入待跟进。')).toBeVisible()
+  expect(rejectReason).toBe('付款方待核实')
+  await rejectDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.locator('.dense-table tbody tr', { hasText: 'EXC-7002' })).toHaveCount(1)
+  await expect(
+    page.locator('.dense-table tbody tr', { hasText: 'EXC-7002' }).locator('.pill'),
+  ).toHaveText('处理中')
 })
 
 function exceptionCase(status: string) {
@@ -398,8 +366,8 @@ test('异常事项备注并处理完成', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '异常事项' }).click()
-  await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
 
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await expect(row.getByText('未知收款待确认')).toBeVisible()
@@ -932,8 +900,8 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '异常事项' }).click()
-  await expect(page.getByRole('heading', { name: '异常处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('我的待办')).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('今日新增')).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('待复核')).toBeVisible()
@@ -2446,7 +2414,7 @@ test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => 
   })
 
   await login(page)
-  await page.getByRole('link', { name: '异常事项' }).click()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
 
@@ -2470,6 +2438,66 @@ test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => 
   await dialog.getByRole('button', { name: '确认核销' }).click()
   await expect(page.getByRole('dialog', { name: /这笔款怎么回事（EXC-0002）/ })).toBeVisible()
   await expect(page.locator('.dense-table tbody tr')).toHaveCount(1)
+})
+
+test('深链重定向自动打开对应抽屉', async ({ page }) => {
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/matching/exceptions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [exceptionCase('new')], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/matching/exceptions/601', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ exception: exceptionCase('new'), logs: [], attachments: [], source: [] }),
+    })
+  })
+  await page.route('**/api/v1/matching/results?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [], page: 1, page_size: 20, total: 0 }),
+    }),
+  )
+  await page.route('**/api/v1/matching/results/88', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        result: { id: 88, match_group_id: 'MG-88', match_status: 'confirmed' },
+        transaction: {},
+        allocations: [],
+        audit_logs: [],
+        exceptions: [],
+      }),
+    })
+  })
+  await page.route('**/api/v1/counterparty-aliases**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+
+  await login(page)
+  // /exceptions/:id → 工作台并自动打开对应抽屉
+  await page.goto('/#/exceptions/601')
+  await expect(page).toHaveURL(/#\/exceptions\?exception=601/)
+  await expect(page.getByRole('dialog', { name: /这笔款怎么回事（EXC-0001）/ })).toBeVisible()
+  await page
+    .getByRole('dialog', { name: /这笔款怎么回事/ })
+    .locator('footer')
+    .getByRole('button', { name: '关闭', exact: true })
+    .click()
+
+  // /matching/:id → 全部记录视图并自动打开归档详情
+  await page.goto('/#/matching/88')
+  await expect(page).toHaveURL(/#\/exceptions\?match_result=88/)
+  await expect(page.getByRole('tab', { name: '全部记录' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('dialog', { name: '匹配结果详情' })).toBeVisible()
 })
 
 test('全部记录视图展示匹配归档与对手方别名维护', async ({ page }) => {
@@ -2528,7 +2556,7 @@ test('全部记录视图展示匹配归档与对手方别名维护', async ({ pa
   })
 
   await login(page)
-  await page.getByRole('link', { name: '异常事项' }).click()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
   await page.getByRole('tab', { name: '全部记录' }).click()
 
   // 匹配结果只读归档：无确认/拒绝按钮，含已核销记录
@@ -2578,7 +2606,7 @@ test('异常详情生成解释草稿', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '异常事项' }).click()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
   const detailDialog = page.getByRole('dialog', { name: /这笔款怎么回事/ })

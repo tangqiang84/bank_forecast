@@ -5,13 +5,11 @@ import AccountDetail from '../components/AccountDetail.vue'
 import BusinessDetail from '../components/BusinessDetail.vue'
 import ContractDetail from '../components/ContractDetail.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
-import ExceptionDetail from '../components/ExceptionDetail.vue'
-import MatchDetail from '../components/MatchDetail.vue'
 import ProjectDetail from '../components/ProjectDetail.vue'
 import TransactionDetail from '../components/TransactionDetail.vue'
 import { loadReportDetail } from '../services/reports'
 import { apiBase, useSession } from '../session'
-type Kind = 'account' | 'transaction' | 'contract' | 'project' | 'match' | 'exception' | 'report'
+type Kind = 'account' | 'transaction' | 'contract' | 'project' | 'report'
 const props = defineProps<{ kind: Kind }>()
 const route = useRoute()
 const router = useRouter()
@@ -24,13 +22,11 @@ const titles: Record<Kind, string> = {
   transaction: '流水详情',
   contract: '合同详情',
   project: '项目详情',
-  match: '匹配结果详情',
-  exception: '异常事项详情',
   report: '报表任务详情',
 }
 async function load() {
   if (!session.user.value || !session.token.value || props.kind === 'transaction') return
-  if (['account', 'contract', 'project', 'match', 'exception'].includes(props.kind)) return
+  if (['account', 'contract', 'project'].includes(props.kind)) return
   loading.value = true
   error.value = ''
   try {
@@ -63,8 +59,6 @@ onMounted(load)
       <TransactionDetail v-else-if="kind === 'transaction'" :id="Number(route.params.id)" />
       <ContractDetail v-else-if="kind === 'contract'" :id="Number(route.params.id)" />
       <ProjectDetail v-else-if="kind === 'project'" :id="Number(route.params.id)" />
-      <MatchDetail v-else-if="kind === 'match'" :id="Number(route.params.id)" />
-      <ExceptionDetail v-else-if="kind === 'exception'" :id="Number(route.params.id)" />
       <BusinessDetail v-else-if="data" :data="data" />
     </DetailDrawer>
   </section>

@@ -76,8 +76,7 @@ test('业务负责人菜单按权限过滤且默认页进入 403 提示页', asy
 
   await expect(page.getByRole('link', { name: '项目资金' })).toBeVisible()
   await expect(page.getByRole('link', { name: '合同应收' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '匹配结果' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '异常事项' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '回款处理工作台' })).toBeVisible()
   await expect(page.getByRole('link', { name: '驾驶舱' })).toBeHidden()
   await expect(page.getByRole('link', { name: '银行账户' })).toBeHidden()
   await expect(page.getByRole('link', { name: '报表中心' })).toBeHidden()
@@ -95,6 +94,9 @@ test('业务负责人在项目页看不到受限操作按钮', async ({ page }) 
   await page.getByRole('link', { name: '合同应收' }).click()
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同应收' })).toBeHidden()
+
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
   await expect(page.getByRole('button', { name: '运行回款匹配' })).toBeHidden()
 })
 

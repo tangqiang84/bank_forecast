@@ -414,6 +414,25 @@ class ContractMatchingControllerTest {
   }
 
   @Test
+  void exceptionDetailEmbedsMatchSummaryForCarrier() throws Exception {
+    String token = loginToken();
+    Long tenantId = tenantId();
+    String suffix = UUID.randomUUID().toString().replace("-", "");
+    Long resultId = createPartialMatch(tenantId, suffix);
+    String groupId = jdbcTemplate.queryForObject("select match_group_id from match_result where id = ?", String.class, resultId);
+    Long exceptionId = jdbcTemplate.queryForObject(
+        "select id from exception_case where tenant_id = ? and match_group_id = ?", Long.class, tenantId, groupId);
+
+    mockMvc.perform(get("/api/v1/matching/exceptions/" + exceptionId)
+            .header("Authorization", "Bearer " + token).header("X-Tenant-Id", String.valueOf(tenantId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.exception.match_summary.match_group_id").value(groupId))
+        .andExpect(jsonPath("$.data.exception.match_summary.result_id").value(resultId))
+        .andExpect(jsonPath("$.data.exception.match_summary.contract_no").value("CT-A-" + suffix))
+        .andExpect(jsonPath("$.data.exception.match_summary.node_name").value("首付款"));
+  }
+
+  @Test
   void workbenchListOrderingSummaryFieldsAndBatchConfirm() throws Exception {
     String token = loginToken();
     Long tenantId = tenantId();

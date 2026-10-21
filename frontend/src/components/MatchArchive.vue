@@ -21,6 +21,7 @@ import {
 import { formatCurrency } from '../utils/number'
 
 // P4-13：匹配结果只读归档 + 对手方别名维护；确认/打回已收敛到工作台队列与详情抽屉
+const props = defineProps<{ initialMatchId?: number | null }>()
 const session = useSession()
 const base = apiBase()
 const rows = ref<MatchResult[]>([])
@@ -161,7 +162,10 @@ async function removeAlias(item: CounterpartyAlias) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  if (props.initialMatchId) matchDetailId.value = props.initialMatchId
+})
 </script>
 
 <template>

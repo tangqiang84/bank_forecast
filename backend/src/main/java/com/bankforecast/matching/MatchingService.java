@@ -485,6 +485,27 @@ public class MatchingService {
   public Map<String, Object> exceptionDetail(Long exceptionId) {
     AuthPrincipal principal = requireAuth();
     Map<String, Object> exception = findException(principal.getTenantId(), exceptionId);
+    // P4-14：详情内嵌匹配摘要，深链打开抽屉时无需列表行也能展示「应该对哪笔」
+    String carrierGroupId = text(exception.get("match_group_id"));
+    if (!carrierGroupId.isEmpty()) {
+      List<Map<String, Object>> summaries = jdbcTemplate.queryForList(
+          "select mr.match_group_id, min(mr.id) as result_id, "
+              + "substring_index(group_concat(mr.match_status order by mr.id), ',', 1) as match_status, "
+              + "substring_index(group_concat(mr.confidence_level order by mr.id), ',', 1) as confidence, "
+              + "substring_index(group_concat(bt.transaction_no order by mr.id), ',', 1) as txn_no, "
+              + "substring_index(group_concat(bt.counterparty_name order by mr.id), ',', 1) as counterparty_name, "
+              + "substring_index(group_concat(bt.summary order by mr.id), ',', 1) as summary, "
+              + "substring_index(group_concat(mc.contract_no order by mr.id), ',', 1) as contract_no, "
+              + "substring_index(group_concat(p2.node_name order by mr.id), ',', 1) as node_name, "
+              + "sum(mr.allocated_amount) as amount "
+              + "from match_result mr join bank_transaction bt on bt.id = mr.bank_transaction_id "
+              + "left join contract mc on mc.id = mr.contract_id "
+              + "left join contract_receivable_plan p2 on p2.id = mr.contract_receivable_plan_id "
+              + "where mr.tenant_id = ? and mr.match_group_id = ? and mr.deleted_at is null "
+              + "group by mr.tenant_id, mr.match_group_id",
+          principal.getTenantId(), carrierGroupId);
+      exception.put("match_summary", summaries.isEmpty() ? null : summaries.get(0));
+    }
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("exception", exception);
     data.put("logs", listExceptionLogs(exceptionId));
