@@ -8,7 +8,12 @@ import {
   type DashboardTrendPoint,
   type DashboardTrends,
 } from '../services/dashboard'
-import { loadAccounts, type BankAccount } from '../services/bank'
+import {
+  loadAccounts,
+  loadTransactions,
+  type BankAccount,
+  type BankTransaction,
+} from '../services/bank'
 import { runMatching } from '../services/receivables'
 import {
   collectMetricSnapshot,
@@ -21,7 +26,9 @@ import {
 } from '../services/metrics'
 import { apiBase, useSession } from '../session'
 import {
+  directionLabel,
   importJobStatusLabel,
+  matchStatusLabel,
   payableStatusLabel,
   receivableStatusLabel,
   riskLevelLabel,
@@ -94,16 +101,40 @@ const cards = () =>
         { label: '异常事项', value: String(overview.value.exception_count ?? 0) },
       ]
     : []
+// 近期流水摘要（方向 A）：取最近 5 条真实流水，不做任何加工与编造
+const recentTransactions = ref<BankTransaction[]>([])
+const recentTxError = ref('')
+// 风险项目红绿灯（方向 A）：由真实 risk_projects 的 risk_level 计数派生；空数组即「当前没有风险项目」
+const riskLights = computed(() => {
+  const projects = overview.value?.risk_projects ?? []
+  return {
+    high: projects.filter((item) => item.risk_level === 'high').length,
+    medium: projects.filter((item) => item.risk_level === 'medium').length,
+    low: projects.filter((item) => item.risk_level === 'low').length,
+    total: projects.length,
+  }
+})
+// 资金结论句（方向 A）：以结论先行表达资金缺口，避免「缺口」标题配大数字造成歧义（Q-01）
+const fundingConclusion = computed(() => {
+  const gap = overview.value?.funding_gap
+  if (!gap) return null
+  return gap.has_gap
+    ? `未来 ${gap.horizon_days} 天存在资金缺口 ${formatCurrency(gap.gap_amount)}，请调整付款或融资安排。`
+    : `未来 ${gap.horizon_days} 天资金可覆盖，无缺口。`
+})
 async function load() {
   if (!session.user.value || !session.token.value) return
   loading.value = true
   try {
-    const [dash, account] = await Promise.all([
+    const [dash, account, recentTx] = await Promise.all([
       loadDashboardOverview(apiBase(), session.token.value, session.user.value.tenant_id),
       loadAccounts(apiBase(), session.token.value, session.user.value.tenant_id),
+      loadTransactions(apiBase(), session.token.value, session.user.value.tenant_id, 1, 5),
     ])
     overview.value = dash.data
     accounts.value = account.data.items
+    recentTransactions.value = recentTx.data.items
+    recentTxError.value = ''
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '驾驶舱加载失败'
   } finally {
@@ -267,6 +298,20 @@ onMounted(() => {
       </div>
       <span v-if="loading" class="meta">刷新中...</span>
     </header>
+    <!-- 资金结论横幅（方向 A）：老板十秒读完现状，结论由真实缺口与余额数据派生 -->
+    <section v-if="fundingConclusion" class="conclusion-banner panel">
+      <p class="conclusion-text">
+        <strong :class="overview?.funding_gap?.has_gap ? 'expense-amount' : 'income-amount'">{{
+          fundingConclusion
+        }}</strong>
+        <template v-if="overview?.funding_gap">
+          依据：当前余额 {{ formatCurrency(overview.funding_gap.balance) }} · 未来
+          {{ overview.funding_gap.horizon_days }} 天应收
+          {{ formatCurrency(overview.funding_gap.receivable_30d) }} · 应付
+          {{ formatCurrency(overview.funding_gap.payable_30d) }}
+        </template>
+      </p>
+    </section>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <section v-if="showQuickActions" class="panel">
       <div class="section-heading">
@@ -342,23 +387,26 @@ onMounted(() => {
         </p>
       </article>
       <article class="panel">
-        <h3>资金缺口</h3>
+        <h3>风险项目红绿灯</h3>
         <template v-if="overview?.funding_gap">
-          <p>
-            <strong
-              class="stat-value"
-              :class="overview.funding_gap.has_gap ? 'expense-amount' : 'income-amount'"
-              >{{ formatCurrency(overview.funding_gap.gap_amount) }}</strong
+          <div class="risk-lights">
+            <span class="risk-light"
+              ><i class="light-dot light-red" :class="{ 'is-off': !riskLights.high }"></i>预警
+              {{ riskLights.high }}</span
+            ><span class="risk-light"
+              ><i class="light-dot light-amber" :class="{ 'is-off': !riskLights.medium }"></i>关注
+              {{ riskLights.medium }}</span
+            ><span class="risk-light"
+              ><i class="light-dot light-green" :class="{ 'is-off': !riskLights.low }"></i>正常
+              {{ riskLights.low }}</span
             >
-          </p>
-          <p>
-            <span class="pill" :class="overview.funding_gap.has_gap ? 'risk-high' : 'risk-low'">
-              未来 {{ overview.funding_gap.horizon_days }} 天{{
-                overview.funding_gap.has_gap ? '存在资金缺口' : '资金可覆盖'
-              }}
-            </span>
-          </p>
+          </div>
           <p class="meta import-hint">
+            {{
+              riskLights.total
+                ? `当前共 ${riskLights.total} 个风险项目，明细见风险项目排行。`
+                : '当前没有风险项目。'
+            }}
             余额 {{ formatCurrency(overview.funding_gap.balance) }} · 应收
             {{ formatCurrency(overview.funding_gap.receivable_30d) }} · 应付
             {{ formatCurrency(overview.funding_gap.payable_30d) }}
@@ -449,6 +497,51 @@ onMounted(() => {
           :format-value="formatCurrency"
         />
       </div>
+    </article>
+    <!-- 近期流水摘要（方向 A）：最近 5 条真实流水，方向/匹配状态用既有标签函数 -->
+    <article class="panel table-panel">
+      <div class="section-heading">
+        <div>
+          <h3>近期流水摘要</h3>
+          <span class="meta">最近 5 条银行流水</span>
+        </div>
+        <RouterLink class="text-button" to="/transactions">查看全部</RouterLink>
+      </div>
+      <p v-if="recentTxError" class="error-banner">{{ recentTxError }}</p>
+      <div v-else-if="recentTransactions.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>交易日期</th>
+              <th>银行</th>
+              <th>方向</th>
+              <th>金额</th>
+              <th>对方户名</th>
+              <th>摘要</th>
+              <th>匹配状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tx in recentTransactions" :key="tx.id">
+              <td>{{ tx.transaction_date }}</td>
+              <td>
+                {{ tx.bank_name ?? '-'
+                }}{{ tx.account_no_last4 ? ` · ${tx.account_no_last4}` : '' }}
+              </td>
+              <td>{{ directionLabel(tx.direction) }}</td>
+              <td :class="tx.direction === 'expense' ? 'expense-amount' : 'income-amount'">
+                {{ formatCurrency(tx.amount) }}
+              </td>
+              <td>{{ tx.counterparty_name ?? '-' }}</td>
+              <td class="reason-cell">{{ tx.summary ?? '-' }}</td>
+              <td>
+                <span class="pill">{{ matchStatusLabel(tx.match_status) }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">暂无流水数据。</p>
     </article>
     <article class="panel table-panel">
       <div class="section-heading">
