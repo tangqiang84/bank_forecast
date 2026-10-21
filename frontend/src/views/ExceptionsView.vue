@@ -48,6 +48,10 @@ const viewTabs: Array<{ value: WorkbenchView; label: string }> = [
   { value: 'pending_close', label: '待复核' },
   { value: 'all', label: '全部记录' },
 ]
+// 清单口径标注（Q-02）：列表计数与上方全租户概览口径不同，须标明当前视图名
+const currentViewLabel = computed(
+  () => viewTabs.find((tab) => tab.value === view.value)?.label ?? '',
+)
 const ownerFilter = ref('')
 const typeFilter = ref('')
 const amountMin = ref('')
@@ -486,7 +490,8 @@ watch(
         <div>
           <h3>今日概览</h3>
           <span class="meta"
-            >大额待办口径：进行中且工单金额 ≥ {{ stats.large_amount_threshold ?? 100000 }}</span
+            >全租户口径 · 大额待办：进行中且工单金额 ≥
+            {{ stats.large_amount_threshold ?? 100000 }}</span
           >
         </div>
         <div class="filter-bar">
@@ -573,7 +578,10 @@ watch(
       <div class="section-heading">
         <div>
           <h3>异常清单</h3>
-          <span class="meta">共 {{ total }} 条，支持分派、备注、处理、关闭和附件</span>
+          <span class="meta"
+            >当前视图「{{ currentViewLabel }}」共 {{ total }} 条 ·
+            支持分派、备注、处理、关闭和附件</span
+          >
         </div>
         <div class="view-tabs" role="tablist" aria-label="待办视图">
           <button
