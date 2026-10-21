@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import ExceptionDetail from '../components/ExceptionDetail.vue'
+import WorkbenchDetail from '../components/WorkbenchDetail.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   assignException,
@@ -85,6 +85,48 @@ function openException(id: number) {
 
 function closeExceptionDetail() {
   exceptionDetailId.value = null
+}
+
+// 抽屉导航与处理完自动跳下一笔
+const detailIndex = computed(() =>
+  rows.value.findIndex((row) => row.id === exceptionDetailId.value),
+)
+const detailItem = computed(() => (detailIndex.value >= 0 ? rows.value[detailIndex.value] : null))
+let advanceFrom: { id: number; index: number } | null = null
+
+function prevDetail() {
+  if (detailIndex.value > 0) exceptionDetailId.value = rows.value[detailIndex.value - 1].id
+}
+
+function nextDetail() {
+  if (detailIndex.value >= 0 && detailIndex.value < rows.value.length - 1) {
+    exceptionDetailId.value = rows.value[detailIndex.value + 1].id
+  }
+}
+
+type DrawerAction =
+  'confirm' | 'reject' | 'assign' | 'comment' | 'resolve' | 'close' | 'false_positive'
+
+function onDrawerAction(name: DrawerAction, item: ExceptionCase) {
+  advanceFrom = { id: item.id, index: detailIndex.value }
+  if (name === 'confirm') confirmCarrier(item)
+  if (name === 'reject') askTextAction(item, 'reject')
+  if (name === 'assign') askAssign(item)
+  if (name === 'comment') askTextAction(item, 'comment')
+  if (name === 'resolve') askTextAction(item, 'resolve')
+  if (name === 'close') close(item)
+  if (name === 'false_positive') askTextAction(item, 'false_positive')
+}
+
+// 抽屉发起的动作完成后，若当前行已从队列消失则自动跳到同位置的下一笔
+function maybeAdvanceDetail() {
+  if (!advanceFrom) return
+  const { id, index } = advanceFrom
+  advanceFrom = null
+  if (exceptionDetailId.value !== id) return
+  if (rows.value.some((row) => row.id === id)) return
+  const next = rows.value[Math.min(Math.max(index, 0), rows.value.length - 1)]
+  exceptionDetailId.value = next ? next.id : null
 }
 
 function askAssign(item: ExceptionCase) {
@@ -185,6 +227,7 @@ async function confirmAssign() {
     assignTarget.value = null
     await load()
     await loadStats()
+    maybeAdvanceDetail()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
   }
@@ -227,6 +270,7 @@ async function submitTextAction() {
     actionDone.value = true
     await load()
     await loadStats()
+    maybeAdvanceDetail()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
   }
@@ -288,6 +332,7 @@ async function confirmCarrier(item: ExceptionCase) {
     )
     message.value = '已确认核销。'
     await afterRowAction(item)
+    maybeAdvanceDetail()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '确认核销失败'
   }
@@ -301,6 +346,7 @@ async function close(item: ExceptionCase) {
     message.value = '异常事项操作已完成。'
     await load()
     await loadStats()
+    maybeAdvanceDetail()
   } catch (cause) {
     message.value = cause instanceof Error ? cause.message : '异常事项操作失败'
   }
@@ -690,11 +736,18 @@ onMounted(() => {
     </ModalPanel>
 
     <ModalPanel
-      v-if="exceptionDetailId !== null"
-      title="异常事项详情"
+      v-if="exceptionDetailId !== null && detailItem"
+      :title="`这笔款怎么回事（${detailItem.exception_no}）`"
       @close="closeExceptionDetail"
     >
-      <ExceptionDetail :id="exceptionDetailId" />
+      <WorkbenchDetail
+        :item="detailItem"
+        :has-prev="detailIndex > 0"
+        :has-next="detailIndex >= 0 && detailIndex < rows.length - 1"
+        @prev="prevDetail"
+        @next="nextDetail"
+        @action="onDrawerAction"
+      />
       <template #footer>
         <button class="primary-button" type="button" @click="closeExceptionDetail">关闭</button>
       </template>

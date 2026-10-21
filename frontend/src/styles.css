@@ -1023,6 +1023,13 @@ td {
   transition: background 1.2s ease;
 }
 
+.drawer-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .pagination-controls {
   display: flex;
   align-items: center;

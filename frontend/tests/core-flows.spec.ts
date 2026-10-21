@@ -423,7 +423,7 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await expect(row.getByRole('button', { name: '关闭' })).toBeVisible()
 
   await row.getByRole('button', { name: '详情' }).click()
-  const exceptionDialog = page.getByRole('dialog', { name: '异常事项详情' })
+  const exceptionDialog = page.getByRole('dialog', { name: /这笔款怎么回事/ })
   await expect(exceptionDialog.getByText('标题')).toBeVisible()
   await expect(exceptionDialog.getByText('严重级别')).toBeVisible()
   await expect(exceptionDialog.getByText('处理时间轴')).toBeVisible()
@@ -431,7 +431,7 @@ test('异常事项备注并处理完成', async ({ page }) => {
     exceptionDialog.locator('.timeline').getByText('备注', { exact: true }),
   ).toBeVisible()
   await expect(exceptionDialog.getByText('已联系客户确认回款时间')).toBeVisible()
-  await exceptionDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await exceptionDialog.locator('footer').getByRole('button', { name: '关闭', exact: true }).click()
 })
 
 const reportTask = {
@@ -2364,6 +2364,114 @@ test('流水详情生成分类建议并应用', async ({ page }) => {
   expect(classifyBody).toMatchObject({ category: '技术服务费' })
 })
 
+test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => {
+  await mockLoginAndDashboard(page)
+  const carrier = {
+    ...exceptionCase('new'),
+    exception_no: 'EXC-0001',
+    exception_type: 'partial_receipt',
+    title: '部分收款：软件实施合同',
+    biz_amount: '500.00',
+    match_group_id: 'MG-1',
+    match_summary: {
+      match_group_id: 'MG-1',
+      match_status: 'suggested',
+      confidence: 'medium',
+      txn_no: 'TX-1',
+      amount: '500.00',
+      contract_no: 'CT-1',
+      result_id: 88,
+      counterparty_name: '甲方科技',
+      summary: '首付款',
+      node_name: '首付款',
+    },
+  }
+  const other = {
+    ...exceptionCase('new'),
+    id: 602,
+    exception_no: 'EXC-0002',
+    title: '未知收款：乙方',
+  }
+  const state = { confirmed: false }
+  await page.route('**/api/v1/matching/exceptions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: state.confirmed ? [other] : [carrier, other],
+        page: 1,
+        page_size: 20,
+        total: state.confirmed ? 1 : 2,
+      }),
+    }),
+  )
+  for (const [id, entity] of [
+    [601, carrier],
+    [602, other],
+  ] as const) {
+    await page.route(`**/api/v1/matching/exceptions/${id}`, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: ok({ exception: entity, logs: [], attachments: [], source: [] }),
+      })
+    })
+  }
+  await page.route('**/api/v1/matching/results/88', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        result: { id: 88, match_group_id: 'MG-1', match_status: 'suggested' },
+        transaction: {},
+        allocations: [
+          { id: 1, contract_no: 'CT-1', node_name: '首付款', allocated_amount: '500.00' },
+        ],
+        audit_logs: [],
+        exceptions: [],
+      }),
+    }),
+  )
+  await page.route('**/api/v1/counterparty-aliases**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: ok([]) }),
+  )
+  await page.route('**/api/v1/matching/results/88/confirm', async (route) => {
+    state.confirmed = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ id: 88, match_status: 'confirmed' }),
+    })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '异常事项' }).click()
+  const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
+  await row.getByRole('button', { name: '详情' }).click()
+
+  const dialog = page.getByRole('dialog', { name: /这笔款怎么回事（EXC-0001）/ })
+  await expect(dialog.getByRole('heading', { name: '① 钱是谁打的' })).toBeVisible()
+  await expect(dialog.getByText(/流水号 TX-1/)).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: '② 应该对哪笔' })).toBeVisible()
+  await expect(dialog.getByText(/建议合同 CT-1/)).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: '③ 操作' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '确认核销' })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: '④ 处理留痕' })).toBeVisible()
+
+  // 下一笔导航：非承载工单无 ② 区
+  await dialog.getByRole('button', { name: '下一笔' }).click()
+  const dialogB = page.getByRole('dialog', { name: /这笔款怎么回事（EXC-0002）/ })
+  await expect(dialogB).toBeVisible()
+  await expect(dialogB.getByRole('heading', { name: '② 应该对哪笔' })).toBeHidden()
+
+  // 确认核销后行从队列消失，抽屉自动跳下一笔
+  await dialogB.getByRole('button', { name: '上一笔' }).click()
+  await dialog.getByRole('button', { name: '确认核销' }).click()
+  await expect(page.getByRole('dialog', { name: /这笔款怎么回事（EXC-0002）/ })).toBeVisible()
+  await expect(page.locator('.dense-table tbody tr')).toHaveCount(1)
+})
+
 test('异常详情生成解释草稿', async ({ page }) => {
   await mockLoginAndDashboard(page)
   await page.route('**/api/v1/matching/exceptions?**', async (route) =>
@@ -2396,7 +2504,7 @@ test('异常详情生成解释草稿', async ({ page }) => {
   await page.getByRole('link', { name: '异常事项' }).click()
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
-  const detailDialog = page.getByRole('dialog', { name: '异常事项详情' })
+  const detailDialog = page.getByRole('dialog', { name: /这笔款怎么回事/ })
   await detailDialog.getByRole('button', { name: '生成解释草稿' }).click()
   await expect(detailDialog.getByText('来源：大模型')).toBeVisible()
   await expect(detailDialog.locator('textarea[readonly]')).toHaveValue(
