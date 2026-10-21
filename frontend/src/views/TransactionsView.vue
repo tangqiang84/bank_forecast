@@ -24,6 +24,7 @@ import {
   type GenericImportRow,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
+import NextStepGuide from '../components/NextStepGuide.vue'
 import { directionLabel, matchStatusLabel } from '../utils/labels'
 import { formatCurrency } from '../utils/number'
 
@@ -416,6 +417,7 @@ onMounted(() => {
       </div>
       <span class="meta">共 {{ total }} 条</span>
     </header>
+    <NextStepGuide context="transactions" />
     <p v-if="message && !activeModal" class="feedback-text">{{ message }}</p>
     <div class="page-toolbar">
       <button class="ghost-button" type="button" @click="openModal('import')">导入流水</button>

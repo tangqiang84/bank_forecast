@@ -31,6 +31,7 @@ export type ReconciliationResult = {
   record_date: string | null
   finance_amount: string | null
   finance_subject?: string | null
+  created_at?: string | null
 }
 export type FinanceRecord = {
   id: number

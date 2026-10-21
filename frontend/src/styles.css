@@ -581,6 +581,29 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- 下一步引导条（P6-6，菜单流程化重设计方案 §4-3） ---------- */
+
+.next-step-guide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.next-step-guide-text {
+  flex: 1;
+}
+
+.next-step-guide .text-button {
+  white-space: nowrap;
+}
+
 /* ---------- 面板与卡片栅格 ---------- */
 
 .grid {

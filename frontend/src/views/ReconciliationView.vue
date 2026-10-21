@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import BusinessDetail from '../components/BusinessDetail.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import ModalPanel from '../components/ModalPanel.vue'
+import NextStepGuide from '../components/NextStepGuide.vue'
 import {
   previewFinanceRecords,
   loadFinanceRecords,
@@ -64,6 +65,7 @@ const importLoading = ref(false)
 const error = ref('')
 const message = ref('')
 const reconModalOpen = ref(false)
+const guideRef = ref<{ reload: () => Promise<void> } | null>(null)
 
 function openRecon() {
   reconModalOpen.value = true
@@ -218,6 +220,7 @@ async function run() {
     page.value = 1
     await loadResults()
     await loadRecords()
+    guideRef.value?.reload()
     message.value = `对账完成：一对一匹配 ${response.data.matched} 条，多对多匹配 ${response.data.multi_matched ?? 0} 组，跨月时间差 ${response.data.timing_difference ?? 0} 条，银行未记账 ${response.data.bank_unrecorded} 条，财务未在银行发生 ${response.data.finance_unmatched} 条。`
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '对账失败'
@@ -304,6 +307,7 @@ onMounted(() => {
       >
     </header>
 
+    <NextStepGuide ref="guideRef" context="reconciliation" />
     <p v-if="error && !reconModalOpen" class="error-banner">{{ error }}</p>
     <p v-if="message && !reconModalOpen" class="feedback-text">{{ message }}</p>
     <div class="page-toolbar">

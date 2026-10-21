@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import WorkbenchDetail from '../components/WorkbenchDetail.vue'
 import MatchArchive from '../components/MatchArchive.vue'
 import ModalPanel from '../components/ModalPanel.vue'
+import NextStepGuide from '../components/NextStepGuide.vue'
 import {
   assignException,
   batchExceptionAction,
@@ -434,10 +435,15 @@ function changeSize() {
   page.value = 1
   load()
 }
+// 顶栏「刷新数据」同时刷新清单与统计，引导条依赖统计结果
+function refreshAll() {
+  load()
+  loadStats()
+}
 onMounted(async () => {
   await load()
   loadStats()
-  window.addEventListener('workspace-refresh', load)
+  window.addEventListener('workspace-refresh', refreshAll)
   // 深链：/exceptions/:id → ?exception=<id>（自动打开抽屉）；/matching/:id → ?match_result=<id>（全部记录视图打开归档详情）
   const exceptionQuery = Number(route.query.exception)
   if (exceptionQuery) await openExceptionDeepLink(exceptionQuery)
@@ -472,6 +478,7 @@ watch(
         </p>
       </div>
     </header>
+    <NextStepGuide context="exceptions" :stats="stats" />
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="message && !anyModalOpen" class="feedback-text">{{ message }}</p>
     <article v-if="stats" class="panel">
