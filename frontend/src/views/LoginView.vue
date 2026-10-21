@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '../services/auth'
 import { apiBase, useSession } from '../session'
+import { landingPath } from '../utils/navigation'
 
 const router = useRouter()
 const session = useSession()
@@ -16,7 +17,7 @@ async function submit() {
   error.value = ''
   try {
     session.setUser(await login(apiBase(), loginName.value.trim(), password.value))
-    await router.push('/dashboard')
+    await router.push(landingPath(session.user.value))
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '登录失败，请稍后重试'
   } finally {

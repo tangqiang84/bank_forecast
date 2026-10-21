@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { apiBase, useSession } from './session'
 import { loadCurrentUser } from './services/auth'
 import { hasPermission } from './utils/permission'
+import { landingPath } from './utils/navigation'
 import LoginView from './views/LoginView.vue'
 import WorkspaceLayout from './views/WorkspaceLayout.vue'
 import ForbiddenView from './views/ForbiddenView.vue'
@@ -36,7 +37,7 @@ const router = createRouter({
       component: WorkspaceLayout,
       meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'workspace-root', redirect: { name: 'dashboard' } },
+        { path: '', name: 'workspace-root', redirect: () => landingPath(useSession().user.value) },
         { path: '403', name: 'forbidden', component: ForbiddenView },
         {
           path: 'dashboard',
@@ -199,7 +200,7 @@ router.beforeEach(async (to) => {
     }
   }
   if (to.meta.requiresAuth && !session.loggedIn.value) return '/login'
-  if (to.meta.guest && session.loggedIn.value) return '/dashboard'
+  if (to.meta.guest && session.loggedIn.value) return landingPath(session.user.value)
   const required = to.meta.permission as string | string[] | undefined
   if (required && session.loggedIn.value) {
     const codes = Array.isArray(required) ? required : [required]

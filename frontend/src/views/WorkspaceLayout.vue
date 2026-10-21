@@ -1,80 +1,102 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useSession } from '../session'
-import { hasPermission } from '../utils/permission'
+import { useSession, apiBase } from '../session'
+import { loadExceptionStats } from '../services/receivables'
+import { NAV_GROUPS, navPermitted } from '../utils/navigation'
 const router = useRouter()
 const route = useRoute()
 const session = useSession()
-// 菜单按用户工作流分五组（docs/菜单与角色导航重组方案）；组内按权限过滤，空组隐藏
-const groups = [
-  {
-    label: '经营总览',
-    items: [
-      { path: '/dashboard', label: '驾驶舱', permission: 'dashboard:view' },
-      { path: '/forecast', label: '现金预测', permission: 'forecast:view' },
-      { path: '/reports', label: '报表中心', permission: 'report:view' },
-      { path: '/accounts/analysis', label: '账户分析', permission: 'account:view' },
-    ],
-  },
-  {
-    label: '日常处理',
-    items: [
-      { path: '/transactions', label: '银行流水', permission: 'transaction:view' },
-      {
-        path: '/exceptions',
-        label: '回款处理工作台',
-        permission: ['exception:view', 'matching:view'],
-      },
-      { path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' },
-    ],
-  },
-  {
-    label: '业务台账',
-    items: [
-      { path: '/accounts', label: '银行账户', permission: 'account:view' },
-      { path: '/receivables', label: '合同应收', permission: 'contract:view' },
-      { path: '/projects', label: '项目资金', permission: 'project:view' },
-    ],
-  },
-  {
-    label: '配置中心',
-    items: [
-      { path: '/rules', label: '规则中心', permission: 'project:rule' },
-      { path: '/templates', label: '模板配置', permission: 'template:manage' },
-    ],
-  },
-  {
-    label: '系统管理',
-    items: [{ path: '/system', label: '系统管理', permission: 'system:manage' }],
-  },
-]
-type NavLink = { path: string; label: string; permission: string | string[] }
+
+// 分组展开状态：按角色给默认值（菜单方案 §4），用户手动收起/展开后 localStorage 记忆
+const COLLAPSE_KEY = 'nav-collapsed-groups'
+
+function roleDefaultCollapsed(): string[] {
+  const roles = session.user.value?.roles ?? []
+  const expand: string[] = roles.includes('CFO')
+    ? NAV_GROUPS.map((group) => group.label)
+    : roles.includes('CEO')
+      ? ['经营总览']
+      : roles.includes('CASHIER')
+        ? ['日常处理']
+        : roles.includes('BUSINESS')
+          ? ['业务台账']
+          : roles.includes('ADMIN')
+            ? ['配置中心', '系统管理']
+            : NAV_GROUPS.map((group) => group.label)
+  return NAV_GROUPS.map((group) => group.label).filter((label) => !expand.includes(label))
+}
+
+function loadCollapsed(): string[] {
+  const saved = localStorage.getItem(COLLAPSE_KEY)
+  if (saved !== null) {
+    try {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) return parsed.filter((item) => typeof item === 'string')
+    } catch {
+      // 落回角色默认
+    }
+  }
+  return roleDefaultCollapsed()
+}
+
+const collapsed = ref<string[]>(loadCollapsed())
+
+function toggleGroup(label: string) {
+  collapsed.value = collapsed.value.includes(label)
+    ? collapsed.value.filter((item) => item !== label)
+    : [...collapsed.value, label]
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed.value))
+}
+
 const visibleGroups = computed(() =>
-  groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((link) =>
-        ([] as string[])
-          .concat(link.permission)
-          .some((code) => hasPermission(session.user.value, code)),
-      ),
-    }))
-    .filter((group) => group.items.length > 0),
+  NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((link) => navPermitted(session.user.value, link.permission)),
+  })).filter((group) => group.items.length > 0),
 )
-const allLinks = computed(() => groups.flatMap((group) => group.items))
+const allLinks = computed(() => NAV_GROUPS.flatMap((group) => group.items))
 function active(path: string) {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 const currentTitle = computed(
-  () => allLinks.value.find((link: NavLink) => active(link.path))?.label ?? '资金工作台',
+  () => allLinks.value.find((link) => active(link.path))?.label ?? '资金工作台',
 )
+
+// P4-20 待办角标：CASHIER 显示我的待办、CFO 显示待分派+待复核，其余角色不显示；为 0 或失败不显示
+const workbenchBadge = ref<number | null>(null)
+
+async function loadBadge() {
+  const user = session.user.value
+  if (!user || !session.token.value) return
+  if (!navPermitted(user, ['exception:view', 'matching:view'])) return
+  const roles = user.roles ?? []
+  const isCfo = roles.includes('CFO')
+  const isCashier = roles.includes('CASHIER')
+  if (!isCfo && !isCashier) return
+  try {
+    const stats = (await loadExceptionStats(apiBase(), session.token.value, user.tenant_id)).data
+    const count = isCfo
+      ? stats.unassigned_count + (stats.review_pending_count ?? stats.pending_close_count)
+      : stats.my_todo_count
+    workbenchBadge.value = count > 0 ? count : null
+  } catch {
+    workbenchBadge.value = null
+  }
+}
+
+onMounted(() => {
+  loadBadge()
+  window.addEventListener('workbench-stats-refresh', loadBadge)
+})
+
 function signOut() {
   session.signOut()
   router.push('/login')
 }
 function refresh() {
   window.dispatchEvent(new CustomEvent('workspace-refresh'))
+  loadBadge()
 }
 </script>
 
@@ -87,14 +109,28 @@ function refresh() {
       </div>
       <nav class="sidebar-nav" aria-label="工作区导航">
         <div v-for="group in visibleGroups" :key="group.label" class="nav-group">
-          <p class="nav-group-title">{{ group.label }}</p>
-          <RouterLink
-            v-for="link in group.items"
-            :key="link.path"
-            :to="link.path"
-            :class="{ active: active(link.path) }"
-            >{{ link.label }}</RouterLink
+          <button
+            class="nav-group-title"
+            type="button"
+            :aria-expanded="!collapsed.includes(group.label)"
+            @click="toggleGroup(group.label)"
           >
+            {{ group.label }}
+          </button>
+          <template v-if="!collapsed.includes(group.label)">
+            <RouterLink
+              v-for="link in group.items"
+              :key="link.path"
+              :to="link.path"
+              :class="{ active: active(link.path) }"
+              >{{ link.label
+              }}<span
+                v-if="link.path === '/exceptions' && workbenchBadge !== null"
+                class="nav-badge"
+                >{{ workbenchBadge }}</span
+              ></RouterLink
+            >
+          </template>
         </div>
       </nav>
       <div class="sidebar-user">
