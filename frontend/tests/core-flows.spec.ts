@@ -2472,6 +2472,83 @@ test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => 
   await expect(page.locator('.dense-table tbody tr')).toHaveCount(1)
 })
 
+test('全部记录视图展示匹配归档与对手方别名维护', async ({ page }) => {
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/matching/exceptions?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [exceptionCase('closed')], page: 1, page_size: 20, total: 1 }),
+    }),
+  )
+  await page.route('**/api/v1/matching/results?**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        items: [
+          {
+            id: 88,
+            match_group_id: 'MG-1',
+            allocation_mode: 'single',
+            allocated_amount: '500.00',
+            allocation_count: 1,
+            allocation_total: '500.00',
+            bank_transaction_id: 1,
+            transaction_no: 'TX-1',
+            amount: '500.00',
+            transaction_match_status: 'matched',
+            contract_id: 1,
+            contract_receivable_plan_id: 1,
+            contract_no: 'CT-1',
+            contract_name: '软件实施合同',
+            node_name: '首付款',
+            match_type: 'exact',
+            confidence_level: 'high',
+            match_status: 'confirmed',
+            match_reason: '摘要包含合同编号且金额、日期一致',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      }),
+    }),
+  )
+  const aliases: Array<{ id: number; alias: string; canonical_name: string; updated_at: string }> =
+    []
+  await page.route('**/api/v1/counterparty-aliases**', async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { alias: string; canonical_name: string }
+      aliases.push({ id: 1, ...body, updated_at: '2026-10-21 10:00:00' })
+      await route.fulfill({ status: 200, contentType: 'application/json', body: ok(aliases[0]) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: ok(aliases) })
+  })
+
+  await login(page)
+  await page.getByRole('link', { name: '异常事项' }).click()
+  await page.getByRole('tab', { name: '全部记录' }).click()
+
+  // 匹配结果只读归档：无确认/拒绝按钮，含已核销记录
+  await expect(page.getByRole('heading', { name: '匹配结果归档' })).toBeVisible()
+  await expect(page.getByText('TX-1')).toBeVisible()
+  await expect(page.getByText('已确认', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '确认组' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '拒绝组' })).toBeHidden()
+
+  // 对手方别名维护
+  await page.getByRole('button', { name: '对手方别名' }).click()
+  const aliasDialog = page.getByRole('dialog', { name: '对手方别名' })
+  await expect(aliasDialog.getByText('暂无对手方别名。')).toBeVisible()
+  await aliasDialog.getByLabel('别名').fill('甲方科技分公司')
+  await aliasDialog.getByLabel('标准名称').fill('甲方科技')
+  await aliasDialog.getByRole('button', { name: '新增别名' }).click()
+  await expect(aliasDialog.getByText('别名已新增。')).toBeVisible()
+  await expect(aliasDialog.getByText('甲方科技分公司')).toBeVisible()
+})
+
 test('异常详情生成解释草稿', async ({ page }) => {
   await mockLoginAndDashboard(page)
   await page.route('**/api/v1/matching/exceptions?**', async (route) =>

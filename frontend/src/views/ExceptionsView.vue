@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import WorkbenchDetail from '../components/WorkbenchDetail.vue'
+import MatchArchive from '../components/MatchArchive.vue'
 import ModalPanel from '../components/ModalPanel.vue'
 import {
   assignException,
@@ -704,6 +705,8 @@ onMounted(() => {
         </button>
       </div>
     </article>
+
+    <MatchArchive v-if="view === 'all'" />
 
     <ModalPanel
       v-if="assignTarget"
