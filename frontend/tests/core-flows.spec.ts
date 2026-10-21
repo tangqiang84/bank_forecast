@@ -918,7 +918,7 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
   await page.getByRole('tab', { name: '全部记录' }).click()
   await expect.poll(() => lastListUrl).toContain('active_only=false')
 
-  await page.getByRole('button', { name: '未知收款', exact: true }).click()
+  await page.getByRole('button', { name: '待认领', exact: true }).click()
   await expect.poll(() => lastListUrl).toContain('exception_type=unknown_receipt')
 
   await page.getByLabel('责任人').selectOption('1')
@@ -2225,7 +2225,7 @@ test('规则中心异常分派配置保存与行业预警运行', async ({ page 
   await expect(assignmentDialog).toBeVisible()
   await expect(assignmentDialog.locator('tr', { hasText: '资金缺口' })).toBeVisible()
 
-  const unknownRow = assignmentDialog.locator('tr', { hasText: '未知收款' })
+  const unknownRow = assignmentDialog.locator('tr', { hasText: '待认领' })
   await unknownRow.locator('select').selectOption('7')
   await assignmentDialog.getByRole('button', { name: '保存分派配置' }).click()
   await expect(page.getByText('异常自动分派配置已保存。')).toBeVisible()
@@ -2440,6 +2440,57 @@ test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => 
   await expect(page.locator('.dense-table tbody tr')).toHaveCount(1)
 })
 
+test('工作台角色默认视图与清零反馈', async ({ page }) => {
+  let lastListUrl = ''
+  await mockLoginAndDashboard(page)
+  await page.route('**/api/v1/matching/exceptions/stats', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({
+        active_count: 0,
+        unassigned_count: 0,
+        my_todo_count: 0,
+        pending_close_count: 0,
+        overdue_count: 0,
+        closed_count: 0,
+        false_positive_count: 0,
+        total_count: 0,
+        closure_rate: 0,
+        avg_resolution_hours: 0,
+        today_new_count: 0,
+        review_pending_count: 0,
+        large_amount_count: 0,
+        large_amount_threshold: 100000,
+        by_type: [],
+        by_owner: [],
+      }),
+    }),
+  )
+  await page.route('**/api/v1/matching/exceptions?**', async (route) => {
+    lastListUrl = route.request().url()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: ok({ items: [], page: 1, page_size: 20, total: 0 }),
+    })
+  })
+
+  // CFO 默认落「待分派」
+  await login(page)
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect.poll(() => lastListUrl).toContain('queue=unassigned')
+  await expect(page.getByRole('tab', { name: '待分派' })).toHaveAttribute('aria-selected', 'true')
+
+  // 切到「我的待办」后 localStorage 记忆；空队列显示清零反馈
+  await page.getByRole('tab', { name: '我的待办' }).click()
+  await expect.poll(() => lastListUrl).toContain('queue=mine')
+  await expect(page.getByText('今日待办已全部处理 ✓')).toBeVisible()
+  await page.getByRole('link', { name: '驾驶舱' }).click()
+  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await expect(page.getByRole('tab', { name: '我的待办' })).toHaveAttribute('aria-selected', 'true')
+})
+
 test('深链重定向自动打开对应抽屉', async ({ page }) => {
   await mockLoginAndDashboard(page)
   await page.route('**/api/v1/matching/exceptions?**', async (route) =>
@@ -2562,7 +2613,7 @@ test('全部记录视图展示匹配归档与对手方别名维护', async ({ pa
   // 匹配结果只读归档：无确认/拒绝按钮，含已核销记录
   await expect(page.getByRole('heading', { name: '匹配结果归档' })).toBeVisible()
   await expect(page.getByText('TX-1')).toBeVisible()
-  await expect(page.getByText('已确认', { exact: true })).toBeVisible()
+  await expect(page.getByText('已核销', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '确认组' })).toBeHidden()
   await expect(page.getByRole('button', { name: '拒绝组' })).toBeHidden()
 

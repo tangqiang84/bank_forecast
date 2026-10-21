@@ -44,11 +44,11 @@ export function directionLabel(value: LabelValue): string {
 // bank_transaction.match_status 使用 unmatched/suggested/matched/manual_confirmed。
 export const MATCH_STATUS_LABELS: Record<string, string> = {
   unmatched: '未匹配',
-  suggested: '待确认',
-  matched: '已自动匹配',
+  suggested: '待核销',
+  matched: '已核销',
   manual_confirmed: '已人工确认',
-  confirmed: '已确认',
-  rejected: '已拒绝',
+  confirmed: '已核销',
+  rejected: '已打回',
   unlinked: '已解除关联',
 }
 
@@ -156,7 +156,7 @@ export const EXCEPTION_TYPE_LABELS: Record<string, string> = {
   manual_exception: '人工创建异常',
   unreceived: '应收未收',
   partial_receipt: '部分收款',
-  unknown_receipt: '未知收款',
+  unknown_receipt: '待认领',
   timing_difference: '跨月时间差',
   bank_unrecorded: '银行未记账',
   finance_unmatched: '财务未在银行发生',

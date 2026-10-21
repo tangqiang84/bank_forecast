@@ -30,7 +30,17 @@ const route = useRoute()
 const rows = ref<ExceptionCase[]>([])
 const stats = ref<ExceptionStats | null>(null)
 type WorkbenchView = 'mine' | 'unassigned' | 'pending_close' | 'all'
-const view = ref<WorkbenchView>('mine')
+const VIEW_STORAGE_KEY = 'workbench-view'
+function initialView(): WorkbenchView {
+  const saved = localStorage.getItem(VIEW_STORAGE_KEY)
+  if (saved === 'mine' || saved === 'unassigned' || saved === 'pending_close' || saved === 'all') {
+    return saved
+  }
+  // 角色默认视图（P4 方案 §6）：主管（CFO）落待分派，会计/出纳及其他落我的待办
+  const roles = session.user.value?.roles ?? []
+  return roles.includes('CFO') ? 'unassigned' : 'mine'
+}
+const view = ref<WorkbenchView>(initialView())
 const viewTabs: Array<{ value: WorkbenchView; label: string }> = [
   { value: 'mine', label: '我的待办' },
   { value: 'unassigned', label: '待分派' },
@@ -221,6 +231,7 @@ const typeOptions = computed(() => (stats.value?.by_type ?? []).map((item) => it
 
 function switchView(next: WorkbenchView) {
   view.value = next
+  localStorage.setItem(VIEW_STORAGE_KEY, next)
   page.value = 1
   selected.value = []
   load()
@@ -477,7 +488,7 @@ watch(
             type="button"
             @click="matching"
           >
-            运行回款匹配
+            一键匹配
           </button>
         </div>
       </div>
@@ -728,6 +739,7 @@ watch(
           </tbody>
         </table>
       </div>
+      <p v-else-if="view === 'mine' && stats" class="empty-state">今日待办已全部处理 ✓</p>
       <p v-else class="empty-state">暂无异常事项。运行回款匹配或财务对账后查看异常。</p>
       <div class="pagination-controls">
         <span

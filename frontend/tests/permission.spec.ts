@@ -97,7 +97,7 @@ test('业务负责人在项目页看不到受限操作按钮', async ({ page }) 
 
   await page.getByRole('link', { name: '回款处理工作台' }).click()
   await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '运行回款匹配' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '一键匹配' })).toBeHidden()
 })
 
 test('业务负责人直接访问无权限路由进入 403 提示页', async ({ page }) => {

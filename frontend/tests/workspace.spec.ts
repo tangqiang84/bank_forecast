@@ -486,7 +486,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
 
   await page.getByRole('link', { name: '回款处理工作台' }).click()
   await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '运行回款匹配' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '一键匹配' })).toBeVisible()
 
   await page.getByRole('link', { name: '报表中心' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()

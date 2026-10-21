@@ -69,11 +69,11 @@ describe('labels', () => {
 
   it('maps match status including backend confirmed/rejected', () => {
     expect(matchStatusLabel('unmatched')).toBe('未匹配')
-    expect(matchStatusLabel('suggested')).toBe('待确认')
-    expect(matchStatusLabel('matched')).toBe('已自动匹配')
+    expect(matchStatusLabel('suggested')).toBe('待核销')
+    expect(matchStatusLabel('matched')).toBe('已核销')
     expect(matchStatusLabel('manual_confirmed')).toBe('已人工确认')
-    expect(matchStatusLabel('confirmed')).toBe('已确认')
-    expect(matchStatusLabel('rejected')).toBe('已拒绝')
+    expect(matchStatusLabel('confirmed')).toBe('已核销')
+    expect(matchStatusLabel('rejected')).toBe('已打回')
     expect(matchStatusLabel('other')).toBe('other')
   })
 
@@ -148,7 +148,7 @@ describe('labels', () => {
     expect(exceptionTypeLabel('rule_hit')).toBe('规则命中异常')
     expect(exceptionTypeLabel('manual_exception')).toBe('人工创建异常')
     expect(exceptionTypeLabel('unreceived')).toBe('应收未收')
-    expect(exceptionTypeLabel('unknown_receipt')).toBe('未知收款')
+    expect(exceptionTypeLabel('unknown_receipt')).toBe('待认领')
     expect(exceptionTypeLabel('timing_difference')).toBe('跨月时间差')
     expect(exceptionTypeLabel('fund_gap')).toBe('资金缺口')
     expect(exceptionTypeLabel('acceptance_overdue')).toBe('验收款逾期')
