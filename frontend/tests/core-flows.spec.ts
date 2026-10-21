@@ -178,7 +178,7 @@ test('导入预览后确认入账', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('link', { name: '流水查询' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入流水' }).click()
@@ -270,8 +270,8 @@ test('待核销工单确认与打回', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '待办处理' }).click()
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
 
   // 行内确认核销：一键完成，行从队列消失
   const confirmRow = page.locator('.dense-table tbody tr', { hasText: 'EXC-7001' })
@@ -366,8 +366,8 @@ test('异常事项备注并处理完成', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '待办处理' }).click()
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
 
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await expect(row.getByText('未知收款待确认')).toBeVisible()
@@ -442,7 +442,7 @@ test('生成报表并下载 CSV', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '报表中心' }).click()
+  await page.getByRole('link', { name: '资金报表' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
 
   await page.getByRole('button', { name: '生成报告' }).click()
@@ -519,7 +519,7 @@ test('预测失败任务展示原因并重试成功', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '现金预测' }).click()
+  await page.getByRole('link', { name: '现金流预测' }).click()
   await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
   await expect(page.getByText('预测服务超时，请稍后重试')).toBeVisible()
   await expect(page.getByText('任务 #801 · 失败 · v1.0')).toBeVisible()
@@ -604,7 +604,7 @@ test('流水高级筛选、批量分类和 Excel 导出', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('link', { name: '流水查询' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
   await expect(page.getByText('工商银行·1234')).toBeVisible()
 
@@ -900,8 +900,8 @@ test('异常工作台统计、队列和责任人筛选', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '待办处理' }).click()
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('我的待办')).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('今日新增')).toBeVisible()
   await expect(page.locator('.summary-grid').getByText('待复核')).toBeVisible()
@@ -972,7 +972,7 @@ test('生成周报并下载 Excel 与打印预览', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '报表中心' }).click()
+  await page.getByRole('link', { name: '资金报表' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '最新周报' })).toBeVisible()
   await expect(page.getByText('资金周报').first()).toBeVisible()
@@ -1177,7 +1177,7 @@ test('系统管理新建用户与角色权限编辑', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '系统管理' }).click()
+  await page.getByRole('link', { name: '用户与权限' }).click()
   await expect(page.getByRole('heading', { name: '用户、角色与数据范围' })).toBeVisible()
   await expect(page.getByText('admin01')).toBeVisible()
 
@@ -1319,7 +1319,7 @@ test('银行接入配置新建、模板字典与连接测试', async ({ page }) 
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行账户' }).click()
+  await page.getByRole('link', { name: '银行账户管理' }).click()
 
   await page.getByRole('button', { name: '银行模板字典' }).click()
   const templateDialog = page.getByRole('dialog', { name: '银行模板字典' })
@@ -1424,7 +1424,7 @@ test('模板配置中心映射管理', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '模板配置' }).click()
+  await page.getByRole('link', { name: '导入模板配置' }).click()
   await expect(page.getByRole('heading', { name: '银行模板与表头映射' })).toBeVisible()
 
   const bankPanel = page.locator('article').filter({
@@ -1680,7 +1680,7 @@ test('现金预测选择模型版本并展示回测与预测区间', async ({ pa
   })
 
   await login(page)
-  await page.getByRole('link', { name: '现金预测' }).click()
+  await page.getByRole('link', { name: '现金流预测' }).click()
   await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
 
   // 模型版本下拉：当前启用版本 + auto + 三个版本
@@ -2056,7 +2056,7 @@ test('账户表单提交账户用途', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行账户' }).click()
+  await page.getByRole('link', { name: '银行账户管理' }).click()
   await expect(page.getByRole('heading', { name: '账户盘点' })).toBeVisible()
 
   await page.getByRole('button', { name: '新增银行账户' }).click()
@@ -2111,7 +2111,7 @@ test('账户待销户流转：发起销户与撤销', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行账户' }).click()
+  await page.getByRole('link', { name: '银行账户管理' }).click()
   const accountRow = page.locator('tr', { hasText: '基本户' })
   await expect(accountRow.locator('.pill').first()).toHaveText('活跃')
 
@@ -2319,7 +2319,7 @@ test('流水详情生成分类建议并应用', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('link', { name: '流水查询' }).click()
   await page.getByRole('button', { name: '查看详情' }).click()
   const detailDialog = page.getByRole('dialog', { name: '流水详情' })
   await detailDialog.getByRole('button', { name: '生成分类建议' }).click()
@@ -2414,7 +2414,7 @@ test('工作台详情抽屉四区动线与下一笔导航', async ({ page }) => 
   })
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await page.getByRole('link', { name: '待办处理' }).click()
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
 
@@ -2478,7 +2478,7 @@ test('工作台角色默认视图与清零反馈', async ({ page }) => {
 
   // CFO 默认落「待分派」
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await page.getByRole('link', { name: '待办处理' }).click()
   await expect.poll(() => lastListUrl).toContain('queue=unassigned')
   await expect(page.getByRole('tab', { name: '待分派' })).toHaveAttribute('aria-selected', 'true')
 
@@ -2486,8 +2486,8 @@ test('工作台角色默认视图与清零反馈', async ({ page }) => {
   await page.getByRole('tab', { name: '我的待办' }).click()
   await expect.poll(() => lastListUrl).toContain('queue=mine')
   await expect(page.getByText('今日待办已全部处理 ✓')).toBeVisible()
-  await page.getByRole('link', { name: '驾驶舱' }).click()
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await page.getByRole('link', { name: '管理驾驶舱' }).click()
+  await page.getByRole('link', { name: '待办处理' }).click()
   await expect(page.getByRole('tab', { name: '我的待办' })).toHaveAttribute('aria-selected', 'true')
 })
 
@@ -2607,7 +2607,7 @@ test('全部记录视图展示匹配归档与对手方别名维护', async ({ pa
   })
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await page.getByRole('link', { name: '待办处理' }).click()
   await page.getByRole('tab', { name: '全部记录' }).click()
 
   // 匹配结果只读归档：无确认/拒绝按钮，含已核销记录
@@ -2657,7 +2657,7 @@ test('异常详情生成解释草稿', async ({ page }) => {
   )
 
   await login(page)
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
+  await page.getByRole('link', { name: '待办处理' }).click()
   const row = page.locator('.dense-table tbody tr', { hasText: 'EXC-0001' })
   await row.getByRole('button', { name: '详情' }).click()
   const detailDialog = page.getByRole('dialog', { name: /这笔款怎么回事/ })

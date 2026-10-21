@@ -384,7 +384,7 @@ test('对账和现金预测拥有独立业务页面', async ({ page }) => {
   await expect(reconDialog.getByRole('heading', { name: '差异结果' })).toBeVisible()
   await page.getByRole('button', { name: '关闭弹层' }).click()
 
-  await page.getByRole('link', { name: '现金预测' }).click()
+  await page.getByRole('link', { name: '现金流预测' }).click()
   await expect(page.getByRole('heading', { name: '现金流预测工作台' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '预测任务详情' })).toBeVisible()
 })
@@ -393,7 +393,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await mockWorkspaceApi(page)
   await login(page)
 
-  await page.getByRole('link', { name: '银行账户' }).click()
+  await page.getByRole('link', { name: '银行账户管理' }).click()
   await expect(page.getByRole('heading', { name: '账户盘点' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入银行流水' })).toBeVisible()
   await expect(page.getByRole('button', { name: '新增银行账户' })).toBeVisible()
@@ -405,7 +405,7 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   ).toBeVisible()
   await page.getByRole('button', { name: '关闭弹层' }).click()
 
-  await page.getByRole('link', { name: '合同应收' }).click()
+  await page.getByRole('link', { name: '合同与应收' }).click()
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同 / 应收计划' })).toBeVisible()
   await page.getByRole('button', { name: '新增合同' }).click()
@@ -484,11 +484,11 @@ test('恢复核心业务模块的原有操作入口', async ({ page }) => {
   await expect(createDialog.getByText('项目「端到端手工项目」已创建。')).toBeVisible()
   await createDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '待办处理' }).click()
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
   await expect(page.getByRole('button', { name: '一键匹配' })).toBeVisible()
 
-  await page.getByRole('link', { name: '报表中心' }).click()
+  await page.getByRole('link', { name: '资金报表' }).click()
   await expect(page.getByRole('heading', { name: '资金经营报告' })).toBeVisible()
   await expect(page.getByRole('button', { name: '生成报告' })).toBeVisible()
   await expect(page.getByRole('button', { name: '报表任务' })).toBeVisible()

@@ -8,19 +8,12 @@ import {
   loadImportQualitySummary,
   retryImportJobErrors,
   type ImportJobPreview,
-  type ImportJobPreviewRow,
   type ImportQualitySummary,
 } from '../services/imports'
 import { apiBase, useSession } from '../session'
-import {
-  directionLabel,
-  importJobStatusLabel,
-  importRowStatusLabel,
-  payableStatusLabel,
-  projectStatusLabel,
-  recordTypeLabel,
-  templateRecognitionStatusLabel,
-} from '../utils/labels'
+import ImportPreviewTable from '../components/ImportPreviewTable.vue'
+import { importJobStatusLabel, templateRecognitionStatusLabel } from '../utils/labels'
+import { rateText } from '../utils/importPreview'
 
 const route = useRoute()
 const session = useSession()
@@ -33,59 +26,6 @@ const loading = ref(false)
 const message = ref('')
 const error = ref('')
 
-type PreviewColumn = { key: string; label: string }
-const BUSINESS_COLUMNS: Record<string, PreviewColumn[]> = {
-  bank_statement: [
-    { key: 'transaction_no', label: '流水号' },
-    { key: 'transaction_date', label: '日期' },
-    { key: 'direction', label: '方向' },
-    { key: 'amount', label: '金额' },
-  ],
-  contract: [
-    { key: 'contract_no', label: '合同编号' },
-    { key: 'contract_name', label: '合同名称' },
-    { key: 'customer_name', label: '客户' },
-    { key: 'node_name', label: '节点' },
-    { key: 'due_date', label: '应收日期' },
-    { key: 'plan_amount', label: '计划金额' },
-  ],
-  finance_record: [
-    { key: 'record_no', label: '记录编号' },
-    { key: 'record_type', label: '类型' },
-    { key: 'record_date', label: '记录日期' },
-    { key: 'counterparty_name', label: '对手方' },
-    { key: 'amount', label: '金额' },
-  ],
-  project: [
-    { key: 'project_no', label: '项目编号' },
-    { key: 'project_name', label: '项目名称' },
-    { key: 'customer_name', label: '客户' },
-    { key: 'project_manager', label: '负责人' },
-    { key: 'project_status', label: '状态' },
-    { key: 'start_date', label: '开始日期' },
-    { key: 'delivery_date', label: '交付日期' },
-    { key: 'acceptance_date', label: '验收日期' },
-  ],
-  receipt: [
-    { key: 'receipt_no', label: '回单号' },
-    { key: 'transaction_date', label: '交易日期' },
-    { key: 'payer_name', label: '付款方' },
-    { key: 'payee_name', label: '收款方' },
-    { key: 'amount', label: '金额' },
-    { key: 'transaction_no', label: '关联流水号' },
-  ],
-  payable: [
-    { key: 'supplier_name', label: '供应商' },
-    { key: 'node_name', label: '节点' },
-    { key: 'due_date', label: '应付日期' },
-    { key: 'plan_amount', label: '应付金额' },
-    { key: 'paid_amount', label: '已付金额' },
-    { key: 'status', label: '状态' },
-  ],
-}
-const businessColumns = computed<PreviewColumn[]>(
-  () => BUSINESS_COLUMNS[job.value?.job_type ?? ''] ?? [],
-)
 const actionable = computed(
   () => job.value !== null && ['preview_pending', 'preview_failed'].includes(job.value.status),
 )
@@ -96,30 +36,6 @@ const duplicateSuspectRows = computed(() =>
         .map((row) => row.row_no)
     : [],
 )
-
-function rateText(value: number | null) {
-  return value === null ? '暂无数据' : `${value}%`
-}
-
-const BUSINESS_VALUE_LABELS: Record<string, (value: string | null | undefined) => string> = {
-  direction: directionLabel,
-  record_type: recordTypeLabel,
-  project_status: projectStatusLabel,
-  status: payableStatusLabel,
-}
-
-function fieldValue(row: ImportJobPreviewRow, key: string): string {
-  const flatFields: Record<string, string | null | undefined> = {
-    transaction_no: row.transaction_no,
-    transaction_date: row.transaction_date,
-    direction: row.direction,
-    amount: row.amount,
-  }
-  const raw = row.payload?.[key] ?? flatFields[key]
-  if (raw === null || raw === undefined || raw === '') return '-'
-  const mapper = BUSINESS_VALUE_LABELS[key]
-  return mapper ? mapper(raw) : raw
-}
 
 async function load() {
   if (!session.user.value || !session.token.value) return
@@ -229,7 +145,7 @@ onMounted(() => {
         <h2>任务 #{{ route.params.jobId }}</h2>
         <p class="lead">查看模板识别、行级校验、确认入账和重试结果。</p>
       </div>
-      <RouterLink class="ghost-button" to="/transactions">返回流水列表</RouterLink>
+      <RouterLink class="ghost-button" to="/imports">返回导入向导</RouterLink>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
     <article class="panel">
@@ -275,30 +191,7 @@ onMounted(() => {
       </section>
       <section class="detail-section">
         <h3>预览行</h3>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>行号</th>
-                <th v-for="column in businessColumns" :key="column.key">{{ column.label }}</th>
-                <th>状态</th>
-                <th>错误</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in job.preview_rows" :key="row.id">
-                <td>{{ row.row_no }}</td>
-                <td v-for="column in businessColumns" :key="column.key">
-                  {{ fieldValue(row, column.key) }}
-                </td>
-                <td>
-                  <span class="pill">{{ importRowStatusLabel(row.status) }}</span>
-                </td>
-                <td>{{ row.error_message || '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <ImportPreviewTable :job-type="job.job_type" :rows="job.preview_rows" />
       </section>
       <section v-if="actionable && job.failed_rows" class="detail-section">
         <h3>失败行重试</h3>

@@ -170,7 +170,7 @@ test('合同导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '合同应收' }).click()
+  await page.getByRole('link', { name: '合同与应收' }).click()
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入合同 / 应收计划' }).click()
@@ -510,7 +510,7 @@ test('回单导入预览后确认导入', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('link', { name: '流水查询' }).click()
   await expect(page.getByRole('heading', { name: '流水列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入回单' }).click()
@@ -618,7 +618,7 @@ test('流水导入疑似重复行勾选后随确认入账', async ({ page }) => 
   })
 
   await login(page)
-  await page.getByRole('link', { name: '银行流水' }).click()
+  await page.getByRole('link', { name: '流水查询' }).click()
   await page.getByRole('button', { name: '导入流水' }).click()
   const statementPanel = page.getByRole('dialog', { name: '导入流水' })
   await statementPanel.locator('input[type="file"]').setInputFiles({
@@ -816,7 +816,7 @@ test('应付计划面板展示与导入流程', async ({ page }) => {
   })
 
   await login(page)
-  await page.getByRole('link', { name: '合同应收' }).click()
+  await page.getByRole('link', { name: '合同与应收' }).click()
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
 
   await page.getByRole('button', { name: '应收计划与应付计划' }).click()

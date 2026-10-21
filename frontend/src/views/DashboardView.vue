@@ -9,6 +9,7 @@ import {
   type DashboardTrends,
 } from '../services/dashboard'
 import { loadAccounts, type BankAccount } from '../services/bank'
+import { runMatching } from '../services/receivables'
 import {
   collectMetricSnapshot,
   loadMetricSeries,
@@ -25,6 +26,8 @@ import {
   receivableStatusLabel,
   riskLevelLabel,
 } from '../utils/labels'
+import { navPermitted } from '../utils/navigation'
+import { hasPermission } from '../utils/permission'
 import { formatCurrency } from '../utils/number'
 const session = useSession()
 const overview = ref<DashboardOverview | null>(null)
@@ -42,6 +45,42 @@ const trendsLoading = ref(false)
 const trendsError = ref('')
 const error = ref('')
 const loading = ref(false)
+const matching = ref(false)
+const matchResult = ref<{ autoMatched: number; pendingReview: number } | null>(null)
+const matchError = ref('')
+// 快捷操作区（菜单重设计方案 §4-4）：任一导入权限点命中即可见「导入数据」
+const canImport = computed(() =>
+  navPermitted(session.user.value, [
+    'transaction:import',
+    'contract:import',
+    'project:import',
+    'receipt:import',
+    'reconciliation:run',
+    'import:view',
+  ]),
+)
+const canRunMatching = computed(() => hasPermission(session.user.value, 'matching:run'))
+const canGenerateReport = computed(() => hasPermission(session.user.value, 'report:generate'))
+const showQuickActions = computed(
+  () => canImport.value || canRunMatching.value || canGenerateReport.value,
+)
+async function runQuickMatching() {
+  if (!session.user.value || !session.token.value || matching.value) return
+  matching.value = true
+  matchResult.value = null
+  matchError.value = ''
+  try {
+    const result = await runMatching(apiBase(), session.token.value, session.user.value.tenant_id)
+    matchResult.value = {
+      autoMatched: Number(result.data.auto_matched_count ?? result.data.matched ?? 0),
+      pendingReview: Number(result.data.pending_review_count ?? result.data.suggested ?? 0),
+    }
+  } catch (cause) {
+    matchError.value = cause instanceof Error ? cause.message : '一键匹配运行失败，请稍后重试'
+  } finally {
+    matching.value = false
+  }
+}
 const cards = () =>
   overview.value
     ? [
@@ -216,6 +255,38 @@ onMounted(() => {
       <span v-if="loading" class="meta">刷新中...</span>
     </header>
     <p v-if="error" class="error-banner">{{ error }}</p>
+    <section v-if="showQuickActions" class="panel">
+      <div class="section-heading">
+        <div>
+          <h3>快捷操作</h3>
+          <span class="meta">看到问题可直接发起处理动作</span>
+        </div>
+        <div class="action-group">
+          <RouterLink v-if="canImport" class="small-primary-button" to="/imports"
+            >导入数据</RouterLink
+          >
+          <button
+            v-permission="'matching:run'"
+            class="small-primary-button"
+            :disabled="matching"
+            type="button"
+            @click="runQuickMatching"
+          >
+            {{ matching ? '匹配中...' : '一键匹配' }}
+          </button>
+          <RouterLink v-permission="'report:generate'" class="small-primary-button" to="/reports"
+            >生成报表</RouterLink
+          >
+        </div>
+      </div>
+      <p v-if="matchResult" class="feedback-text">
+        匹配完成：自动核销 {{ matchResult.autoMatched }} 笔，待人工
+        {{ matchResult.pendingReview }} 笔。<RouterLink class="text-button" to="/exceptions"
+          >去处理 →</RouterLink
+        >
+      </p>
+      <p v-if="matchError" class="error-banner">{{ matchError }}</p>
+    </section>
     <section class="grid stat-grid">
       <article v-for="card in cards()" :key="card.label" class="panel stat-card">
         <span class="label">{{ card.label }}</span

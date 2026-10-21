@@ -408,7 +408,7 @@ onMounted(() => {
   <section class="page-shell">
     <header class="hero-band">
       <div>
-        <p class="eyebrow">银行流水</p>
+        <p class="eyebrow">流水查询</p>
         <h2>流水列表</h2>
         <p class="lead">
           流水明细支持筛选、批量操作与导出；流水导入和回单导入通过右上方入口在弹层中操作。

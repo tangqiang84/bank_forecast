@@ -466,7 +466,7 @@ watch(
     <header class="hero-band">
       <div>
         <p class="eyebrow">回款处理</p>
-        <h2>回款处理工作台</h2>
+        <h2>待办处理</h2>
         <p class="lead">
           按责任人和状态推进待核销、待认领、应收未收、财务差异及账户闲置事项，保留备注、附件和闭环记录。
         </p>

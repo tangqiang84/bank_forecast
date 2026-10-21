@@ -95,13 +95,14 @@ test('业务负责人菜单按权限过滤且默认落地项目资金', async ({
   await expect(page.getByRole('heading', { name: '项目资金与风险' })).toBeVisible()
 
   await expect(page.getByRole('link', { name: '项目资金' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '合同应收' })).toBeVisible()
-  // BUSINESS 默认仅展开业务台账；展开日常处理后可见工作台入口
-  await page.getByRole('button', { name: '日常处理' }).click()
-  await expect(page.getByRole('link', { name: '回款处理工作台' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '驾驶舱' })).toBeHidden()
-  await expect(page.getByRole('link', { name: '银行账户' })).toBeHidden()
-  await expect(page.getByRole('link', { name: '报表中心' })).toBeHidden()
+  // P6-2：BUSINESS 默认仅展开基础资料；展开第二步 · 回款处理后可见待办处理与合同与应收入口
+  await expect(page.getByRole('link', { name: '合同与应收' })).toBeHidden()
+  await page.getByRole('button', { name: '第二步 · 回款处理' }).click()
+  await expect(page.getByRole('link', { name: '待办处理' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '合同与应收' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '管理驾驶舱' })).toBeHidden()
+  await expect(page.getByRole('link', { name: '银行账户管理' })).toBeHidden()
+  await expect(page.getByRole('link', { name: '资金报表' })).toBeHidden()
 })
 
 test('业务负责人在项目页看不到受限操作按钮', async ({ page }) => {
@@ -113,13 +114,13 @@ test('业务负责人在项目页看不到受限操作按钮', async ({ page }) 
   await expect(page.getByRole('button', { name: '批量启用' })).toBeHidden()
   await expect(page.getByRole('button', { name: '批量完成' })).toBeHidden()
 
-  await page.getByRole('link', { name: '合同应收' }).click()
+  await page.getByRole('button', { name: '第二步 · 回款处理' }).click()
+  await page.getByRole('link', { name: '合同与应收' }).click()
   await expect(page.getByRole('heading', { name: '合同列表' })).toBeVisible()
   await expect(page.getByRole('button', { name: '导入合同应收' })).toBeHidden()
 
-  await page.getByRole('button', { name: '日常处理' }).click()
-  await page.getByRole('link', { name: '回款处理工作台' }).click()
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
+  await page.getByRole('link', { name: '待办处理' }).click()
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
   await expect(page.getByRole('button', { name: '一键匹配' })).toBeHidden()
 })
 
@@ -140,6 +141,35 @@ const WORKBENCH_PERMISSIONS = [
   'exception:view',
   'exception:handle',
 ]
+
+const WORKBENCH_STATS = {
+  active_count: 8,
+  unassigned_count: 3,
+  my_todo_count: 5,
+  pending_close_count: 2,
+  overdue_count: 1,
+  closed_count: 0,
+  false_positive_count: 0,
+  total_count: 10,
+  closure_rate: 0,
+  avg_resolution_hours: 0,
+  today_new_count: 2,
+  review_pending_count: 2,
+  large_amount_count: 1,
+  large_amount_threshold: 100000,
+  by_type: [],
+  by_owner: [],
+}
+
+async function mockWorkbenchStats(page: Page) {
+  await page.route('**/api/v1/matching/exceptions/stats', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: WORKBENCH_STATS, trace_id: 'e2e' }),
+    }),
+  )
+}
 
 async function mockRoleApi(page: Page, loginName: string, role: string) {
   await page.route('**/api/v1/auth/login', async (route) =>
@@ -164,35 +194,7 @@ async function mockRoleApi(page: Page, loginName: string, role: string) {
       }),
     }),
   )
-  await page.route('**/api/v1/matching/exceptions/stats', async (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        code: 0,
-        message: 'ok',
-        data: {
-          active_count: 8,
-          unassigned_count: 3,
-          my_todo_count: 5,
-          pending_close_count: 2,
-          overdue_count: 1,
-          closed_count: 0,
-          false_positive_count: 0,
-          total_count: 10,
-          closure_rate: 0,
-          avg_resolution_hours: 0,
-          today_new_count: 2,
-          review_pending_count: 2,
-          large_amount_count: 1,
-          large_amount_threshold: 100000,
-          by_type: [],
-          by_owner: [],
-        },
-        trace_id: 'e2e',
-      }),
-    }),
-  )
+  await mockWorkbenchStats(page)
   await page.route('**/api/v1/matching/exceptions?**', async (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: EMPTY_PAGE }),
   )
@@ -211,21 +213,118 @@ async function loginWith(page: Page) {
   await page.getByRole('button', { name: '登录' }).click()
 }
 
-test('出纳默认落地回款处理工作台且角标显示我的待办', async ({ page }) => {
+test('出纳默认落地待办处理且角标显示我的待办', async ({ page }) => {
   await mockRoleApi(page, 'cashier01', 'CASHIER')
   await loginWith(page)
   await expect(page).toHaveURL(/#\/exceptions/)
-  await expect(page.getByRole('heading', { name: '回款处理工作台' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /回款处理工作台/ }).locator('.nav-badge')).toHaveText(
-    '5',
-  )
+  await expect(page.getByRole('heading', { name: '待办处理' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /待办处理/ }).locator('.nav-badge')).toHaveText('5')
 })
 
 test('CFO 默认落驾驶舱且角标显示待分派加待复核', async ({ page }) => {
   await mockRoleApi(page, 'finance01', 'CFO')
   await loginWith(page)
   await expect(page).toHaveURL(/#\/dashboard$/)
-  await expect(page.getByRole('link', { name: /回款处理工作台/ }).locator('.nav-badge')).toHaveText(
-    '5',
+  await expect(page.getByRole('link', { name: /待办处理/ }).locator('.nav-badge')).toHaveText('5')
+})
+
+const ADMIN_PERMISSIONS = [
+  'dashboard:view',
+  'account:view',
+  'transaction:view',
+  'import:view',
+  'contract:view',
+  'project:view',
+  'project:rule',
+  'matching:view',
+  'exception:view',
+  'reconciliation:view',
+  'report:view',
+  'forecast:view',
+  'template:manage',
+  'system:manage',
+]
+
+async function mockAdminApi(page: Page) {
+  const adminUser = {
+    id: 1,
+    tenant_id: 1,
+    login_name: 'admin01',
+    display_name: '系统管理员',
+    roles: ['ADMIN'],
+    permissions: ADMIN_PERMISSIONS,
+  }
+  await page.route('**/api/v1/auth/login', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { access_token: 'e2e-token', user: adminUser },
+        trace_id: 'e2e',
+      }),
+    }),
   )
+  await page.route('**/api/v1/auth/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: adminUser, trace_id: 'e2e' }),
+    }),
+  )
+  await mockWorkbenchStats(page)
+  await page.route('**/api/v1/system/users?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: EMPTY_PAGE }),
+  )
+  await page.route('**/api/v1/system/roles', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+    }),
+  )
+  await page.route('**/api/v1/system/permissions', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [], trace_id: 'e2e' }),
+    }),
+  )
+  await page.route('**/api/v1/projects?**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: EMPTY_PAGE }),
+  )
+}
+
+test('管理员六组默认全部展开且角标按 CFO 口径显示', async ({ page }) => {
+  await mockAdminApi(page)
+  await loginWith(page)
+
+  // P6-1：ADMIN 落地用户与权限（landingPath 本期不变），六组默认全部展开
+  await expect(page).toHaveURL(/#\/system$/)
+  for (const group of [
+    '第一步 · 数据接入',
+    '第二步 · 回款处理',
+    '第三步 · 财务对账',
+    '经营洞察',
+    '基础资料',
+    '系统设置',
+  ]) {
+    await expect(page.getByRole('button', { name: group })).toHaveAttribute('aria-expanded', 'true')
+  }
+  await expect(page.getByRole('link', { name: '银行账户管理' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '导入模板配置' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /待办处理/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: '合同与应收' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '财务对账' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '管理驾驶舱' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '资金报表' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '现金流预测' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '账户分析' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '项目资金' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '流水查询' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '规则中心' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '用户与权限' })).toBeVisible()
+  // P6-1：角标按 CFO 口径，待分派 3 + 待复核 2 = 5
+  await expect(page.getByRole('link', { name: /待办处理/ }).locator('.nav-badge')).toHaveText('5')
 })

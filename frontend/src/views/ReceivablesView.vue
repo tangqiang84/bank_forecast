@@ -637,7 +637,7 @@ onMounted(() => {
   <section class="page-shell">
     <header class="hero-band">
       <div>
-        <p class="eyebrow">合同应收</p>
+        <p class="eyebrow">合同与应收</p>
         <h2>合同列表</h2>
         <p class="lead">
           合同主数据与回款进度总览；应收/应付计划通过「应收计划与应付计划」弹层分 Tab 查看与维护。

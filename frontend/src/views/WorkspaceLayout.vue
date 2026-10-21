@@ -8,21 +8,20 @@ const router = useRouter()
 const route = useRoute()
 const session = useSession()
 
-// 分组展开状态：按角色给默认值（菜单方案 §4），用户手动收起/展开后 localStorage 记忆
+// 分组展开状态：按角色给默认值（菜单流程化重设计方案 §5；P6-1 ADMIN 全展开，P6-2 六组组名），用户手动收起/展开后 localStorage 记忆
 const COLLAPSE_KEY = 'nav-collapsed-groups'
 
 function roleDefaultCollapsed(): string[] {
   const roles = session.user.value?.roles ?? []
-  const expand: string[] = roles.includes('CFO')
-    ? NAV_GROUPS.map((group) => group.label)
-    : roles.includes('CEO')
-      ? ['经营总览']
-      : roles.includes('CASHIER')
-        ? ['日常处理']
-        : roles.includes('BUSINESS')
-          ? ['业务台账']
-          : roles.includes('ADMIN')
-            ? ['配置中心', '系统管理']
+  const expand: string[] =
+    roles.includes('CFO') || roles.includes('ADMIN')
+      ? NAV_GROUPS.map((group) => group.label)
+      : roles.includes('CEO')
+        ? ['经营洞察']
+        : roles.includes('CASHIER')
+          ? ['第一步 · 数据接入', '第二步 · 回款处理']
+          : roles.includes('BUSINESS')
+            ? ['基础资料']
             : NAV_GROUPS.map((group) => group.label)
   return NAV_GROUPS.map((group) => group.label).filter((label) => !expand.includes(label))
 }
@@ -63,7 +62,7 @@ const currentTitle = computed(
   () => allLinks.value.find((link) => active(link.path))?.label ?? '资金工作台',
 )
 
-// P4-20 待办角标：CASHIER 显示我的待办、CFO 显示待分派+待复核，其余角色不显示；为 0 或失败不显示
+// 待办角标（P4-20；P6-1 ADMIN 并入 CFO 口径）：CASHIER 显示我的待办、CFO/ADMIN 显示待分派+待复核，其余角色不显示；为 0 或失败不显示
 const workbenchBadge = ref<number | null>(null)
 
 async function loadBadge() {
@@ -71,7 +70,7 @@ async function loadBadge() {
   if (!user || !session.token.value) return
   if (!navPermitted(user, ['exception:view', 'matching:view'])) return
   const roles = user.roles ?? []
-  const isCfo = roles.includes('CFO')
+  const isCfo = roles.includes('CFO') || roles.includes('ADMIN')
   const isCashier = roles.includes('CASHIER')
   if (!isCfo && !isCashier) return
   try {

@@ -250,7 +250,7 @@ onMounted(load)
   <section class="page-shell">
     <header class="hero-band">
       <div>
-        <p class="eyebrow">系统管理</p>
+        <p class="eyebrow">用户与权限</p>
         <h2>用户、角色与数据范围</h2>
         <p class="lead">管理租户内用户账号、角色权限点和业务用户的项目数据范围。</p>
       </div>

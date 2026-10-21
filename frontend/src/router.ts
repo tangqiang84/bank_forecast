@@ -2,12 +2,13 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { apiBase, useSession } from './session'
 import { loadCurrentUser } from './services/auth'
 import { hasPermission } from './utils/permission'
-import { landingPath } from './utils/navigation'
+import { landingPath, IMPORTS_WIZARD_PERMISSION } from './utils/navigation'
 import LoginView from './views/LoginView.vue'
 import WorkspaceLayout from './views/WorkspaceLayout.vue'
 import ForbiddenView from './views/ForbiddenView.vue'
 import DashboardView from './views/DashboardView.vue'
 import TransactionsView from './views/TransactionsView.vue'
+import ImportsView from './views/ImportsView.vue'
 import ImportJobView from './views/ImportJobView.vue'
 import EntityDetailView from './views/EntityDetailView.vue'
 import ReconciliationView from './views/ReconciliationView.vue'
@@ -51,6 +52,12 @@ const router = createRouter({
           name: 'transactions',
           component: TransactionsView,
           meta: { permission: 'transaction:view' },
+        },
+        {
+          path: 'imports',
+          name: 'imports',
+          component: ImportsView,
+          meta: { permission: IMPORTS_WIZARD_PERMISSION },
         },
         {
           path: 'imports/:jobId',

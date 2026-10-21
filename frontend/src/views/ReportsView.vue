@@ -227,7 +227,7 @@ onMounted(() => {
   <section class="page-shell">
     <header class="hero-band">
       <div>
-        <p class="eyebrow">报告中心</p>
+        <p class="eyebrow">资金报表</p>
         <h2>资金经营报告</h2>
         <p class="lead">
           展示最近生成的周报、日报和资金体检报告详情；生成与任务管理通过右上方入口操作。

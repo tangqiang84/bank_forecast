@@ -636,6 +636,22 @@ h3 {
   display: block;
 }
 
+/* 导入向导类型卡片（/imports，P6-3） */
+.import-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.import-type-card {
+  text-align: left;
+  cursor: pointer;
+}
+
+.import-type-card:hover {
+  border-color: var(--color-primary);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

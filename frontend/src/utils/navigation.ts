@@ -1,50 +1,66 @@
 import type { User } from '../services/auth'
 import { hasPermission } from './permission'
 
-// 侧边栏分组导航（docs/菜单与角色导航重组方案）；P5-4「操作记录」加入系统管理组
+// 侧边栏分组导航（docs/菜单流程化重设计方案.md §3，P6-2 六组重构与文案任务化）；统一导入向导 /imports（P6-3）位于「第一步 · 数据接入」组首位
 export type NavItem = { path: string; label: string; permission: string | string[] }
 export type NavGroup = { label: string; items: NavItem[] }
 
+// 导入向导入口权限：任一导入相关权限点可见，页内卡片再按具体导入权限过滤。
+export const IMPORTS_WIZARD_PERMISSION = [
+  'import:view',
+  'transaction:import',
+  'contract:import',
+  'project:import',
+  'receipt:import',
+  'reconciliation:run',
+]
+
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: '经营总览',
+    label: '第一步 · 数据接入',
     items: [
-      { path: '/dashboard', label: '驾驶舱', permission: 'dashboard:view' },
-      { path: '/forecast', label: '现金预测', permission: 'forecast:view' },
-      { path: '/reports', label: '报表中心', permission: 'report:view' },
+      { path: '/imports', label: '导入向导', permission: IMPORTS_WIZARD_PERMISSION },
+      { path: '/accounts', label: '银行账户管理', permission: 'account:view' },
+      { path: '/templates', label: '导入模板配置', permission: 'template:manage' },
+    ],
+  },
+  {
+    label: '第二步 · 回款处理',
+    items: [
+      {
+        path: '/exceptions',
+        label: '待办处理',
+        permission: ['exception:view', 'matching:view'],
+      },
+      { path: '/receivables', label: '合同与应收', permission: 'contract:view' },
+    ],
+  },
+  {
+    label: '第三步 · 财务对账',
+    items: [{ path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' }],
+  },
+  {
+    label: '经营洞察',
+    items: [
+      { path: '/dashboard', label: '管理驾驶舱', permission: 'dashboard:view' },
+      { path: '/reports', label: '资金报表', permission: 'report:view' },
+      { path: '/forecast', label: '现金流预测', permission: 'forecast:view' },
       { path: '/accounts/analysis', label: '账户分析', permission: 'account:view' },
     ],
   },
   {
-    label: '日常处理',
+    label: '基础资料',
     items: [
-      { path: '/transactions', label: '银行流水', permission: 'transaction:view' },
-      {
-        path: '/exceptions',
-        label: '回款处理工作台',
-        permission: ['exception:view', 'matching:view'],
-      },
-      { path: '/reconciliation', label: '财务对账', permission: 'reconciliation:view' },
-    ],
-  },
-  {
-    label: '业务台账',
-    items: [
-      { path: '/accounts', label: '银行账户', permission: 'account:view' },
-      { path: '/receivables', label: '合同应收', permission: 'contract:view' },
       { path: '/projects', label: '项目资金', permission: 'project:view' },
+      { path: '/transactions', label: '流水查询', permission: 'transaction:view' },
     ],
   },
   {
-    label: '配置中心',
+    label: '系统设置',
     items: [
       { path: '/rules', label: '规则中心', permission: 'project:rule' },
-      { path: '/templates', label: '模板配置', permission: 'template:manage' },
+      { path: '/system', label: '用户与权限', permission: 'system:manage' },
     ],
-  },
-  {
-    label: '系统管理',
-    items: [{ path: '/system', label: '系统管理', permission: 'system:manage' }],
   },
 ]
 
@@ -52,7 +68,7 @@ export function navPermitted(user: User | null | undefined, permission: string |
   return ([] as string[]).concat(permission).some((code) => hasPermission(user, code))
 }
 
-/** 登录默认落地页（菜单方案 §4）：按角色取向，无权限回退第一个可见菜单项 */
+/** 登录默认落地页（菜单流程化重设计方案 §5；P6-5 工作台首页上线前维持现状）：按角色取向，无权限回退第一个可见菜单项 */
 export function landingPath(user: User | null | undefined): string {
   const roles = user?.roles ?? []
   const preferred = roles.includes('CASHIER')
