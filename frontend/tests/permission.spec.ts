@@ -86,6 +86,9 @@ async function loginAsBusiness(page: Page) {
   await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
+  // 等待登录落地（token 已写入 localStorage）再返回：紧随其后的整页 goto 若打断登录请求，
+  // 重载后守卫读不到 token 会误判未登录跳 /login（2026-10-22 远程 CI 稳定复现，本地时序快难复现）
+  await expect(page).toHaveURL(/#\/projects$/)
 }
 
 test('业务负责人菜单按权限过滤且默认落地项目资金', async ({ page }) => {
@@ -214,6 +217,10 @@ async function loginWith(page: Page) {
   await page.getByLabel('登录名').fill('e2e-login')
   await page.getByLabel('密码').fill('e2e-password')
   await page.getByRole('button', { name: '登录' }).click()
+  // 等待 token 写入 localStorage（落地页因角色而异，不断言具体 URL）
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('bank-connector-access-token')))
+    .toBe('e2e-token')
 }
 
 test('出纳默认落地待办处理且角标显示我的待办', async ({ page }) => {
