@@ -6,6 +6,8 @@ import vueParser from 'vue-eslint-parser'
 import prettier from 'eslint-config-prettier'
 
 const browserGlobals = {
+  // 构建期注入（vite.config.ts define，类型声明见 env.d.ts）
+  __APP_VERSION__: 'readonly',
   AbortController: 'readonly',
   AbortSignal: 'readonly',
   Blob: 'readonly',
