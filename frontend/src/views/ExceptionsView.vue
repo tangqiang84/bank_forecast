@@ -37,9 +37,13 @@ function initialView(): WorkbenchView {
   if (saved === 'mine' || saved === 'unassigned' || saved === 'pending_close' || saved === 'all') {
     return saved
   }
-  // 角色默认视图（P4 方案 §6）：主管（CFO）落待分派，会计/出纳及其他落我的待办
+  // 角色默认视图（P4 方案 §6）：主管（CFO）落待分派，会计/出纳及其他落我的待办。
+  // 2026-10-22 修正（Q-11 根因）：ADMIN 的角标口径已并入 CFO（WorkspaceLayout 的 isCfo 含 ADMIN），
+  // 若默认视图仍落「我的待办」会出现「概览显示待分派 94、清单却是我的待办 0 条」的自相矛盾观感；
+  // 后端 /matching/exceptions?queue=unassigned 与 stats.unassigned_count 实测口径一致（均 94），
+  // 故此处让 ADMIN 默认落待分派，与角标及概览口径对齐。
   const roles = session.user.value?.roles ?? []
-  return roles.includes('CFO') ? 'unassigned' : 'mine'
+  return roles.includes('CFO') || roles.includes('ADMIN') ? 'unassigned' : 'mine'
 }
 const view = ref<WorkbenchView>(initialView())
 const viewTabs: Array<{ value: WorkbenchView; label: string }> = [

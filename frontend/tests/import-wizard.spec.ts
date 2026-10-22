@@ -208,8 +208,7 @@ test('合同导入完整动线：选卡、上传、预览、确认、成功计�
     buffer: Buffer.from('合同编号,计划金额\nHT-2026-001,400.00\n'),
   })
   await uploadPanel.getByRole('button', { name: '开始预览' }).click()
-  expect(previewRequested).toBe(true)
-
+  await expect.poll(() => previewRequested).toBe(true)
   const previewPanel = page.locator('article.panel').filter({
     has: page.getByRole('heading', { name: '预览合同与应收计划' }),
   })
@@ -221,8 +220,7 @@ test('合同导入完整动线：选卡、上传、预览、确认、成功计�
   await expect(previewPanel.getByText('计划金额格式不正确')).toBeVisible()
 
   await previewPanel.getByRole('button', { name: '确认导入' }).click()
-  expect(confirmRequested).toBe(true)
-
+  await expect.poll(() => confirmRequested).toBe(true)
   const donePanel = page.locator('article.panel').filter({
     has: page.getByRole('heading', { name: '导入完成' }),
   })
@@ -301,7 +299,7 @@ test('银行流水卡要求先选账户再预览', async ({ page }) => {
   await uploadPanel.getByLabel('银行账户').selectOption({ label: '工商银行 · 基本户 · 1234' })
   await expect(previewButton).toBeEnabled()
   await previewButton.click()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(page.getByText('任务 #105', { exact: true })).toBeVisible()
 })
 

@@ -192,14 +192,14 @@ test('导入预览后确认入账', async ({ page }) => {
   })
   await statementPanel.getByRole('button', { name: '预览导入' }).click()
   await expect(page.getByText('预览完成，请核对后确认入账。')).toBeVisible()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(page.getByText('任务 #101')).toBeVisible()
   await expect(page.getByText('有效 2')).toBeVisible()
   await expect(page.getByText('失败 1')).toBeVisible()
 
   await statementPanel.getByRole('button', { name: '确认入账' }).click()
   await expect(statementPanel.getByText('已确认入账。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(statementPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
@@ -279,7 +279,7 @@ test('待核销工单确认与打回', async ({ page }) => {
   const confirmRow = page.locator('.dense-table tbody tr', { hasText: 'EXC-7001' })
   await confirmRow.getByRole('button', { name: '确认核销' }).click()
   await expect(page.getByText('已确认核销。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(page.locator('.dense-table tbody tr', { hasText: 'EXC-7001' })).toHaveCount(0)
 
   // 行内打回：必填原因，工单留在队列转入待跟进
@@ -287,6 +287,9 @@ test('待核销工单确认与打回', async ({ page }) => {
   await rejectRow.getByRole('button', { name: '打回' }).click()
   const rejectDialog = page.getByRole('dialog', { name: '打回：EXC-7002' })
   await rejectDialog.getByLabel('处理说明').fill('付款方待核实')
+  // 并行下 Vue 重渲染可能未收敛，Playwright 会判元素 not stable 而点击超时（Q-08 根因）；
+  // 先显式等待按钮可交互，给 re-render 收敛时间。不跳过、不删用例
+  await expect(rejectDialog.getByRole('button', { name: '确认', exact: true })).toBeEnabled()
   await rejectDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(rejectDialog.getByText('已打回，工单转入待跟进。')).toBeVisible()
   expect(rejectReason).toBe('付款方待核实')
@@ -378,6 +381,8 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await row.getByRole('button', { name: '备注' }).click()
   const commentDialog = page.getByRole('dialog', { name: '备注：EXC-0001' })
   await commentDialog.getByLabel('处理说明').fill('已联系客户确认回款时间')
+  // 同 Q-08：先等按钮可交互再点，消除并行下的 not stable 超时
+  await expect(commentDialog.getByRole('button', { name: '确认', exact: true })).toBeEnabled()
   await commentDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(commentDialog.getByText('异常事项操作已完成。')).toBeVisible()
   expect(commentText).toBe('已联系客户确认回款时间')
@@ -386,6 +391,8 @@ test('异常事项备注并处理完成', async ({ page }) => {
   await row.getByRole('button', { name: '处理完成' }).click()
   const resolveDialog = page.getByRole('dialog', { name: '处理完成：EXC-0001' })
   await resolveDialog.getByLabel('处理说明').fill('客户已回款，处理完成')
+  // 同 Q-09：先等按钮可交互再点，消除并行下的 not stable 超时
+  await expect(resolveDialog.getByRole('button', { name: '确认', exact: true })).toBeEnabled()
   await resolveDialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect.poll(() => resolveText).toBe('客户已回款，处理完成')
   await resolveDialog.getByRole('button', { name: '关闭', exact: true }).click()
@@ -529,7 +536,7 @@ test('预测失败任务展示原因并重试成功', async ({ page }) => {
 
   await page.getByRole('button', { name: '重试失败任务' }).click()
   await expect(page.getByText('失败任务已重试。')).toBeVisible()
-  expect(retryRequested).toBe(true)
+  await expect.poll(() => retryRequested).toBe(true)
   await expect(page.getByText('任务 #801 · 处理中 · v1.0')).toBeVisible()
   await expect(page.getByText('预测服务超时，请稍后重试')).toBeHidden()
 })
@@ -717,7 +724,7 @@ test('财务对账展示跨月时间差和财务记录科目', async ({ page }) 
 
   await reconDialog.getByRole('button', { name: '运行对账' }).click()
   await expect(reconDialog.getByText(/多对多匹配 1 组，跨月时间差 1 条/)).toBeVisible()
-  expect(runRequested).toBe(true)
+  await expect.poll(() => runRequested).toBe(true)
 })
 
 test('规则中心修改规则并回滚版本', async ({ page }) => {
@@ -1587,7 +1594,7 @@ test('驾驶舱试点验收指标与快照采集', async ({ page }) => {
   // 采集今日快照后刷新区块
   await pilotPanel.getByRole('button', { name: '采集今日快照' }).click()
   await expect(pilotPanel.getByText('已采集 2026-10-09 的 13 项指标快照。')).toBeVisible()
-  expect(collectRequested).toBe(true)
+  await expect.poll(() => collectRequested).toBe(true)
   await expect(pilotPanel.getByText('最近快照 2026-10-09')).toBeVisible()
 })
 
@@ -2138,7 +2145,7 @@ test('账户待销户流转：发起销户与撤销', async ({ page }) => {
   page.on('dialog', (dialog) => dialog.accept())
   await accountRow.getByRole('button', { name: '撤销销户' }).click()
   await expect(page.getByText('已撤销销户，账户恢复活跃。')).toBeVisible()
-  expect(cancelRequested).toBe(true)
+  await expect.poll(() => cancelRequested).toBe(true)
   await expect(accountRow.locator('.pill').first()).toHaveText('活跃')
 })
 
@@ -2249,7 +2256,7 @@ test('规则中心异常分派配置保存与行业预警运行', async ({ page 
   await expect(page.getByText('行业预警已运行，幂等不重复生成异常。')).toBeVisible()
   await expect(page.getByText('验收款逾期 2')).toBeVisible()
   await expect(page.getByText('项目现金流风险 3')).toBeVisible()
-  expect(alertsRequested).toBe(true)
+  await expect.poll(() => alertsRequested).toBe(true)
 })
 
 test('流水详情生成分类建议并应用', async ({ page }) => {

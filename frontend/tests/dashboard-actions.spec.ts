@@ -95,7 +95,7 @@ test('驾驶舱快捷操作区一键匹配并展示结果与去处理链接', as
 
   await actions.getByRole('button', { name: '一键匹配' }).click()
   await expect(actions.getByText(/匹配完成：自动核销\s*2\s*笔，待人工\s*1\s*笔。/)).toBeVisible()
-  expect(runRequested).toBe(true)
+  await expect.poll(() => runRequested).toBe(true)
   await expect(actions.getByRole('link', { name: '去处理 →' })).toHaveAttribute(
     'href',
     '#/exceptions',

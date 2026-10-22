@@ -184,7 +184,7 @@ test('合同导入预览后确认导入', async ({ page }) => {
   })
   await importDialog.getByRole('button', { name: '预览导入' }).click()
   await expect(importDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(importDialog.getByText('任务 #301', { exact: true })).toBeVisible()
   await expect(importDialog.getByText('有效 1')).toBeVisible()
   await expect(importDialog.getByText('失败 1')).toBeVisible()
@@ -193,7 +193,7 @@ test('合同导入预览后确认导入', async ({ page }) => {
 
   await importDialog.getByRole('button', { name: '确认导入' }).click()
   await expect(importDialog.getByText('导入已确认，应收计划已更新。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(importDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
@@ -293,7 +293,7 @@ test('财务记录导入预览后确认导入', async ({ page }) => {
   })
   await reconDialog.getByRole('button', { name: '预览导入' }).click()
   await expect(reconDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(reconDialog.getByText('任务 #302', { exact: true })).toBeVisible()
   await expect(reconDialog.getByText('有效 1')).toBeVisible()
   await expect(reconDialog.getByText('失败 1')).toBeVisible()
@@ -302,7 +302,7 @@ test('财务记录导入预览后确认导入', async ({ page }) => {
 
   await reconDialog.getByRole('button', { name: '确认导入' }).click()
   await expect(reconDialog.getByText('导入已确认，财务记录已入库。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
 })
 
 const projectPreviewPayload = {
@@ -400,7 +400,7 @@ test('项目导入预览后确认导入', async ({ page }) => {
   })
   await importDialog.getByRole('button', { name: '预览导入' }).click()
   await expect(importDialog.getByText('预览完成，请核对后确认导入。')).toBeVisible()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(importDialog.getByText('任务 #303', { exact: true })).toBeVisible()
   await expect(importDialog.getByText('有效 1')).toBeVisible()
   await expect(importDialog.getByText('失败 1')).toBeVisible()
@@ -409,7 +409,7 @@ test('项目导入预览后确认导入', async ({ page }) => {
 
   await importDialog.getByRole('button', { name: '确认导入' }).click()
   await expect(importDialog.getByText('导入已确认，项目清单已更新。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(importDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
@@ -524,12 +524,12 @@ test('回单导入预览后确认导入', async ({ page }) => {
   })
   await receiptPanel.getByRole('button', { name: '预览导入' }).click()
   await expect(page.getByText('预览完成，请核对后确认导入。')).toBeVisible()
-  expect(previewRequested).toBe(true)
+  await expect.poll(() => previewRequested).toBe(true)
   await expect(page.getByText('任务 #304', { exact: true })).toBeVisible()
 
   await receiptPanel.getByRole('button', { name: '确认导入' }).click()
   await expect(receiptPanel.getByText('回单导入已确认。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(receiptPanel.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })
 
@@ -850,6 +850,6 @@ test('应付计划面板展示与导入流程', async ({ page }) => {
 
   await payableDialog.getByRole('button', { name: '确认导入' }).click()
   await expect(payableDialog.getByText('导入已确认，应付计划已更新。')).toBeVisible()
-  expect(confirmRequested).toBe(true)
+  await expect.poll(() => confirmRequested).toBe(true)
   await expect(payableDialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
 })

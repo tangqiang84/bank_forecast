@@ -7,6 +7,9 @@ import { landingPath } from '../utils/navigation'
 
 const router = useRouter()
 const session = useSession()
+// 版本号来自构建期注入的 package.json version（见 vite.config.ts define），
+// 不用原型稿里的 v2.0——那是编造值，真实版本为 package.json 所载
+const appVersion = __APP_VERSION__
 // Q-04（2026-10-21 修正）：登录名不再预填 finance01，避免私有化部署下页面泄露默认账号
 const loginName = ref('')
 const password = ref('')
@@ -53,6 +56,9 @@ async function submit() {
           {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
+      <!-- 页脚：版本号取 package.json 真实值（原型的 v2.0 为编造值，不采用）；
+           「私有化部署」依据 PRD §0 首期部署模式。未登录态不显示用户名。 -->
+      <p class="login-footer">v{{ appVersion }} · 私有化部署</p>
     </section>
   </main>
 </template>

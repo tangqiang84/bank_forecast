@@ -153,6 +153,15 @@ h3 {
   color: var(--color-accent);
 }
 
+/* 登录页页脚：版本号（真实取自 package.json）+ 部署形态。
+   2026-10-22 曾因零引用被当作死类删除，随页脚启用而恢复 */
+.login-footer {
+  margin: 24px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .login-form {
   display: grid;
   gap: 16px;
