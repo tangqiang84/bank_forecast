@@ -21,7 +21,8 @@ export type NextStepFacts = {
 export const RECONCILIATION_REMINDER_DAY = 25
 export const REPORT_REMINDER_DAY = 28
 
-// 待办口径与侧边栏角标一致：我的待办 + 待分派 + 待复核（review_pending_count 缺失时回退 pending_close_count）
+// 待办口径与导航待办角标一致：我的待办 + 待分派 + 待复核（review_pending_count 缺失时回退 pending_close_count）
+// 注：角标现挂在顶部导航二级条的「待办处理」链接上（2026-10-21 顶栏改造，原为侧边栏）
 export function exceptionTodoTotal(stats: {
   my_todo_count: number
   unassigned_count: number

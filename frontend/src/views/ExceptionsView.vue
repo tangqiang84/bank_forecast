@@ -228,7 +228,7 @@ async function loadStats() {
     stats.value = (
       await loadExceptionStats(base, session.token.value, session.user.value.tenant_id)
     ).data
-    // 同步侧边栏待办角标（P4-20）
+    // 同步导航待办角标（P4-20；2026-10-21 顶栏改造后角标位于二级条「待办处理」链接内）
     window.dispatchEvent(new CustomEvent('workbench-stats-refresh'))
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '异常统计加载失败'

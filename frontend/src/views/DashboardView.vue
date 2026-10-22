@@ -313,7 +313,8 @@ onMounted(() => {
     <!-- 资金结论横幅（方向 A）：老板十秒读完现状，结论由真实缺口与余额数据派生 -->
     <section v-if="fundingConclusion" class="conclusion-banner panel">
       <p class="conclusion-text">
-        <strong :class="overview?.funding_gap?.has_gap ? 'expense-amount' : 'income-amount'">{{
+        <!-- 结论句为中文整句，用语义色类而非金额类：金额类将承载等宽数字字体，不适用中文 -->
+        <strong :class="overview?.funding_gap?.has_gap ? 'conclusion-risk' : 'conclusion-safe'">{{
           fundingConclusion
         }}</strong>
         <template v-if="overview?.funding_gap">

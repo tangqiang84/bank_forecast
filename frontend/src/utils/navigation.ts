@@ -1,7 +1,9 @@
 import type { User } from '../services/auth'
 import { hasPermission } from './permission'
 
-// 侧边栏分组导航（docs/菜单流程化重设计方案.md §3，P6-2 六组重构与文案任务化）；统一导入向导 /imports（P6-3）位于「第一步 · 数据接入」组首位
+// 分组导航（六组 14 项；菜单结构见 docs/菜单流程化重设计方案.md §3，P6-2 六组重构与文案任务化）
+// 呈现形态：2026-10-21 起为「顶栏一级 tab + 当前组二级条」，见 docs/顶部导航改造方案.md（原为左侧边栏）
+// 统一导入向导 /imports（P6-3）位于「第一步 · 数据接入」组首位
 export type NavItem = { path: string; label: string; permission: string | string[] }
 export type NavGroup = { label: string; items: NavItem[] }
 

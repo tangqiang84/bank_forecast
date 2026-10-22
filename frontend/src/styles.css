@@ -13,12 +13,8 @@
   --color-primary-soft: #e8edf3;
   --color-primary-soft-hover: #d8e0ea;
   --color-accent: #2b7a78;
-  /* 侧栏专属令牌：顶栏改造（阶段 3）后废弃，此处仅同步主色以维持中间态视觉一致 */
-  --color-sidebar-bg: #1a3a5c;
-  --color-sidebar-text: rgba(255, 255, 255, 0.72);
-  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --color-sidebar-active: rgba(255, 255, 255, 0.1);
-  --color-sidebar-divider: rgba(255, 255, 255, 0.14);
+  /* 原 5 个 --color-sidebar-* 令牌已随 2026-10-21 顶栏改造删除（顶栏形态无侧栏，
+     经 grep 确认全 src 零引用）；需要时从 git tag pre-topnav-baseline 取回 */
 
   --bg-page: #f5f6f8;
   --bg-surface: #ffffff;
@@ -157,19 +153,6 @@ h3 {
   color: var(--color-accent);
 }
 
-.auth-subtitle {
-  margin: 6px 0 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.login-footer {
-  margin: 24px 0 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
-}
-
 .login-form {
   display: grid;
   gap: 16px;
@@ -291,6 +274,7 @@ h3 {
   min-width: 18px;
   padding: 0 5px;
   border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
   /* 商务简约换肤（方向 A）：accent 改深青绿后原深色文字对比不足，改用危险红底白字，符合「待办」语义 */
   background: var(--color-danger);
   color: #fff;
@@ -314,7 +298,8 @@ h3 {
 
 .page-shell {
   width: 100%;
-  max-width: 1280px;
+  /* 方向 A：内容区宽度对齐原型（令牌 --content-max-w=1400px，此前定义未接线） */
+  max-width: var(--content-max-w);
   margin: 0 auto;
 }
 
@@ -545,14 +530,27 @@ h3 {
   color: var(--color-success);
 }
 
+/* 金额类：原型对纯数字统一用等宽字体（--font-mono），故这两个类只用于数字元素，
+   中文文本请用语义色类（conclusion-safe / conclusion-risk），不要复用金额类 */
 .income-amount {
   color: var(--color-success);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .expense-amount {
   color: var(--color-danger);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* 结论句语义色（驾驶舱资金结论横幅）：只着色，不改字体族，避免中文走等宽回退 */
+.conclusion-safe {
+  color: var(--color-success);
+}
+
+.conclusion-risk {
+  color: var(--color-danger);
 }
 
 /* ---------- 下一步引导条（P6-6，菜单流程化重设计方案 §4-3） ---------- */
@@ -594,7 +592,8 @@ h3 {
 }
 
 .stat-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 驾驶舱五指标横排（方向 A）：仅 DashboardView 使用，改 5 列消除 4+1 空洞行 */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 16px;
 }
 
@@ -605,6 +604,7 @@ h3 {
 .stat-value {
   display: block;
   margin-top: 12px;
+  font-family: var(--font-mono);
   font-size: 24px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
@@ -672,12 +672,6 @@ h3 {
   margin-bottom: 16px;
 }
 
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .module-card {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -729,6 +723,7 @@ h3 {
 
 .summary-grid strong {
   color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
@@ -741,18 +736,9 @@ h3 {
 
 .list-stack,
 .account-grid,
-.endpoint-list,
-.risk-list,
-.job-list,
-.receivable-list {
+.risk-list {
   display: grid;
   gap: 10px;
-}
-
-.endpoint-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-secondary);
 }
 
 .risk-list {
@@ -763,21 +749,11 @@ h3 {
   margin-bottom: 8px;
 }
 
-.status-row,
 .list-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-}
-
-.status-row {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.status-row:last-of-type {
-  border-bottom: none;
 }
 
 .account-row {
@@ -793,6 +769,7 @@ h3 {
 }
 
 .account-row strong {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -805,25 +782,6 @@ h3 {
 .account-row small {
   display: block;
   margin-top: 4px;
-}
-
-.exception-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.exception-row:last-child {
-  border-bottom: 0;
-}
-
-.exception-actions {
-  display: grid;
-  justify-items: end;
-  gap: 10px;
 }
 
 .audit-list {
@@ -861,54 +819,7 @@ h3 {
   font-size: 13px;
 }
 
-.selected-row {
-  background: var(--color-primary-soft);
-}
-
-.amount-block {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---------- 报表 ---------- */
-
-.reports-layout {
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  align-items: start;
-}
-
-.reports-page {
-  display: grid;
-  gap: 16px;
-}
-
-.report-type-strip {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.report-type-strip button {
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  padding: 8px 14px;
-}
-
-.report-type-strip button.active {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-
-.report-detail-layout {
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
-  align-items: start;
-}
 
 .report-kpi-grid,
 .report-summary-grid {
@@ -929,25 +840,18 @@ h3 {
 .report-kpi-grid strong {
   display: block;
   margin-top: 6px;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .health-score {
   color: var(--color-success);
+  font-family: var(--font-mono);
   font-size: 24px;
   font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 业务页双栏布局 ---------- */
-
-.transaction-layout,
-.receivable-layout,
-.forecast-layout,
-.reconciliation-layout,
-.account-management-layout {
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  align-items: start;
-}
 
 .workflow-panel {
   display: grid;
@@ -955,15 +859,6 @@ h3 {
 }
 
 /* ---------- 导入 ---------- */
-
-.import-panel {
-  display: grid;
-  gap: 14px;
-}
-
-.import-panel h2 {
-  margin-bottom: 0;
-}
 
 .import-hint {
   line-height: 1.5;
@@ -1107,8 +1002,9 @@ td {
   white-space: nowrap;
 }
 
-.dense-table .amount-cell {
+.dense-table td.amount-cell {
   text-align: right;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1156,11 +1052,6 @@ td {
   width: auto;
   min-width: 72px;
   padding: 7px 9px;
-}
-
-.pagination-actions {
-  display: flex;
-  gap: 8px;
 }
 
 /* ---------- 居中弹层 ---------- */
@@ -1290,25 +1181,6 @@ td {
   word-break: break-word;
 }
 
-.detail-panel {
-  margin-top: 16px;
-}
-
-.detail-panel pre {
-  max-height: 460px;
-  overflow: auto;
-  margin: 0;
-  padding: 14px;
-  background: var(--surface-muted);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 /* ---------- 时间轴 ---------- */
 
 .timeline {
@@ -1359,25 +1231,6 @@ textarea {
   color: var(--text-primary);
   background: var(--bg-surface);
   font: inherit;
-}
-
-.inline-edit-form,
-.risk-rule-editor,
-.attachment-list {
-  display: flex;
-  gap: 12px;
-  align-items: end;
-  flex-wrap: wrap;
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-muted);
-}
-
-.inline-edit-form label,
-.risk-rule-editor label {
-  min-width: 140px;
 }
 
 .rule-row {
@@ -1475,14 +1328,6 @@ textarea {
   flex-shrink: 0;
 }
 
-.attachment-list {
-  display: block;
-}
-
-.attachment-list .list-row {
-  margin-top: 8px;
-}
-
 .forecast-evaluation {
   display: flex;
   flex-wrap: wrap;
@@ -1496,8 +1341,7 @@ textarea {
 /* ---------- 响应式（顶栏形态，方向 A 重写） ---------- */
 
 @media (max-width: 1080px) {
-  .stat-grid,
-  .module-grid {
+  .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1530,8 +1374,7 @@ textarea {
 
   .hero-band,
   .two-up,
-  .stat-grid,
-  .module-grid {
+  .stat-grid {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -1540,15 +1383,9 @@ textarea {
     align-items: stretch;
   }
 
-  .status-row,
   .list-row {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .amount-block {
-    width: 100%;
-    justify-content: space-between;
   }
 
   .account-row {
@@ -1556,24 +1393,9 @@ textarea {
     flex-direction: column;
   }
 
-  .transaction-layout,
-  .receivable-layout,
-  .reconciliation-layout {
-    grid-template-columns: 1fr;
-  }
-
   .summary-grid,
   .compact-summary {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .exception-row {
-    flex-direction: column;
-  }
-
-  .exception-actions {
-    width: 100%;
-    justify-items: start;
   }
 
   .auth-panel {
